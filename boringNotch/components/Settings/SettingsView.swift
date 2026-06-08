@@ -567,6 +567,11 @@ struct HUD: View {
                 Defaults.Toggle(key: .showClosedNotchHUDPercentage) {
                     Text("Show percentage")
                 }
+
+                Defaults.Toggle(key: .showInlineHUDLabel) {
+                    Text("Show label")
+                }
+                .disabled(!inlineHUD)
             } header: {
                 Text("Closed Notch")
             }
