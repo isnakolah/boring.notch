@@ -54,14 +54,17 @@ struct InlineHUD: View {
                 .foregroundStyle(.white)
                 .symbolVariant(.fill)
                 
-                Text(Type2Name(type))
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .lineLimit(1)
-                    .allowsTightening(true)
-                    .contentTransition(.numericText())
+                if Defaults[.showInlineHUDLabel] {
+                    Text(Type2Name(type))
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                        .allowsTightening(true)
+                        .contentTransition(.numericText())
+                }
             }
-            .frame(width: 100 - (hoverAnimation ? 0 : 12) + gestureProgress / 2, height: vm.notchSize.height - (hoverAnimation ? 0 : 12), alignment: .leading)
+            .padding(.trailing, 4)
+            .frame(width: 100 - (hoverAnimation ? 0 : 12) + gestureProgress / 2, height: vm.notchSize.height - (hoverAnimation ? 0 : 12), alignment: .trailing)
             
             Rectangle()
                 .fill(.black)
