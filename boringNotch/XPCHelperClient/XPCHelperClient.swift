@@ -241,6 +241,26 @@ final class XPCHelperClient: NSObject {
             return false
         }
     }
+
+    // MARK: - CLI Usage
+
+    /// Fetches usage for a provider ("claude" | "codex") from the non-sandboxed
+    /// helper. Returns nil only on transport failure — probe-level errors are
+    /// encoded inside the returned DTO's `status`/`errorDescription`.
+    nonisolated func fetchUsage(provider: String) async -> UsageReportDTO? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let data: Data? = try await service.withContinuation { service, continuation in
+                service.fetchUsage(provider) { continuation.resume(returning: $0) }
+            }
+            guard let data else { return nil }
+            return try UsageReportDTO.decoder.decode(UsageReportDTO.self, from: data)
+        } catch {
+            return nil
+        }
+    }
 }
 
 extension Notification.Name {

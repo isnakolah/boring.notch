@@ -139,6 +139,17 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         reply(false)
     }
 
+    // MARK: - CLI Usage Probing
+
+    @objc func fetchUsage(_ provider: String, with reply: @escaping (Data?) -> Void) {
+        // Hop off the serial XPC message queue — the Claude probe can take ~20s
+        // and must not block brightness/accessibility calls on the same connection.
+        Task.detached {
+            let dto = await UsageProbeService.shared.fetchUsage(provider: provider)
+            reply(try? UsageReportDTO.encoder.encode(dto))
+        }
+    }
+
     // MARK: - Private helpers for DisplayServices / IOKit access
     private func displayServicesGetBrightness(displayID: CGDirectDisplayID, out: inout Float) -> Bool {
         guard let sym = dlsym(DisplayServicesHandle.handle, "DisplayServicesGetBrightness") else { return false }

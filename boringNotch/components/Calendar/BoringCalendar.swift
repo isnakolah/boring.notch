@@ -18,6 +18,11 @@ struct Config: Equatable {
     var offset: Int = 2  // Number of dates to the left of the selected date
 }
 
+enum WheelPickerStyle {
+    case dots   // compact day-dot indicators
+    case plate  // full-width date cards (weekday + numeral + month) that page horizontally
+}
+
 struct WheelPicker: View {
     @EnvironmentObject var vm: BoringViewModel
     @Binding var selectedDate: Date
@@ -25,42 +30,50 @@ struct WheelPicker: View {
     @State private var haptics: Bool = false
     @State private var byClick: Bool = false
     let config: Config
+    var style: WheelPickerStyle = .dots
+
+    // Plate cards are full-width and self-center, so they need no edge spacers.
+    private var spacerNum: Int { style == .dots ? config.offset : 0 }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: config.spacing) {
-                let spacerNum = config.offset
                 let dateCount = totalDateItems()
                 let totalItems = dateCount + 2 * spacerNum
                 ForEach(0..<totalItems, id: \.self) { index in
                     if index < spacerNum || index >= spacerNum + dateCount {
-                        // Leading/trailing spacers sized to match a date cell
+                        // Leading/trailing spacers sized to match a dot cell
                         Spacer()
-                            .frame(width: 24, height: 24)
+                            .frame(width: 16, height: 16)
                             .id(index)
                     } else {
                         let date = dateForItemIndex(index: index, spacerNum: spacerNum)
                         let isSelected = Calendar.current.isDate(date, inSameDayAs: selectedDate)
-                        dateButton(date: date, isSelected: isSelected, id: index) {
-                            selectedDate = date
-                            byClick = true
-                            withAnimation {
-                                scrollPosition = index
+                        switch style {
+                        case .dots:
+                            dotButton(date: date, isSelected: isSelected, id: index) {
+                                selectedDate = date
+                                byClick = true
+                                withAnimation {
+                                    scrollPosition = index
+                                }
+                                if Defaults[.enableHaptics] {
+                                    haptics.toggle()
+                                }
                             }
-                            if Defaults[.enableHaptics] {
-                                haptics.toggle()
-                            }
+                        case .plate:
+                            plateCard(date: date, id: index)
                         }
                     }
                 }
             }
-            .frame(height: 50)
+            .frame(height: style == .dots ? 16 : nil)
             .scrollTargetLayout()
         }
         .scrollIndicators(.never)
         .scrollPosition(id: $scrollPosition, anchor: .center)
         .scrollTargetBehavior(.viewAligned)  // Ensures scroll view snaps the centered view
-        .safeAreaPadding(.horizontal)
+        .safeAreaPadding(style == .dots ? .horizontal : [])
         .sensoryFeedback(.alignment, trigger: haptics)
         .onChange(of: scrollPosition) { oldValue, newValue in
             if !byClick {
@@ -84,49 +97,57 @@ struct WheelPicker: View {
         }
     }
 
-    private func dateButton(
+    // A single day rendered as a tappable dot. The selected day widens into an
+    // accent pill; today (when not selected) reads slightly brighter than the rest.
+    private func dotButton(
         date: Date, isSelected: Bool, id: Int, onClick: @escaping () -> Void
     ) -> some View {
         let isToday = Calendar.current.isDateInToday(date)
+        let dotColor: Color = isSelected
+            ? Color.effectiveAccent
+            : Color.white.opacity(isToday ? 0.5 : 0.18)
         return Button(action: onClick) {
-            VStack(spacing: 8) {
-                dayText(date: dateToString(for: date), isToday: isToday, isSelected: isSelected)
-                dateCircle(date: date, isToday: isToday, isSelected: isSelected)
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 4)
-            .background(isSelected ? Color.effectiveAccentBackground : Color.clear)
-            .cornerRadius(8)
+            Capsule(style: .continuous)
+                .fill(dotColor)
+                .frame(width: isSelected ? 16 : 7, height: 7)
+                .shadow(color: isSelected ? Color.effectiveAccent.opacity(0.6) : .clear, radius: 4, y: 2)
+                .frame(width: 16, height: 16)
+                .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityLabel(Text(date, format: .dateTime.weekday(.wide).day()))
         .id(id)
     }
 
-    private func dayText(date: String, isToday: Bool, isSelected: Bool) -> some View {
-        Text(date)
-            .font(.caption)
-            .foregroundColor(isSelected ? .white : Color(white: 0.65))
-    }
-
-    private func dateCircle(date: Date, isToday: Bool, isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .fill(isToday ? Color.effectiveAccent : .clear)
-                .frame(width: 20, height: 20)
-                .overlay(
-                    Circle()
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 0)
-                )
+    // Full-width date card used by `.plate` style: weekday, big numeral, month/year.
+    @ViewBuilder
+    private func plateCard(date: Date, id: Int) -> some View {
+        let isToday = Calendar.current.isDateInToday(date)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(date.formatted(.dateTime.weekday(.wide)))
+                .font(.system(size: 11, weight: .bold))
+                .tracking(0.8)
+                .textCase(.uppercase)
+                .foregroundColor(isToday ? Color.effectiveAccent : .white.opacity(0.55))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Text("\(date.date)")
-                .font(.body)
-                .fontWeight(.medium)
-                .foregroundColor(isSelected ? .white : Color(white: isToday ? 0.9 : 0.65))
+                .font(.system(size: 44, weight: .bold))
+                .monospacedDigit()
+                .tracking(-1)
+                .foregroundColor(.white)
+            Text(date.formatted(.dateTime.month(.abbreviated).year()))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white.opacity(0.45))
+                .padding(.top, 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .containerRelativeFrame(.horizontal)
+        .id(id)
     }
 
     func handleScrollChange(newValue: Int?, config: Config) {
         guard let newIndex = newValue else { return }
-        let spacerNum = config.offset
         let dateCount = totalDateItems()
         guard (spacerNum..<(spacerNum + dateCount)).contains(newIndex) else { return }
         let date = dateForItemIndex(index: newIndex, spacerNum: spacerNum)
@@ -147,7 +168,6 @@ struct WheelPicker: View {
 
     // MARK: - Index/Date mapping with steps and spacers
     private func indexForDate(_ date: Date) -> Int {
-        let spacerNum = config.offset
         let cal = Calendar.current
         let today = cal.startOfDay(for: Date())
         let startDate = cal.startOfDay(for: cal.date(byAdding: .day, value: -config.past, to: today) ?? today)
@@ -170,12 +190,6 @@ struct WheelPicker: View {
         let step = max(config.steps, 1)
         return Int(ceil(Double(range) / Double(step))) + 1
     }
-
-    private func dateToString(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "E"
-        return formatter.string(from: date)
-    }
 }
 
 struct CalendarView: View {
@@ -183,48 +197,36 @@ struct CalendarView: View {
     @ObservedObject private var calendarManager = CalendarManager.shared
     @State private var selectedDate = Date()
 
+    // "Today hero" date plate: the big date (weekday + numeral + month/year) is a
+    // horizontally scrollable pager — scroll/swipe it to move between days — with a
+    // row of day-dots below that mirrors the selection and is also tappable.
+    private var datePlate: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            WheelPicker(selectedDate: $selectedDate, config: Config(), style: .plate)
+                .frame(height: 82)
+
+            WheelPicker(selectedDate: $selectedDate, config: Config(), style: .dots)
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading) {
-                    Text(selectedDate.formatted(.dateTime.month(.abbreviated)))
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                    Text(selectedDate.formatted(.dateTime.year()))
-                        .font(.title3)
-                        .fontWeight(.light)
-                        .foregroundColor(Color(white: 0.65))
-                }
+        let filteredEvents = EventListView.filteredEvents(events: calendarManager.events)
+        HStack(alignment: .center, spacing: 14) {
+            datePlate
+                .frame(width: 84, alignment: .leading)
 
-                ZStack(alignment: .top) {
-                    WheelPicker(selectedDate: $selectedDate, config: Config())
-                    HStack(alignment: .top) {
-                        LinearGradient(
-                            colors: [Color.black, .clear], startPoint: .leading, endPoint: .trailing
-                        )
-                        .frame(width: 20)
-                        Spacer()
-                        LinearGradient(
-                            colors: [.clear, Color.black], startPoint: .leading, endPoint: .trailing
-                        )
-                        .frame(width: 20)
-                    }
+            Group {
+                if filteredEvents.isEmpty {
+                    EmptyEventsView(selectedDate: selectedDate)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    EventListView(events: calendarManager.events)
                 }
             }
-
-            let filteredEvents = EventListView.filteredEvents(
-                events: calendarManager.events
-            )
-            if filteredEvents.isEmpty {
-                EmptyEventsView(selectedDate: selectedDate)
-                Spacer(minLength: 0)
-            } else {
-                EventListView(events: calendarManager.events)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         }
         .listRowBackground(Color.clear)
-        .frame(height: 120)
+        .frame(maxHeight: .infinity)
         .onChange(of: selectedDate) {
             Task {
                 await calendarManager.updateCurrentDate(selectedDate)
@@ -310,24 +312,32 @@ struct EventListView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            List {
-                ForEach(filteredEvents) { event in
-                    Button(action: {
-                        if let url = event.calendarAppURL() {
-                            openURL(url)
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(filteredEvents) { event in
+                        Button(action: {
+                            // Events with a video call open the call directly; everything
+                            // else falls back to opening the event in the calendar app.
+                            if let url = event.videoCallURL ?? event.calendarAppURL() {
+                                // Prefer the native meeting app (Zoom/Teams) over the
+                                // browser when installed and the setting is enabled.
+                                if Defaults[.openMeetingsInApp],
+                                   let native = MeetingLinkResolver.nativeURL(for: url) {
+                                    NSWorkspace.shared.open(native)
+                                } else {
+                                    openURL(url)
+                                }
+                            }
+                        }) {
+                            eventRow(event)
+                                .contentShape(Rectangle())
                         }
-                    }) {
-                        eventRow(event)
+                        .id(event.id)
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .id(event.id)
-                    .padding(.leading, -5)
-                    .buttonStyle(PlainButtonStyle())
-                    .listRowSeparator(.automatic)
-                    .listRowSeparatorTint(.gray.opacity(0.2))
-                    .listRowBackground(Color.clear)
                 }
+                .padding(.trailing, 4)
             }
-            .listStyle(.plain)
             .scrollIndicators(.never)
             .scrollContentBackground(.hidden)
             .background(Color.clear)
@@ -338,10 +348,21 @@ struct EventListView: View {
                 scrollToRelevantEvent(proxy: proxy)
             }
         }
-        Spacer(minLength: 0)
+    }
+
+    // Soft, leading-aligned color wash behind a card, tinted by the event's calendar.
+    private func cardBackground(_ color: Color) -> some View {
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [color.opacity(0.16), color.opacity(0.05), .clear],
+                    startPoint: .leading, endPoint: .trailing
+                )
+            )
     }
 
     private func eventRow(_ event: EventModel) -> some View {
+        let barColor = Color(event.calendar.color)
         if event.type.isReminder {
             let isCompleted: Bool
             if case .reminder(let completed) = event.type {
@@ -349,8 +370,9 @@ struct EventListView: View {
             } else {
                 isCompleted = false
             }
+            let isPastToday = event.start < Date.now && Calendar.current.isDateInToday(event.start)
             return AnyView(
-                HStack(spacing: 8) {
+                HStack(spacing: 9) {
                     ReminderToggle(
                         isOn: Binding(
                             get: { isCompleted },
@@ -362,81 +384,85 @@ struct EventListView: View {
                                 }
                             }
                         ),
-                        color: Color(event.calendar.color)
+                        color: barColor
                     )
-                    .opacity(1.0)  // Ensure the toggle is always fully opaque
-                    HStack {
-                        Text(event.title)
-                            .font(.callout)
-                            .foregroundColor(.white)
-                            .lineLimit(showFullEventTitles ? nil : 1)
-                        Spacer(minLength: 0)
-                        VStack(alignment: .trailing, spacing: 4) {
-                            if event.isAllDay {
-                                Text("All-day")
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                            } else {
-                                Text(event.start, style: .time)
-                                    .foregroundColor(.white)
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .opacity(
-                        isCompleted
-                            ? 0.4
-                            : event.start < Date.now && Calendar.current.isDateInToday(event.start)
-                                ? 0.6 : 1.0
-                    )
-                }
-                .padding(.vertical, 4)
-            )
-        } else {
-            return AnyView(
-                HStack(alignment: .top, spacing: 4) {
-                    Rectangle()
-                        .fill(Color(event.calendar.color))
-                        .frame(width: 3)
-                        .cornerRadius(1.5)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(event.title)
-                            .font(.callout)
-                            .fontWeight(.medium)
-                            .foregroundColor(.white)
-                            .lineLimit(showFullEventTitles ? nil : 2)
-
-                        if let location = event.location, !location.isEmpty {
-                            Text(location)
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.65))
-                                .lineLimit(1)
-                        }
-                    }
+                    Text(event.title)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundColor(.white)
+                        .lineLimit(showFullEventTitles ? nil : 1)
                     Spacer(minLength: 0)
-                    VStack(alignment: .trailing, spacing: 4) {
+                    Group {
                         if event.isAllDay {
-                            Text("All-day")
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(.white)
-                                .lineLimit(1)
+                            Text("all-day")
+                                .foregroundColor(barColor)
                         } else {
                             Text(event.start, style: .time)
-                                .foregroundColor(.white)
-                            Text(event.end, style: .time)
-                                .foregroundColor(Color(white: 0.65))
+                                .foregroundColor(.white.opacity(0.5))
                         }
                     }
-                    .font(.caption)
-                    .frame(minWidth: 44, alignment: .trailing)
+                    .font(.system(size: 9.5, weight: .medium))
+                    .monospacedDigit()
+                    .lineLimit(1)
                 }
-                .opacity(
-                    event.eventStatus == .ended && Calendar.current.isDateInToday(event.start)
-                        ? 0.6 : 1.0)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(cardBackground(barColor))
+                .opacity(isCompleted ? 0.4 : (isPastToday ? 0.6 : 1.0))
+            )
+        } else {
+            let isInProgress = event.eventStatus == .inProgress
+            let isEnded = event.eventStatus == .ended && Calendar.current.isDateInToday(event.start)
+            return AnyView(
+                HStack(spacing: 10) {
+                    // Full-height status accent — brighter for the event happening now.
+                    Rectangle()
+                        .fill(barColor)
+                        .frame(width: 4)
+                        .cornerRadius(2)
+                        .opacity(isInProgress ? 1 : 0.85)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(event.title)
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(showFullEventTitles ? nil : 1)
+
+                        HStack(spacing: 4) {
+                            Group {
+                                if event.isAllDay {
+                                    Text("all-day")
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(barColor)
+                                } else {
+                                    (Text(event.start, style: .time)
+                                        + Text(" – ")
+                                        + Text(event.end, style: .time))
+                                        .foregroundColor(isInProgress ? barColor : .white.opacity(0.5))
+                                }
+                            }
+                            .monospacedDigit()
+
+                            if let location = event.location, !location.isEmpty {
+                                Text("·").foregroundColor(.white.opacity(0.3))
+                                Text(location)
+                                    .foregroundColor(.white.opacity(0.45))
+                                    .lineLimit(1)
+                            }
+                        }
+                        .font(.system(size: 9))
+                    }
+                    Spacer(minLength: 0)
+                    // Affordance hinting that tapping this event joins its video call.
+                    if event.videoCallURL != nil {
+                        Image(systemName: "video.fill")
+                            .font(.system(size: 9.5))
+                            .foregroundColor(barColor)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(cardBackground(barColor))
+                .opacity(isEnded ? 0.5 : 1.0)
             )
         }
     }
@@ -474,7 +500,7 @@ struct ReminderToggle: View {
 
 #Preview {
     CalendarView()
-        .frame(width: 215, height: 130)
+        .frame(width: 267, height: 130)
         .background(.black)
         .environmentObject(BoringViewModel())
 }

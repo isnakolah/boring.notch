@@ -82,6 +82,28 @@ extension EventModel {
 
     var isMeeting: Bool { !participants.isEmpty }
 
+    /// A direct, joinable video-call link (Zoom, Meet, Teams, Webex, …) for this event, if one
+    /// can be found in its URL, location, or notes. `nil` for events without a video call.
+    var videoCallURL: URL? {
+        if let url, url.isVideoCallURL { return url }
+        if let location, let url = Self.firstVideoCallURL(in: location) { return url }
+        if let notes, let url = Self.firstVideoCallURL(in: notes) { return url }
+        return nil
+    }
+
+    private static func firstVideoCallURL(in text: String) -> URL? {
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        for match in detector.matches(in: text, range: range) {
+            if let url = match.url, url.isVideoCallURL {
+                return url
+            }
+        }
+        return nil
+    }
+
     func calendarAppURL() -> URL? {
 
         guard let id = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else {
@@ -108,6 +130,29 @@ extension EventModel {
             date =  ""
         }
         return URL(string: "ical://ekevent\(date)/\(id)?method=show&options=more")
+    }
+}
+
+private extension URL {
+    /// Hosts that indicate a joinable video-meeting link.
+    var isVideoCallURL: Bool {
+        guard let host = host?.lowercased() else { return false }
+        let videoCallHosts = [
+            "zoom.us",
+            "meet.google.com",
+            "teams.microsoft.com",
+            "teams.live.com",
+            "webex.com",
+            "gotomeeting.com",
+            "gotomeet.me",
+            "meet.jit.si",
+            "whereby.com",
+            "chime.aws",
+            "bluejeans.com",
+            "around.co",
+            "skype.com"
+        ]
+        return videoCallHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
     }
 }
 
