@@ -27,11 +27,18 @@ struct CodexRateLimitWindow: Sendable, Equatable {
     let usedPercent: Double
     let resetDescription: String?
     let resetsAt: Date?
+    let windowDurationMins: Int?
 
-    init(usedPercent: Double, resetDescription: String?, resetsAt: Date? = nil) {
+    init(
+        usedPercent: Double,
+        resetDescription: String?,
+        resetsAt: Date? = nil,
+        windowDurationMins: Int? = nil
+    ) {
         self.usedPercent = usedPercent
         self.resetDescription = resetDescription
         self.resetsAt = resetsAt
+        self.windowDurationMins = windowDurationMins
     }
 }
 
@@ -143,10 +150,18 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
         var secondary: CodexRateLimitWindow?
 
         if let pct = fiveHourPct {
-            primary = CodexRateLimitWindow(usedPercent: Double(100 - pct), resetDescription: nil)
+            primary = CodexRateLimitWindow(
+                usedPercent: Double(100 - pct),
+                resetDescription: nil,
+                windowDurationMins: 5 * 60
+            )
         }
         if let pct = weeklyPct {
-            secondary = CodexRateLimitWindow(usedPercent: Double(100 - pct), resetDescription: nil)
+            secondary = CodexRateLimitWindow(
+                usedPercent: Double(100 - pct),
+                resetDescription: nil,
+                windowDurationMins: 7 * 24 * 60
+            )
         }
 
         guard primary != nil || secondary != nil else {
@@ -193,12 +208,18 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
 
         var resetDescription: String?
         var resetDate: Date?
+        let windowDurationMins = (dict["windowDurationMins"] as? NSNumber)?.intValue
         if let resetsAt = dict["resetsAt"] as? Int {
             let date = Date(timeIntervalSince1970: TimeInterval(resetsAt))
             resetDate = date
             resetDescription = formatResetTime(date)
         }
-        return CodexRateLimitWindow(usedPercent: usedPercent, resetDescription: resetDescription, resetsAt: resetDate)
+        return CodexRateLimitWindow(
+            usedPercent: usedPercent,
+            resetDescription: resetDescription,
+            resetsAt: resetDate,
+            windowDurationMins: windowDurationMins
+        )
     }
 
     private func formatResetTime(_ date: Date) -> String {

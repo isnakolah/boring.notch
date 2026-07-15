@@ -27,31 +27,34 @@ struct CodexUsageProbe: UsageProbe {
     static func mapRateLimitsToSnapshot(_ limits: CodexRateLimitsResponse) throws -> UsageSnapshot {
         var quotas: [UsageQuota] = []
 
-        if let primary = limits.primary {
+        func appendQuota(_ window: CodexRateLimitWindow?, fallbackType: QuotaType) {
+            guard let window else { return }
+            let quotaType = quotaType(for: window, fallback: fallbackType)
             quotas.append(UsageQuota(
-                percentRemaining: max(0, 100 - primary.usedPercent),
-                quotaType: .session,
+                percentRemaining: max(0, 100 - window.usedPercent),
+                quotaType: quotaType,
                 providerId: "codex",
-                resetsAt: primary.resetsAt,
-                resetText: primary.resetDescription
+                resetsAt: window.resetsAt,
+                resetText: window.resetDescription
             ))
         }
 
-        if let secondary = limits.secondary {
-            quotas.append(UsageQuota(
-                percentRemaining: max(0, 100 - secondary.usedPercent),
-                quotaType: .weekly,
-                providerId: "codex",
-                resetsAt: secondary.resetsAt,
-                resetText: secondary.resetDescription
-            ))
-        }
+        // Current Codex plans can expose only one `primary` window. Its duration
+        // determines whether it is a 5h session or 7d weekly quota; position in
+        // the response alone is not enough to classify it.
+        appendQuota(limits.primary, fallbackType: .session)
+        appendQuota(limits.secondary, fallbackType: .weekly)
 
         guard !quotas.isEmpty else {
             throw ProbeError.parseFailed("No rate limits found")
         }
 
         return UsageSnapshot(providerId: "codex", quotas: quotas, capturedAt: Date())
+    }
+
+    private static func quotaType(for window: CodexRateLimitWindow, fallback: QuotaType) -> QuotaType {
+        guard let minutes = window.windowDurationMins else { return fallback }
+        return minutes >= 24 * 60 ? .weekly : .session
     }
 
     // MARK: - Parsing (for TTY fallback)

@@ -9,6 +9,7 @@ import AVFoundation
 import Combine
 import Defaults
 import KeyboardShortcuts
+import LaunchAtLogin
 import Sparkle
 import SwiftUI
 
@@ -50,6 +51,10 @@ struct DynamicNotchApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Fresh installs should keep the notch available after a reboot. Record the
+    /// initial registration so a later user choice in Settings remains respected.
+    private static let didConfigureLaunchAtLoginKey = "didConfigureLaunchAtLogin"
+
     var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: BoringViewModel] = [:] // UUID -> BoringViewModel
@@ -281,6 +286,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
 
+        configureLaunchAtLoginIfNeeded()
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationDidChange),
@@ -436,6 +443,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         previousScreens = NSScreen.screens
+    }
+
+    private func configureLaunchAtLoginIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.didConfigureLaunchAtLoginKey) else { return }
+
+        LaunchAtLogin.isEnabled = true
+        if LaunchAtLogin.isEnabled {
+            defaults.set(true, forKey: Self.didConfigureLaunchAtLoginKey)
+        }
     }
 
     func playWelcomeSound() {

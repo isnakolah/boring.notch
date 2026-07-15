@@ -176,6 +176,10 @@ extension Defaults.Keys {
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
     static let usageMonitorRefreshInterval = Key<Double>("usageMonitorRefreshInterval", default: 300)
     static let showUsageBesideNotch = Key<Bool>("showUsageBesideNotch", default: false)
+    // Last successful usage report per provider (UsageReportDTO JSON), shown
+    // while a fresh probe fails or before the first probe completes.
+    static let cachedClaudeUsage = Key<Data?>("cachedClaudeUsage", default: nil)
+    static let cachedCodexUsage = Key<Data?>("cachedCodexUsage", default: nil)
     
     // MARK: Calendar
     static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)

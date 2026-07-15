@@ -319,11 +319,14 @@ struct EventListView: View {
                             // Events with a video call open the call directly; everything
                             // else falls back to opening the event in the calendar app.
                             if let url = event.videoCallURL ?? event.calendarAppURL() {
-                                // Prefer the native meeting app (Zoom/Teams) over the
-                                // browser when installed and the setting is enabled.
+                                // Prefer the native meeting app (Zoom/Teams) when the
+                                // setting is on. Sandbox can't check installation up
+                                // front, so attempt the app URL and fall back to the
+                                // browser if no handler accepts it.
                                 if Defaults[.openMeetingsInApp],
-                                   let native = MeetingLinkResolver.nativeURL(for: url) {
-                                    NSWorkspace.shared.open(native)
+                                   let native = MeetingLinkResolver.nativeURL(for: url),
+                                   NSWorkspace.shared.open(native) {
+                                    // opened in the native app
                                 } else {
                                     openURL(url)
                                 }

@@ -3,8 +3,8 @@
 //  boringNotch
 //
 //  Always-on CLI usage badges shown beside the physical notch (Claude on the
-//  left, Codex on the right). Each badge shows session/weekly remaining % like
-//  "23/38", with each number colored by its own QuotaDisplayStatus threshold.
+//  left, Codex on the right). Each badge shows only quotas reported by its CLI,
+//  with each number colored by its own QuotaDisplayStatus threshold.
 //  Fed by UsageMonitorManager; polls while visible.
 //
 
@@ -26,9 +26,8 @@ struct UsageNotchBadges: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            UsageNotchBadge(provider: "CLAUDE", state: manager.claude, alignment: .trailing)
+            UsageNotchBadge(provider: "CLAUDE", state: manager.claude, alignment: .leading)
                 .padding(.trailing, 10)
-                .frame(maxWidth: .infinity, alignment: .trailing)
                 .onHover { if $0 { onBadgeHover?() } }
 
             Rectangle()
@@ -37,9 +36,12 @@ struct UsageNotchBadges: View {
 
             UsageNotchBadge(provider: "CODEX", state: manager.codex, alignment: .leading)
                 .padding(.leading, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .onHover { if $0 { onBadgeHover?() } }
         }
+        // Size to content so the black notch background hugs the badges (extends
+        // only to where the usage numbers reach) instead of ballooning to the
+        // 512pt window cap. Mirrors the sneak-peek closed content's .fixedSize().
+        .fixedSize()
         .frame(height: height, alignment: .center)
         .onAppear {
             manager.refreshIfStale()
@@ -63,7 +65,7 @@ struct UsageNotchBadges: View {
     }
 }
 
-/// A single provider badge: a small label over the "session/weekly" pair.
+/// A single provider badge: a small label over its available quota values.
 struct UsageNotchBadge: View {
     let provider: String
     let state: ProviderUsageState
@@ -73,14 +75,22 @@ struct UsageNotchBadge: View {
         VStack(alignment: alignment, spacing: 0) {
             Text(provider)
                 .font(.system(size: 8, weight: .semibold, design: .rounded))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(QuotaDisplayStatus.worstColor(session, weekly) ?? .secondary)
                 .tracking(0.4)
 
             HStack(spacing: 1) {
-                number(for: session)
-                Text("/")
-                    .foregroundStyle(.secondary)
-                number(for: weekly)
+                ForEach(Array(availablePercents.enumerated()), id: \.offset) { index, percent in
+                    number(for: percent)
+                    if index < availablePercents.count - 1 {
+                        Text("|")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if availablePercents.isEmpty {
+                    Text("—")
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.system(size: 11.5, weight: .bold, design: .rounded))
             .monospacedDigit()
@@ -92,15 +102,12 @@ struct UsageNotchBadge: View {
 
     private var session: Double? { state.report?.session?.percentRemaining }
     private var weekly: Double? { state.report?.weekly?.percentRemaining }
+    private var availablePercents: [Double] { [session, weekly].compactMap { $0 } }
 
-    @ViewBuilder
-    private func number(for percent: Double?) -> some View {
-        if let percent {
-            Text("\(Int(percent.rounded()))")
-                .foregroundStyle(QuotaDisplayStatus.from(percentRemaining: percent).color)
-        } else {
-            Text("—")
-                .foregroundStyle(.secondary)
-        }
+    private func number(for percent: Double) -> some View {
+        // Keep a full quota from advertising literal 100 in the compact menubar
+        // surface. The expanded usage tab still shows the exact value.
+        Text("\(min(99, Int(percent.rounded())))")
+            .foregroundStyle(QuotaDisplayStatus.from(percentRemaining: percent).color)
     }
 }

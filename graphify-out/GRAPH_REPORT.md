@@ -1,16 +1,16 @@
 # Graph Report - boring.notch  (2026-07-12)
 
 ## Corpus Check
-- 171 files · ~127,557 words
+- 171 files · ~128,400 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2131 nodes · 4614 edges · 126 communities (115 shown, 11 thin omitted)
+- 2140 nodes · 4647 edges · 127 communities (118 shown, 9 thin omitted)
 - Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 175 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `32c0c6dc`
+- Built from commit: `81d6c139`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -115,9 +115,9 @@
 - [[_COMMUNITY_Community 97|Community 97]]
 - [[_COMMUNITY_Community 98|Community 98]]
 - [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
 - [[_COMMUNITY_Community 101|Community 101]]
 - [[_COMMUNITY_Community 102|Community 102]]
-- [[_COMMUNITY_Community 103|Community 103]]
 - [[_COMMUNITY_Community 104|Community 104]]
 - [[_COMMUNITY_Community 105|Community 105]]
 - [[_COMMUNITY_Community 106|Community 106]]
@@ -126,11 +126,9 @@
 - [[_COMMUNITY_Community 109|Community 109]]
 - [[_COMMUNITY_Community 110|Community 110]]
 - [[_COMMUNITY_Community 111|Community 111]]
-- [[_COMMUNITY_Community 112|Community 112]]
 - [[_COMMUNITY_Community 113|Community 113]]
-- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 115|Community 115]]
 - [[_COMMUNITY_Community 116|Community 116]]
-- [[_COMMUNITY_Community 117|Community 117]]
 - [[_COMMUNITY_Community 118|Community 118]]
 - [[_COMMUNITY_Community 119|Community 119]]
 - [[_COMMUNITY_Community 120|Community 120]]
@@ -138,15 +136,18 @@
 - [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 131|Community 131]]
 - [[_COMMUNITY_Community 136|Community 136]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `Defaults` - 87 edges
+1. `Defaults` - 90 edges
 2. `SwiftUI` - 76 edges
 3. `Foundation` - 69 edges
 4. `Int` - 69 edges
 5. `CGFloat` - 63 edges
-6. `Double` - 61 edges
+6. `Double` - 62 edges
 7. `MusicManager` - 55 edges
 8. `ShelfItem` - 51 edges
 9. `BoringViewModel` - 48 edges
@@ -161,65 +162,61 @@
   BoringNotchXPCHelper/UsageProbes/CodexRPCClient.swift → boringNotch/extensions/DataTypes+Extensions.swift
 - `TerminalRenderer` --references--> `Int`  [EXTRACTED]
   BoringNotchXPCHelper/UsageProbes/TerminalRenderer.swift → boringNotch/extensions/DataTypes+Extensions.swift
-- `UsageQuota` --references--> `Date`  [EXTRACTED]
+- `UsageQuota` --references--> `Double`  [EXTRACTED]
   BoringNotchXPCHelper/UsageProbes/UsageModels.swift → boringNotch/extensions/DataTypes+Extensions.swift
 
 ## Import Cycles
 - None detected.
 
-## Communities (126 total, 11 thin omitted)
+## Communities (127 total, 9 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.14
-Nodes (7): MusicManager, Bool, DispatchWorkItem, MediaControllerType, Void, MediaControllerProtocol, RepeatMode
+Cohesion: 0.18
+Nodes (6): MusicManager, Bool, Task, TimeInterval, Void, RepeatMode
 
 ### Community 1 - "Community 1"
-Cohesion: 0.05
-Nodes (39): ActivityType, charging, download, mediaPlayback, LiveActivityModifier, Content, View, View (+31 more)
+Cohesion: 0.07
+Nodes (29): MarqueeText, MeasureSizeModifier, SizePreferenceKey, Binding, Bool, CGSize, Color, Content (+21 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.07
-Nodes (27): CalendarManager, Bool, CalendarModel, EventModel, Set, String, Array, AttendanceStatus (+19 more)
+Nodes (29): CalendarManager, Bool, CalendarModel, EventModel, Set, String, Array, AttendanceStatus (+21 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.06
-Nodes (35): AudioObjectID, AVAudioPlayer, Array, Bool, Float, TimeInterval, VolumeManager, MediaKeyInterceptor (+27 more)
+Nodes (33): ApplicationServices, AVAudioPlayer, BrightnessManager, KeyboardBacklightManager, Bool, Float, TimeInterval, MediaKeyInterceptor (+25 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.15
-Nodes (16): data, InteractiveRunner, Options, Result, RunError, binaryNotFound, launchFailed, timedOut (+8 more)
+Cohesion: 0.09
+Nodes (29): ImageProcessingError, backgroundRemovalFailed, conversionFailed, invalidImage, noImagesProvided, pdfCreationFailed, saveFailed, data (+21 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.07
-Nodes (26): QuickShareProvider, QuickShareService, Any, Bool, NSSharingService, NSView, String, URL (+18 more)
+Nodes (27): QuickShareProvider, QuickShareService, Any, Bool, NSSharingService, NSView, String, URL (+19 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.06
-Nodes (32): MediaCheckerError, missingResources, processExecutionFailed, timeout, BatteryActivityManager, BatteryError, batteryInfoUnavailable, batteryParameterMissing (+24 more)
+Cohesion: 0.10
+Nodes (20): BatteryActivityManager, BatteryError, batteryInfoUnavailable, batteryParameterMissing, powerSourceUnavailable, BatteryEvent, batteryLevelChanged, error (+12 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.10
-Nodes (20): SharingServiceDelegate, BoringNotchXPCHelper, KeyboardBrightnessClient, Bool, Float, String, T, Void (+12 more)
-
-### Community 8 - "Community 8"
-Cohesion: 0.08
-Nodes (12): AppKit, ApplicationRelauncher, Notification.Name, BoringNotchXPCHelperProtocol, BoringNotchXPCHelperProtocol, Combine, CoreAudio, CoreServices (+4 more)
+Cohesion: 0.09
+Nodes (22): SharingServiceDelegate, BoringNotchXPCHelper, DisplayServicesHandle, KeyboardBrightnessClient, Bool, Float, String, T (+14 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.25
-Nodes (9): BatteryMenuView, BatteryView, BoringBatteryView, Bool, Color, Float, String, Task (+1 more)
+Cohesion: 0.17
+Nodes (12): BatteryMenuView, BatteryView, BoringBatteryView, ScaleButtonStyle, Bool, Color, Configuration, Float (+4 more)
 
 ### Community 10 - "Community 10"
 Cohesion: 0.07
 Nodes (33): AttendanceStatus, accepted, declined, maybe, pending, unknown, EventModel, EventStatus (+25 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.12
-Nodes (9): AVFoundation, Notification.Name, NSScreen, KeyboardShortcuts.Name, Defaults, KeyboardShortcuts, QuickLook, Sparkle (+1 more)
+Cohesion: 0.08
+Nodes (17): AVFoundation, Notification.Name, EmptyStateView, String, OnboardingFinishView, Void, Void, WelcomeView (+9 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.13
-Nodes (13): AppDelegate, Any, Bool, Notification, NSStatusItem, NSWindow, String, Task (+5 more)
+Cohesion: 0.10
+Nodes (18): AppDelegate, Any, Bool, Notification, NSStatusItem, NSWindow, NSWindowController, String (+10 more)
 
 ### Community 13 - "Community 13"
 Cohesion: 0.06
@@ -227,90 +224,90 @@ Nodes (30): Before You Start, Contributing, Contributing Code, Feature Requests,
 
 ### Community 14 - "Community 14"
 Cohesion: 0.15
-Nodes (22): About, AccentCircleButton, Appearance, CalendarSettings, Charge, comingSoonTag(), customBadge(), GeneralSettings (+14 more)
+Nodes (21): About, AccentCircleButton, Appearance, CalendarSettings, Charge, comingSoonTag(), customBadge(), GeneralSettings (+13 more)
 
 ### Community 15 - "Community 15"
-Cohesion: 0.08
-Nodes (30): SliderColorEnum, accent, albumArt, white, CalendarSelectionState, all, selected, CustomVisualizer (+22 more)
+Cohesion: 0.10
+Nodes (31): ContentType, menu, normal, settings, Date, Quota, Status, cliNotInstalled (+23 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.07
-Nodes (22): JSONLinesPipeHandler, NowPlayingController, AnyObject, AnyPublisher, Bool, FileHandle, Pipe, Process (+14 more)
+Nodes (24): JSONLinesPipeHandler, NowPlayingController, NowPlayingPayload, NowPlayingUpdate, AnyObject, AnyPublisher, Bool, FileHandle (+16 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.12
-Nodes (19): Array, MusicSlotConfigurationView, Binding, Bool, Color, String, Int, MusicControlButton (+11 more)
+Nodes (17): MusicSlotConfigurationView, Binding, Bool, Color, String, MusicControlButton, favorite, goBackward (+9 more)
 
 ### Community 18 - "Community 18"
-Cohesion: 0.13
-Nodes (19): AuthResponse, extractDouble(), PlaybackResponse, Any, Bool, ClosedRange, String, TimeInterval (+11 more)
+Cohesion: 0.21
+Nodes (11): AuthResponse, extractDouble(), PlaybackResponse, Any, Bool, ClosedRange, String, TimeInterval (+3 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.15
-Nodes (15): Action, Coordinator, PanDirection, down, up, ScrollMonitor, Any, Bool (+7 more)
+Cohesion: 0.08
+Nodes (32): Action, ActivityType, charging, download, mediaPlayback, LiveActivityModifier, Content, View (+24 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.13
 Nodes (13): ProcessRPCTransport, Pipe, Process, String, ProbeError, authenticationRequired, cliNotFound, executionFailed (+5 more)
 
 ### Community 21 - "Community 21"
-Cohesion: 0.25
+Cohesion: 0.24
 Nodes (7): DraggableProgressBar, Bool, String, Void, SystemEventIndicatorModifier, DragGesture, GeometryProxy
 
 ### Community 22 - "Community 22"
-Cohesion: 0.13
-Nodes (9): URL, SpotifyController, AnyPublisher, Bool, NSAppleEventDescriptor, String, Task, Void (+1 more)
+Cohesion: 0.11
+Nodes (12): ImageService, ImageServiceProtocol, URL, URLSession, SpotifyController, AnyPublisher, Bool, NSAppleEventDescriptor (+4 more)
 
 ### Community 23 - "Community 23"
 Cohesion: 0.20
 Nodes (15): AlbumArtView, CustomSlider, FavoriteControlButton, MusicControlsView, MusicPlayerView, MusicSliderView, NotchHomeView, Bool (+7 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.18
-Nodes (8): MenuActionTarget, ShelfItemViewModel, Bool, NSEvent, NSView, String, URL, Void
+Cohesion: 0.15
+Nodes (9): MenuActionTarget, ShelfItemViewModel, Bool, NSEvent, NSView, String, URL, Void (+1 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.11
-Nodes (11): AnyPublisher, Bool, Codable, Notification, Sendable, String, Task, TimeInterval (+3 more)
+Cohesion: 0.14
+Nodes (9): AnyPublisher, Bool, Codable, Sendable, String, TimeInterval, Timer, Void (+1 more)
 
 ### Community 26 - "Community 26"
-Cohesion: 0.12
-Nodes (15): NotchState, closed, open, BoringViewModel, Animation, AnyCancellable, Bool, CGSize (+7 more)
+Cohesion: 0.11
+Nodes (13): BoringHeader, BouncingButtonStyle, Button, Configuration, View, BoringViewModel, Animation, AnyCancellable (+5 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.17
 Nodes (7): AppleMusicController, AnyPublisher, Bool, NSAppleEventDescriptor, String, Task, Void
 
 ### Community 28 - "Community 28"
-Cohesion: 0.23
-Nodes (6): CodexRateLimitsResponse, CodexRateLimitWindow, DefaultCodexRPCClient, Any, String, RPCTransport
+Cohesion: 0.18
+Nodes (10): CLIExecutor, CodexRateLimitsResponse, CodexRateLimitWindow, CodexRPCClient, DefaultCodexRPCClient, Any, Bool, String (+2 more)
 
 ### Community 29 - "Community 29"
-Cohesion: 0.12
+Cohesion: 0.13
 Nodes (12): App, DynamicNotchApp, SPUStandardUpdaterController, SettingsWindowController, Bool, Notification, NSCoder, NSWindow (+4 more)
 
 ### Community 30 - "Community 30"
-Cohesion: 0.16
-Nodes (9): AVAuthorizationStatus, AVCaptureSession, CameraPreviewView, Bool, AVCaptureVideoPreviewLayer, Bool, Notification, Void (+1 more)
+Cohesion: 0.05
+Nodes (31): AudioSpectrum, AudioSpectrumView, Bool, Context, NSCoder, NSRect, Timer, SparkleNSView (+23 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.23
-Nodes (5): ClaudeUsageProbe, String, TimeInterval, TimeZone, CLIExecutor
+Cohesion: 0.18
+Nodes (6): ClaudeUsageProbe, Bool, String, TimeInterval, TimeZone, URL
 
 ### Community 32 - "Community 32"
-Cohesion: 0.14
-Nodes (9): ShelfItem, Bool, URL, UUID, ShelfActionService, Sendable, ShelfPersistenceService, URL (+1 more)
+Cohesion: 0.22
+Nodes (6): ShelfItemKind, file, link, text, Decoder, Encoder
 
 ### Community 33 - "Community 33"
-Cohesion: 0.17
-Nodes (16): BoringViewCoordinator, BrowserType, chromium, safari, ExpandedItem, SharedSneakPeek, sneakPeek, Any (+8 more)
+Cohesion: 0.11
+Nodes (25): BoringViewCoordinator, BrowserType, chromium, safari, ExpandedItem, SharedSneakPeek, SneakContentType, backlight (+17 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.13
-Nodes (12): BoringNotchSkyLightWindow, SkyLightOperator, AnyCancellable, Bool, NSRect, NSWindow, Set, BoringNotchWindow (+4 more)
+Cohesion: 0.12
+Nodes (13): BoringNotchSkyLightWindow, SkyLightOperator, AnyCancellable, Bool, NSRect, NSWindow, Set, BoringNotchWindow (+5 more)
 
 ### Community 35 - "Community 35"
-Cohesion: 0.19
+Cohesion: 0.28
 Nodes (5): ShelfDropService, URL, NSItemProvider, String, URL
 
 ### Community 36 - "Community 36"
@@ -318,196 +315,200 @@ Cohesion: 0.24
 Nodes (7): FullScreenDropDelegate, GeneralDropTargetDelegate, Bool, Void, DropDelegate, DropInfo, DropProposal
 
 ### Community 37 - "Community 37"
-Cohesion: 0.15
-Nodes (16): MessageView, ProviderUsageColumn, QuotaDisplayStatus, critical, depleted, healthy, warning, RefreshButton (+8 more)
+Cohesion: 0.18
+Nodes (14): MessageView, ProviderIconBadge, ProviderUsageColumn, RefreshButton, Bool, String, Task, UsageReportDTO (+6 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.13
-Nodes (16): CGSize, LogCategory, debug, error, lifecycle, memory, network, performance (+8 more)
+Cohesion: 0.25
+Nodes (7): CodingKeys, type, KindTag, file, link, text, CodingKey
 
 ### Community 39 - "Community 39"
-Cohesion: 0.24
-Nodes (5): CodexRPCClient, CodexUsageProbe, Bool, String, NSRegularExpression
+Cohesion: 0.33
+Nodes (4): CodexUsageProbe, Bool, String, UsageProbe
 
 ### Community 40 - "Community 40"
-Cohesion: 0.24
-Nodes (8): InlineHUD, Bool, String, OpenNotchHUD, String, CGFloat, Color, MusicPlayerImageSizes
+Cohesion: 0.27
+Nodes (7): AudioObjectID, Bool, Float, TimeInterval, VolumeManager, Float32, UInt32
 
 ### Community 41 - "Community 41"
-Cohesion: 0.12
-Nodes (20): KindTag, file, link, text, ContentType, menu, normal, settings (+12 more)
+Cohesion: 0.16
+Nodes (9): AVAuthorizationStatus, AVCaptureSession, CameraPreviewView, Bool, AVCaptureVideoPreviewLayer, Bool, Notification, Void (+1 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.10
-Nodes (22): async, LikeStateResponse, Bool, Codable, String, URL, URLSession, Void (+14 more)
+Cohesion: 0.30
+Nodes (6): LikeStateResponse, Codable, String, YouTubeMusicHTTPClient, URLRequest, URLResponse
 
 ### Community 43 - "Community 43"
 Cohesion: 0.17
 Nodes (9): CLIResult, Int32, String, TimeInterval, URL, DefaultCLIExecutor, String, TimeInterval (+1 more)
 
 ### Community 44 - "Community 44"
-Cohesion: 0.21
-Nodes (7): CGRect, DragDetector, Any, Bool, Hasher, PositionCallback, VoidCallback
+Cohesion: 0.17
+Nodes (8): CGRect, Path, DragDetector, Any, Bool, Hasher, PositionCallback, VoidCallback
 
 ### Community 45 - "Community 45"
-Cohesion: 0.25
-Nodes (8): SneakContentType, backlight, battery, brightness, download, mic, music, volume
+Cohesion: 0.23
+Nodes (10): ProviderUsageState, idle, loaded, syncing, Bool, Set, String, TimeInterval (+2 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.10
-Nodes (18): BoringAnimations, Animation, DownloadIconStyle, iconAndAppIcon, onlyAppIcon, onlyIcon, DownloadIndicatorStyle, percentage (+10 more)
+Cohesion: 0.24
+Nodes (5): LottieAnimationContainer, ContentView, NSEvent, Task, rectangle
 
 ### Community 47 - "Community 47"
-Cohesion: 0.19
-Nodes (9): AudioSpectrum, AudioSpectrumView, Bool, Context, NSCoder, NSRect, Timer, CAShapeLayer (+1 more)
+Cohesion: 0.14
+Nodes (10): OnboardingStep, accessibilityPermission, calendarPermission, cameraPermission, finished, musicPermission, remindersPermission, welcome (+2 more)
 
 ### Community 48 - "Community 48"
 Cohesion: 0.39
 Nodes (4): Bookmark, Bool, T, URL
 
 ### Community 49 - "Community 49"
-Cohesion: 0.19
-Nodes (10): DraggableClickHandler, DraggableClickView, Content, Context, NSEvent, NSView, URL, Void (+2 more)
+Cohesion: 0.17
+Nodes (11): DraggableClickHandler, DraggableClickView, Content, Context, NSEvent, NSView, URL, Void (+3 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.13
-Nodes (11): NSWindowController, OnboardingStep, accessibilityPermission, calendarPermission, cameraPermission, finished, musicPermission, remindersPermission (+3 more)
+Cohesion: 0.20
+Nodes (7): BatteryStatusViewModel, Bool, CFRunLoopSource, Float, String, Unmanaged, IOPowerSourceCallbackType
 
 ### Community 51 - "Community 51"
-Cohesion: 0.17
-Nodes (7): ShelfSelectionModel, Bool, Set, UUID, NSPoint, NSDraggingContext, NSDragOperation
+Cohesion: 0.15
+Nodes (8): ShelfSelectionModel, Bool, Set, UUID, NSPoint, NSDraggingContext, NSDragOperation, ObservableObject
 
 ### Community 52 - "Community 52"
-Cohesion: 0.24
-Nodes (10): ProviderUsageState, idle, loaded, syncing, Bool, Set, String, TimeInterval (+2 more)
-
-### Community 53 - "Community 53"
-Cohesion: 0.15
-Nodes (13): ImageProcessingError, backgroundRemovalFailed, conversionFailed, invalidImage, noImagesProvided, pdfCreationFailed, saveFailed, String (+5 more)
+Cohesion: 0.21
+Nodes (7): KeyboardShortcuts.Shortcut, View, KeyboardShortcuts.Name, Carbon, KeyboardShortcuts, KeyEquivalent, UInt16
 
 ### Community 54 - "Community 54"
-Cohesion: 0.18
+Cohesion: 0.15
 Nodes (10): AuthenticationState, authenticated, authenticating, failed, unauthenticated, Bool, Error, String (+2 more)
 
 ### Community 55 - "Community 55"
-Cohesion: 0.36
-Nodes (5): EventListView, ReminderToggle, Color, EventModel, ScrollViewProxy
+Cohesion: 0.19
+Nodes (10): CalendarView, EmptyEventsView, EventListView, ReminderToggle, Color, EventModel, WheelPickerStyle, dots (+2 more)
+
+### Community 56 - "Community 56"
+Cohesion: 0.13
+Nodes (19): CustomVisualizer, Defaults.Keys, MediaControllerType, appleMusic, nowPlaying, spotify, youtubeMusic, Notification.Name (+11 more)
 
 ### Community 57 - "Community 57"
-Cohesion: 0.17
-Nodes (10): CodingKeys, type, value, URL, AssociatedObject, UniqueKey, CodingKey, objc_AssociationPolicy (+2 more)
+Cohesion: 0.40
+Nodes (3): value, URL, Owner
 
 ### Community 58 - "Community 58"
-Cohesion: 0.24
-Nodes (8): Bundle, BundleAppIcon, isExtensionRunning(), isNewVersion(), Bool, String, AudioPlayer, String
+Cohesion: 0.16
+Nodes (13): Bundle, BundleAppIcon, isExtensionRunning(), isNewVersion(), Bool, String, AppIcon(), AppIconAsNSImage() (+5 more)
 
 ### Community 59 - "Community 59"
-Cohesion: 0.08
-Nodes (24): Browser, chrome, safari, DownloadArea, DownloadFile, DownloadWatcher, String, CheckForUpdatesView (+16 more)
+Cohesion: 0.33
+Nodes (5): MenuActionBox, NSMenu, AnyObject, BoringStatusMenu, NSStatusItem
 
 ### Community 60 - "Community 60"
 Cohesion: 0.20
 Nodes (8): ArraySlice, RenderDelegate, String, UInt8, TerminalRenderer, SwiftTerm, Terminal, TerminalDelegate
 
 ### Community 61 - "Community 61"
-Cohesion: 0.14
-Nodes (13): CalendarView, Config, EmptyEventsView, Bool, Void, WheelPicker, WheelPickerStyle, dots (+5 more)
+Cohesion: 0.28
+Nodes (7): Config, Bool, Void, WheelPicker, Array, Int, String
 
 ### Community 62 - "Community 62"
-Cohesion: 0.23
+Cohesion: 0.21
 Nodes (6): ShelfStateViewModel, Bool, Task, URL, Void, Bool
 
 ### Community 63 - "Community 63"
-Cohesion: 0.24
-Nodes (6): ImageConversionOptions, ImageProcessingService, Bool, URL, CGImage, CVPixelBuffer
+Cohesion: 0.18
+Nodes (9): ImageConversionOptions, ImageProcessingService, Bool, String, URL, DragPreviewView, String, NSImage (+1 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.24
-Nodes (9): Quota, Status, cliNotInstalled, error, notLoggedIn, ok, JSONDecoder, JSONEncoder (+1 more)
+Cohesion: 0.22
+Nodes (8): WebSocketMessageType, playerInfo, playerStateChanged, positionChanged, repeatChanged, shuffleChanged, videoChanged, volumeChanged
 
 ### Community 65 - "Community 65"
 Cohesion: 0.29
 Nodes (7): ControllerOptionView, MediaControllerType, MusicControllerSelectionView, Bool, MediaControllerType, String, Void
 
 ### Community 66 - "Community 66"
-Cohesion: 0.20
-Nodes (7): ScaleButtonStyle, Configuration, BouncingButtonStyle, Button, Configuration, View, ButtonStyle
+Cohesion: 0.50
+Nodes (4): String, TabModel, TabSelectionView, Identifiable
 
 ### Community 67 - "Community 67"
-Cohesion: 0.26
-Nodes (6): SparkleNSView, SparkleView, Context, NSCoder, NSRect, CAEmitterLayer
+Cohesion: 0.50
+Nodes (4): DownloadIconStyle, iconAndAppIcon, onlyAppIcon, onlyIcon
 
 ### Community 68 - "Community 68"
-Cohesion: 0.22
-Nodes (8): ImageFormat, bmp, heic, jpeg, png, tiff, String, UTType
+Cohesion: 0.29
+Nodes (7): ImageFormat, bmp, heic, jpeg, png, tiff, UTType
 
 ### Community 69 - "Community 69"
-Cohesion: 0.38
-Nodes (4): NSScreen, NSScreenUUIDCache, Any, String
+Cohesion: 0.29
+Nodes (6): NSScreen, NSScreenUUIDCache, Any, String, getScreenFrame(), String
 
 ### Community 70 - "Community 70"
 Cohesion: 0.18
 Nodes (7): NotchSpaceManager, CFMachPort, CFRunLoopSource, CGSSpace, NSWindow, Set, CGSSpaceID
 
 ### Community 71 - "Community 71"
-Cohesion: 0.19
-Nodes (6): BinaryLocator, String, Bool, URL, Bool, AppLog
+Cohesion: 0.38
+Nodes (3): BinaryLocator, String, AppLog
 
 ### Community 72 - "Community 72"
-Cohesion: 0.29
-Nodes (5): Shell, fish, nushell, posix, String
+Cohesion: 0.16
+Nodes (9): Shell, fish, nushell, posix, String, find_first_valid(), main(), write_github_output() (+1 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.22
-Nodes (4): AsyncXPCConnection, Notification.Name, Cocoa, SkyLightWindow
+Cohesion: 0.15
+Nodes (7): AsyncXPCConnection, CalendarModel, Bool, String, Notification.Name, Cocoa, IOKit.ps
 
 ### Community 74 - "Community 74"
-Cohesion: 0.14
-Nodes (10): ApplicationServices, DisplayServicesHandle, CoreGraphics, CoreImage, CoreImage.CIFilterBuiltins, ImageIO, IOKit, PDFKit (+2 more)
+Cohesion: 0.25
+Nodes (6): CoreGraphics, CoreImage, CoreImage.CIFilterBuiltins, ImageIO, PDFKit, Vision
 
 ### Community 75 - "Community 75"
-Cohesion: 0.36
-Nodes (9): QuotaType, session, weekly, String, UsageProbe, UsageQuota, UsageSnapshot, Equatable (+1 more)
+Cohesion: 0.27
+Nodes (6): async, Bool, URLSession, Void, YouTubeMusicWebSocketClient, URLSessionWebSocketTask
 
 ### Community 76 - "Community 76"
-Cohesion: 0.22
-Nodes (9): QLThumbnailRepresentation, CGSize, String, Task, URL, ThumbnailService, DragPreviewView, String (+1 more)
+Cohesion: 0.33
+Nodes (5): CGSize, String, Task, URL, ThumbnailService
 
 ### Community 77 - "Community 77"
-Cohesion: 0.27
-Nodes (6): FileShareView, NSViewHost, Context, NSView, String, UUID
+Cohesion: 0.20
+Nodes (10): LogCategory, debug, error, lifecycle, memory, network, performance, success (+2 more)
 
 ### Community 78 - "Community 78"
-Cohesion: 0.33
-Nodes (6): AppIcon(), AppIconAsNSImage(), AppIcons, AppName(), Image, String
+Cohesion: 0.29
+Nodes (6): CGSize, Logger, Content, View, ViewLifecycleTracker, String
+
+### Community 79 - "Community 79"
+Cohesion: 0.50
+Nodes (4): SliderColorEnum, accent, albumArt, white
 
 ### Community 80 - "Community 80"
-Cohesion: 0.12
-Nodes (17): Advanced, lighterColor(), PresetAccentColor, blue, graphite, green, orange, pink (+9 more)
+Cohesion: 0.15
+Nodes (14): Advanced, lighterColor(), PresetAccentColor, blue, graphite, green, orange, pink (+6 more)
 
 ### Community 81 - "Community 81"
 Cohesion: 0.25
-Nodes (6): ShelfItemKind, file, link, text, Decoder, Encoder
+Nodes (6): FullscreenMediaDetector, Bool, String, Task, Void, MacroVisionKit
 
 ### Community 82 - "Community 82"
-Cohesion: 0.31
+Cohesion: 0.29
 Nodes (6): String, URL, TempFileType, text, url, TemporaryFileStorageService
 
 ### Community 83 - "Community 83"
-Cohesion: 0.29
-Nodes (7): String, TabModel, TabSelectionView, NotchViews, home, shelf, usage
+Cohesion: 0.15
+Nodes (12): DownloadIndicatorStyle, percentage, progress, MirrorShapeEnum, circle, NotchState, closed, open (+4 more)
 
 ### Community 84 - "Community 84"
 Cohesion: 0.22
 Nodes (9): SettingsEnum, about, charge, download, extensions, general, hud, mediaPlayback (+1 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.28
-Nodes (5): KeyboardShortcuts.Shortcut, View, Carbon, KeyEquivalent, UInt16
+Cohesion: 0.50
+Nodes (4): WindowHeightMode, custom, matchMenuBar, matchRealNotchSize
 
 ### Community 86 - "Community 86"
-Cohesion: 0.38
-Nodes (6): CircularProgressView, ProgressIndicator, ProgressIndicatorType, circle, text, Color
+Cohesion: 0.39
+Nodes (5): CheckForUpdatesView, CheckForUpdatesViewModel, Bool, UpdaterSettingsView, SPUUpdater
 
 ### Community 87 - "Community 87"
 Cohesion: 0.31
@@ -517,77 +518,73 @@ Nodes (6): die(), DMG_APP_PATH, DMG_BACKGROUND, DMG_VOLUME_NAME, ensure_dmgbuild
 Cohesion: 0.29
 Nodes (5): Eye, MinimalFaceFeatures, MinimalFaceFeatures_Previews, Bool, PreviewProvider
 
-### Community 89 - "Community 89"
-Cohesion: 0.14
-Nodes (13): HelloAnimation, Void, LottieAnimationContainer, BoringHeader, Bool, Task, Void, UsageNotchBadges (+5 more)
-
 ### Community 90 - "Community 90"
-Cohesion: 0.32
-Nodes (6): LottieView, Context, NSView, UInt8, URL, LottieLoopMode
+Cohesion: 0.22
+Nodes (6): MediaChecker, MediaCheckerError, missingResources, processExecutionFailed, timeout, Bool
 
 ### Community 91 - "Community 91"
 Cohesion: 0.25
-Nodes (6): MenuActionBox, NSMenu, AnyObject, BoringStatusMenu, NSStatusItem, NSMenuItem
+Nodes (5): HelloShape, Path, BottomRoundedRectangle, Path, Shape
 
 ### Community 92 - "Community 92"
-Cohesion: 0.36
-Nodes (5): EditPanelView, Context, URL, VisualEffectView, NSVisualEffectView
+Cohesion: 0.29
+Nodes (6): HoverButton, Color, Image, String, Void, ContentTransition
 
 ### Community 93 - "Community 93"
-Cohesion: 0.43
-Nodes (7): CBTip, HUDsTip, Image, TipsView, Text, Tip, TipKit
+Cohesion: 0.67
+Nodes (3): CalendarSelectionState, all, selected
 
 ### Community 94 - "Community 94"
-Cohesion: 0.19
-Nodes (8): String, UsageMonitorSettings, String, UsageNotchBadge, Double, NSSize, CGSize, HorizontalAlignment
+Cohesion: 0.28
+Nodes (6): QuotaDisplayStatus, critical, depleted, healthy, warning, Color
 
 ### Community 95 - "Community 95"
 Cohesion: 0.33
 Nodes (6): getAttributedString(), isText(), Any, Bool, NSAttributedString, NSPasteboard
 
 ### Community 96 - "Community 96"
-Cohesion: 0.22
-Nodes (4): AppleScriptHelper, NSAppleEventDescriptor, String, String
+Cohesion: 0.28
+Nodes (3): AppleScriptHelper, NSAppleEventDescriptor, String
 
-### Community 98 - "Community 98"
-Cohesion: 0.53
-Nodes (3): ImageService, ImageServiceProtocol, URLSession
+### Community 97 - "Community 97"
+Cohesion: 0.38
+Nodes (6): CircularProgressView, ProgressIndicator, ProgressIndicatorType, circle, text, Color
 
 ### Community 99 - "Community 99"
-Cohesion: 0.38
-Nodes (5): CameraPreviewLayerView, AVCaptureVideoPreviewLayer, Context, NSView, NSViewRepresentable
+Cohesion: 0.29
+Nodes (5): BoringAnimations, Animation, Style, floating, notch
+
+### Community 100 - "Community 100"
+Cohesion: 0.36
+Nodes (7): Browser, chrome, safari, DownloadArea, DownloadFile, DownloadWatcher, String
 
 ### Community 101 - "Community 101"
-Cohesion: 0.57
+Cohesion: 0.46
 Nodes (3): MeetingLinkResolver, String, URL
 
 ### Community 102 - "Community 102"
 Cohesion: 0.33
 Nodes (6): fragmentShader(), vertexShader(), constant, fragment, uint, vertex
 
-### Community 103 - "Community 103"
-Cohesion: 0.38
-Nodes (4): find_first_valid(), main(), write_github_output(), os
-
 ### Community 104 - "Community 104"
 Cohesion: 0.33
 Nodes (5): BoringExtrasMenu, BoringLargeButtons, Image, String, Void
 
 ### Community 105 - "Community 105"
-Cohesion: 0.33
-Nodes (4): ShelfItemView, Bool, Color, NSDraggingSession
+Cohesion: 0.22
+Nodes (3): Void, DispatchWorkItem, UInt64
 
 ### Community 106 - "Community 106"
-Cohesion: 0.12
-Nodes (12): Animatable, GlowingSnake, HelloShape, ShapeStyle, Content, Path, View, BottomRoundedRectangle (+4 more)
+Cohesion: 0.20
+Nodes (9): Animatable, GlowingSnake, HelloAnimation, ShapeStyle, Content, Void, View, CGLineCap (+1 more)
 
 ### Community 107 - "Community 107"
 Cohesion: 0.33
 Nodes (4): Bool, Content, Self, View
 
 ### Community 108 - "Community 108"
-Cohesion: 0.40
-Nodes (4): FluidSlider, Animation, Bool, Color
+Cohesion: 0.29
+Nodes (7): Task, Void, UsageNotchBadges, HideNotchOption, always, never, nowPlayingOnly
 
 ### Community 109 - "Community 109"
 Cohesion: 0.40
@@ -598,48 +595,64 @@ Cohesion: 0.40
 Nodes (4): Bool, String, Void, TabButton
 
 ### Community 111 - "Community 111"
-Cohesion: 0.50
-Nodes (3): Void, WelcomeView, SwiftUIIntrospect
+Cohesion: 0.17
+Nodes (10): URL, WebSocketURLBuilder, YouTubeMusicError, authenticationRequired, decodingFailed, encodingFailed, httpError, invalidResponse (+2 more)
 
-### Community 112 - "Community 112"
-Cohesion: 0.50
-Nodes (3): ListItemPopover, Bool, Content
+### Community 113 - "Community 113"
+Cohesion: 0.15
+Nodes (12): LottieView, Context, NSView, UInt8, URL, AssociatedObject, UniqueKey, Lottie (+4 more)
+
+### Community 115 - "Community 115"
+Cohesion: 0.16
+Nodes (8): ShelfItem, Bool, URL, UUID, ShelfActionService, Sendable, ShelfPersistenceService, URL
+
+### Community 116 - "Community 116"
+Cohesion: 0.33
+Nodes (4): ShelfItemView, Bool, Color, NSDraggingSession
 
 ### Community 118 - "Community 118"
-Cohesion: 0.29
-Nodes (6): HoverButton, Color, Image, String, Void, ContentTransition
+Cohesion: 0.10
+Nodes (13): AppKit, CGImage, QLThumbnailRepresentation, ApplicationRelauncher, Array, BoringNotchXPCHelperProtocol, BoringNotchXPCHelperProtocol, CoreAudio (+5 more)
 
 ### Community 124 - "Community 124"
-Cohesion: 0.33
-Nodes (3): AnimatablePair, NotchShape, Path
+Cohesion: 0.18
+Nodes (8): AnimatablePair, InlineHUD, Bool, String, OpenNotchHUD, String, NotchShape, CGFloat
 
 ### Community 125 - "Community 125"
-Cohesion: 0.50
-Nodes (3): Sequence, T, Element
+Cohesion: 0.33
+Nodes (4): Sequence, T, CoreServices, Element
+
+### Community 127 - "Community 127"
+Cohesion: 0.40
+Nodes (4): FluidSlider, Animation, Bool, Color
+
+### Community 131 - "Community 131"
+Cohesion: 0.16
+Nodes (9): String, UsageMonitorSettings, String, UsageNotchBadge, Double, NSSize, CGSize, Color (+1 more)
 
 ### Community 136 - "Community 136"
 Cohesion: 0.50
 Nodes (4): String, Task, UsageReportDTO, UsageProbeService
 
 ## Knowledge Gaps
-- **257 isolated node(s):** `IOKit`, `BoringNotchXPCHelperProtocol`, `Darwin`, `timedOut`, `posix` (+252 more)
+- **258 isolated node(s):** `IOKit`, `BoringNotchXPCHelperProtocol`, `Darwin`, `timedOut`, `posix` (+253 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Foundation` connect `Community 8` to `Community 2`, `Community 4`, `Community 6`, `Community 7`, `Community 136`, `Community 10`, `Community 11`, `Community 16`, `Community 18`, `Community 20`, `Community 28`, `Community 32`, `Community 38`, `Community 39`, `Community 41`, `Community 42`, `Community 43`, `Community 46`, `Community 54`, `Community 57`, `Community 59`, `Community 60`, `Community 64`, `Community 70`, `Community 71`, `Community 72`, `Community 73`, `Community 74`, `Community 75`, `Community 79`, `Community 86`, `Community 94`, `Community 96`, `Community 98`, `Community 103`?**
-  _High betweenness centrality (0.110) - this node is a cross-community bridge._
-- **Why does `Defaults` connect `Community 11` to `Community 0`, `Community 2`, `Community 3`, `Community 8`, `Community 12`, `Community 14`, `Community 15`, `Community 17`, `Community 23`, `Community 26`, `Community 34`, `Community 37`, `Community 46`, `Community 51`, `Community 52`, `Community 55`, `Community 59`, `Community 61`, `Community 65`, `Community 66`, `Community 73`, `Community 74`, `Community 80`, `Community 83`, `Community 89`, `Community 96`, `Community 98`?**
-  _High betweenness centrality (0.110) - this node is a cross-community bridge._
-- **Why does `SwiftUI` connect `Community 11` to `Community 1`, `Community 8`, `Community 14`, `Community 15`, `Community 19`, `Community 23`, `Community 37`, `Community 38`, `Community 46`, `Community 58`, `Community 59`, `Community 61`, `Community 65`, `Community 66`, `Community 73`, `Community 74`, `Community 78`, `Community 80`, `Community 83`, `Community 85`, `Community 86`, `Community 88`, `Community 92`, `Community 93`, `Community 104`, `Community 106`, `Community 107`, `Community 108`, `Community 109`, `Community 110`, `Community 111`, `Community 112`, `Community 113`, `Community 114`, `Community 116`, `Community 117`, `Community 118`, `Community 124`, `Community 126`?**
+- **Why does `Defaults` connect `Community 12` to `Community 0`, `Community 2`, `Community 3`, `Community 131`, `Community 8`, `Community 9`, `Community 11`, `Community 14`, `Community 17`, `Community 21`, `Community 22`, `Community 23`, `Community 26`, `Community 30`, `Community 33`, `Community 34`, `Community 37`, `Community 45`, `Community 46`, `Community 49`, `Community 51`, `Community 55`, `Community 56`, `Community 61`, `Community 65`, `Community 66`, `Community 67`, `Community 73`, `Community 79`, `Community 80`, `Community 81`, `Community 83`, `Community 85`, `Community 93`, `Community 98`, `Community 105`, `Community 108`, `Community 118`, `Community 124`?**
+  _High betweenness centrality (0.122) - this node is a cross-community bridge._
+- **Why does `Int` connect `Community 61` to `Community 1`, `Community 2`, `Community 131`, `Community 3`, `Community 5`, `Community 6`, `Community 9`, `Community 10`, `Community 15`, `Community 16`, `Community 17`, `Community 18`, `Community 22`, `Community 23`, `Community 25`, `Community 27`, `Community 28`, `Community 31`, `Community 37`, `Community 39`, `Community 44`, `Community 50`, `Community 60`, `Community 70`, `Community 78`, `Community 96`, `Community 100`, `Community 124`, `Community 127`?**
+  _High betweenness centrality (0.116) - this node is a cross-community bridge._
+- **Why does `Foundation` connect `Community 118` to `Community 2`, `Community 131`, `Community 3`, `Community 5`, `Community 4`, `Community 7`, `Community 8`, `Community 136`, `Community 10`, `Community 11`, `Community 12`, `Community 15`, `Community 16`, `Community 18`, `Community 20`, `Community 22`, `Community 28`, `Community 38`, `Community 39`, `Community 43`, `Community 45`, `Community 51`, `Community 54`, `Community 60`, `Community 70`, `Community 71`, `Community 72`, `Community 73`, `Community 74`, `Community 78`, `Community 81`, `Community 83`, `Community 89`, `Community 90`, `Community 96`, `Community 97`, `Community 99`, `Community 100`, `Community 101`, `Community 111`, `Community 113`, `Community 115`, `Community 125`?**
   _High betweenness centrality (0.100) - this node is a cross-community bridge._
 - **Are the 6 inferred relationships involving `Int` (e.g. with `.capturedAgo()` and `.number()`) actually correct?**
   _`Int` has 6 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `IOKit`, `BoringNotchXPCHelperProtocol`, `Darwin` to the rest of the system?**
-  _257 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.14461538461538462 - nodes in this community are weakly interconnected._
+  _258 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.0514216575922565 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06570048309178744 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.06662770309760374 - nodes in this community are weakly interconnected._

@@ -42,7 +42,27 @@ final class UsageMonitorManager: ObservableObject {
 
     private var inFlight: Set<String> = []
 
-    private init() {}
+    private init() {
+        // Seed from the last successful reports so a fresh launch (or a launch
+        // while Claude/Codex are unreachable) still shows the previous usage.
+        if let cached = Self.loadCachedReport(for: "claude") { claude = .loaded(cached) }
+        if let cached = Self.loadCachedReport(for: "codex") { codex = .loaded(cached) }
+    }
+
+    // MARK: - Persistent cache
+
+    private static func cacheKey(for provider: String) -> Defaults.Key<Data?> {
+        provider == "claude" ? .cachedClaudeUsage : .cachedCodexUsage
+    }
+
+    private static func loadCachedReport(for provider: String) -> UsageReportDTO? {
+        guard let data = Defaults[cacheKey(for: provider)] else { return nil }
+        return try? UsageReportDTO.decoder.decode(UsageReportDTO.self, from: data)
+    }
+
+    private static func persistReport(_ report: UsageReportDTO, for provider: String) {
+        Defaults[cacheKey(for: provider)] = try? UsageReportDTO.encoder.encode(report)
+    }
 
     // MARK: - State access
 
@@ -98,7 +118,19 @@ final class UsageMonitorManager: ObservableObject {
             await MainActor.run {
                 self.inFlight.remove(provider)
                 if let dto {
-                    self.setState(.loaded(dto), for: provider)
+                    // A failed probe (network hiccup, CLI timeout) should not
+                    // wipe real numbers — keep the last good report visible.
+                    // cliNotInstalled/notLoggedIn are genuine states and replace it.
+                    if dto.status == .error,
+                       let previous = self.state(for: provider).report,
+                       previous.status == .ok {
+                        self.setState(.loaded(previous), for: provider)
+                    } else {
+                        self.setState(.loaded(dto), for: provider)
+                        if dto.status == .ok {
+                            Self.persistReport(dto, for: provider)
+                        }
+                    }
                 } else {
                     // Transport failure — synthesize an error report so the column
                     // shows something actionable instead of spinning forever.

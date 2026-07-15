@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "boringNotch/boringNotchApp.swift": {
-    "mtime": 1780941336.4731104,
-    "ast_hash": "513fbc35bee7ef693c30aac259f7cabc",
+    "mtime": 1783829499.0582361,
+    "ast_hash": "16c007dc23940f661f50716fd6c92097",
     "semantic_hash": ""
   },
   "boringNotch/components/AnimatedFace.swift": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Calendar/BoringCalendar.swift": {
-    "mtime": 1783819545.2947114,
-    "ast_hash": "b140ee31665d9e5cc57d5ac72da68b3a",
+    "mtime": 1783828697.1186981,
+    "ast_hash": "b34e11d69c80d5685029833101754e14",
     "semantic_hash": ""
   },
   "boringNotch/components/EmptyState.swift": {
@@ -560,13 +560,13 @@
     "semantic_hash": ""
   },
   "boringNotch/components/UsageMonitor/UsageMonitorView.swift": {
-    "mtime": 1783825568.9034395,
-    "ast_hash": "fcf1b61a627968b4d30ccb526b93ae9d",
+    "mtime": 1783852739.577206,
+    "ast_hash": "5282f9a4fde8d3bf6a0a5d0071beac7a",
     "semantic_hash": ""
   },
   "boringNotch/components/UsageMonitor/UsageNotchBadge.swift": {
-    "mtime": 1783823995.7894537,
-    "ast_hash": "7006eb20219afe6c41edc0d5f5b49c03",
+    "mtime": 1783848933.6222596,
+    "ast_hash": "575d319b78655e4875ef1b9f17418e6e",
     "semantic_hash": ""
   },
   "boringNotch/components/Webcam/WebcamView.swift": {
@@ -690,8 +690,8 @@
     "semantic_hash": ""
   },
   "boringNotch/helpers/MeetingLinkResolver.swift": {
-    "mtime": 1783819533.8193831,
-    "ast_hash": "4e5036bd62f34d9f0fef08ba84bd0fd3",
+    "mtime": 1783852368.342599,
+    "ast_hash": "6bf30271fa971b804cf7628cd9b2d3eb",
     "semantic_hash": ""
   },
   "boringNotch/managers/BatteryActivityManager.swift": {
@@ -725,8 +725,8 @@
     "semantic_hash": ""
   },
   "boringNotch/managers/UsageMonitorManager.swift": {
-    "mtime": 1783801112.2231488,
-    "ast_hash": "c2dfde1bfd798b49f5d00b0b735e577d",
+    "mtime": 1783852345.3186913,
+    "ast_hash": "31ac59e19292ef12ebfabd5c93b8f7cc",
     "semantic_hash": ""
   },
   "boringNotch/managers/VolumeManager.swift": {
@@ -765,8 +765,8 @@
     "semantic_hash": ""
   },
   "boringNotch/models/Constants.swift": {
-    "mtime": 1783819631.2148852,
-    "ast_hash": "4c8a115705a86e7d9d08a32a4796d813",
+    "mtime": 1783852325.699291,
+    "ast_hash": "1096e5d93ff4a30f7deac8c69d8df006",
     "semantic_hash": ""
   },
   "boringNotch/models/EventModel.swift": {

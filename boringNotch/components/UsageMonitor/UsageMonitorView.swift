@@ -192,7 +192,12 @@ private struct ProviderUsageColumn: View {
 
             Text(providerName)
                 .font(.system(.headline, design: .rounded).weight(.bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(
+                    QuotaDisplayStatus.worstColor(
+                        state.report?.session?.percentRemaining,
+                        state.report?.weekly?.percentRemaining
+                    ) ?? .primary
+                )
 
             if state.isSyncing {
                 ProgressView()
@@ -218,10 +223,7 @@ private struct ProviderUsageColumn: View {
         if let report = state.report {
             switch report.status {
             case .ok:
-                HStack(spacing: 8) {
-                    UsageQuotaTile(label: "SESSION", quota: report.session, isWeekly: false)
-                    UsageQuotaTile(label: "WEEKLY", quota: report.weekly, isWeekly: true)
-                }
+                quotaTiles(for: report)
             case .cliNotInstalled:
                 MessageView(icon: "wrench.and.screwdriver",
                             text: "\(providerName.lowercased()) CLI not found")
@@ -238,6 +240,34 @@ private struct ProviderUsageColumn: View {
         }
     }
 
+    @ViewBuilder
+    private func quotaTiles(for report: UsageReportDTO) -> some View {
+        let quotas = availableQuotas(for: report)
+
+        if quotas.isEmpty {
+            UsageQuotaTile(label: "", quota: nil, isWeekly: false)
+        } else {
+            HStack(spacing: 8) {
+                ForEach(quotas) { quota in
+                    UsageQuotaTile(
+                        label: quota.isWeekly ? "WEEKLY" : "SESSION",
+                        quota: quota.value,
+                        isWeekly: quota.isWeekly
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func availableQuotas(for report: UsageReportDTO) -> [AvailableQuota] {
+        [
+            report.session.map { AvailableQuota(value: $0, isWeekly: false) },
+            report.weekly.map { AvailableQuota(value: $0, isWeekly: true) }
+        ]
+        .compactMap { $0 }
+    }
+
     private func capturedAgo(_ date: Date) -> String {
         let seconds = Int(Date().timeIntervalSince(date))
         if seconds < 60 { return "just now" }
@@ -246,6 +276,13 @@ private struct ProviderUsageColumn: View {
         let hours = minutes / 60
         return "\(hours)h ago"
     }
+}
+
+private struct AvailableQuota: Identifiable {
+    let value: UsageReportDTO.Quota
+    let isWeekly: Bool
+
+    var id: String { isWeekly ? "weekly" : "session" }
 }
 
 // MARK: - Quota Tile
@@ -257,11 +294,6 @@ private struct UsageQuotaTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(label)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(.secondary)
-                .tracking(0.9)
-
             if let quota {
                 let status = QuotaDisplayStatus.from(percentRemaining: quota.percentRemaining)
 
@@ -317,9 +349,9 @@ private struct UsageQuotaTile: View {
         }
     }
 
-    /// Session → time of day ("3:59 AM"); weekly → day + time, using a relative
-    /// day word for today/tomorrow ("Today at 4:59 PM", "Tmrw at 4:59 PM") and
-    /// the date otherwise ("Jul 18 at 4:59 PM").
+    /// Session → time of day ("03:59"); weekly → day + time, using a relative
+    /// day word for today/tomorrow ("Today at 16:59", "Tmrw at 16:59") and
+    /// the date otherwise ("Jul 18 at 16:59").
     private static func resetString(for date: Date, isWeekly: Bool) -> String {
         let time = timeFormatter.string(from: date)
         guard isWeekly else { return time }
@@ -346,7 +378,7 @@ private struct UsageQuotaTile: View {
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
-        f.setLocalizedDateFormatFromTemplate("jmm")
+        f.dateFormat = "HH:mm"
         return f
     }()
 
@@ -419,6 +451,14 @@ enum QuotaDisplayStatus {
         case let x where x > 0: .critical
         default: .depleted
         }
+    }
+
+    /// Color of the worst (lowest-remaining) quota among the given values — used
+    /// to tint a provider's name by its most-depleted metric. `nil` when no quota
+    /// data is available, so callers keep their default tint.
+    static func worstColor(_ percents: Double?...) -> Color? {
+        guard let worst = percents.compactMap({ $0 }).min() else { return nil }
+        return from(percentRemaining: worst).color
     }
 
     var color: Color {
