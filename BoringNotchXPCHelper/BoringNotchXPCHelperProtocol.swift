@@ -20,6 +20,8 @@ import Foundation
     func isScreenBrightnessAvailable(with reply: @escaping (Bool) -> Void)
     func currentScreenBrightness(with reply: @escaping (NSNumber?) -> Void)
     func setScreenBrightness(_ value: Float, with reply: @escaping (Bool) -> Void)
+    // CLI usage probing (Claude / Codex) — reply is a JSON-encoded UsageReportDTO
+    func fetchUsage(_ provider: String, with reply: @escaping (Data?) -> Void)
 }
 
 /*

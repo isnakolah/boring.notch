@@ -48,6 +48,20 @@ func AppIcon(for bundleID: String) -> Image {
 }
 
 
+/// The user-facing display name of an installed app, looked up by bundle identifier.
+func AppName(for bundleID: String) -> String? {
+    guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+        return nil
+    }
+    if let info = Bundle(url: appURL)?.infoDictionary,
+       let name = (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String),
+       !name.isEmpty {
+        return name
+    }
+    return FileManager.default.displayName(atPath: appURL.path)
+        .replacingOccurrences(of: ".app", with: "")
+}
+
 func AppIconAsNSImage(for bundleID: String) -> NSImage? {
     let workspace = NSWorkspace.shared
     

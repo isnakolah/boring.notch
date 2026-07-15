@@ -1,0 +1,1057 @@
+{
+  ".devcontainer/devcontainer.json": {
+    "mtime": 1780941336.4629283,
+    "ast_hash": "44ec572336eccb0e94579809077251f4",
+    "semantic_hash": ""
+  },
+  ".github/scripts/extract_version.py": {
+    "mtime": 1780941336.4634476,
+    "ast_hash": "735e14c2ebf2be59002cec724ebfaef1",
+    "semantic_hash": ""
+  },
+  ".github/scripts/remove_beta.py": {
+    "mtime": 1780941336.463507,
+    "ast_hash": "cf23acc88e149dbbdb3a95bc55436867",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/BoringNotchXPCHelper.swift": {
+    "mtime": 1783800931.2444391,
+    "ast_hash": "3acda358de00737b9b5cebc274b653a0",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/BoringNotchXPCHelperProtocol.swift": {
+    "mtime": 1783800907.7391114,
+    "ast_hash": "88a3e96323c2b412103431e3df21ccd9",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/BinaryLocator.swift": {
+    "mtime": 1783800672.579786,
+    "ast_hash": "120ac9a7cb287768462addcc63a949f1",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/CLIExecutor.swift": {
+    "mtime": 1783821682.5625453,
+    "ast_hash": "4374db39b3e7279ada7526ba1b07e122",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/ClaudeUsageProbe.swift": {
+    "mtime": 1783823006.0070975,
+    "ast_hash": "bf0d9f23167c4f89bbf81bee8b3da86f",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/CodexRPCClient.swift": {
+    "mtime": 1783812862.5048695,
+    "ast_hash": "e1f8b55214f8aa0930a3df5518c52729",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/CodexUsageProbe.swift": {
+    "mtime": 1783812875.4838755,
+    "ast_hash": "cc060f6b4257c90a16889c0c685c3781",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/DefaultCLIExecutor.swift": {
+    "mtime": 1783821689.511277,
+    "ast_hash": "31792ea914e5204c3de3b1eca8939264",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/InteractiveRunner.swift": {
+    "mtime": 1783821721.6428602,
+    "ast_hash": "213e7b7f8ea7211f5eba4ea52cf6b9fd",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/ProcessRPCTransport.swift": {
+    "mtime": 1783800707.7098293,
+    "ast_hash": "ed386f7daf96dbca713835e17e71171e",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/RPCTransport.swift": {
+    "mtime": 1783800695.8166473,
+    "ast_hash": "ec03f535fedd4e88c860a709503b478e",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/Shell.swift": {
+    "mtime": 1783800672.5769494,
+    "ast_hash": "59b7ed1ed1c3c963c0f26235e9ba3c13",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/TerminalRenderer.swift": {
+    "mtime": 1783800672.584547,
+    "ast_hash": "4e5a6e82f3f945ea2d626c97f75988f1",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/UsageLog.swift": {
+    "mtime": 1783800665.6962602,
+    "ast_hash": "31d06aa15747ca63485dbb971e41c7a3",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/UsageModels.swift": {
+    "mtime": 1783800726.692832,
+    "ast_hash": "9e9461ec72ddb700d6e2120a6569be2d",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageProbes/UsageProbeService.swift": {
+    "mtime": 1783800893.3464904,
+    "ast_hash": "cd03ebaad6ef32b482f3e4169315a20a",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/UsageReportDTO.swift": {
+    "mtime": 1783800872.2856863,
+    "ast_hash": "9fd55941b69d4cbf5360e73af90e0833",
+    "semantic_hash": ""
+  },
+  "BoringNotchXPCHelper/main.swift": {
+    "mtime": 1780941336.4644914,
+    "ast_hash": "7190fdfc0a81d6fea04cacbcec47c030",
+    "semantic_hash": ""
+  },
+  "Configuration/dmg/create_dmg.sh": {
+    "mtime": 1780941336.4647832,
+    "ast_hash": "d4f5ead9ecf555d6697542f34823cd3e",
+    "semantic_hash": ""
+  },
+  "Configuration/dmg/dmgbuild_settings.py": {
+    "mtime": 1780941336.464826,
+    "ast_hash": "2ee4f7a6c6d234fe1c6ee93ca3bdc703",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AccentColor.colorset/Contents.json": {
+    "mtime": 1780941336.4658573,
+    "ast_hash": "55019f7265dde0a78318b0807f98e847",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/Contents.json": {
+    "mtime": 1780941336.4659362,
+    "ast_hash": "38271d613ce57b1307d879ad9a55347f",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/Contents.json": {
+    "mtime": 1780941336.4674652,
+    "ast_hash": "9deb2ada1cc834bbebf8bbad9c8978a1",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/Github.imageset/Contents.json": {
+    "mtime": 1780941336.4675355,
+    "ast_hash": "eceb870570ff0cb7debb4ee738f6306b",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/bolt.imageset/Contents.json": {
+    "mtime": 1780941336.4677362,
+    "ast_hash": "5440b4768a83d410c6050a9779072381",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/chrome.imageset/Contents.json": {
+    "mtime": 1780941336.467861,
+    "ast_hash": "324afabcb45521ef5e8d117e1877b25f",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/defaultmusic.imageset/Contents.json": {
+    "mtime": 1780941336.4681275,
+    "ast_hash": "24a872b26b3f1f80719e1d7d53d10f8f",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/logo.imageset/Contents.json": {
+    "mtime": 1780941336.4682417,
+    "ast_hash": "bcd44d3260ee23afe48313ce573dfe59",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/logo2.imageset/Contents.json": {
+    "mtime": 1780941336.4689524,
+    "ast_hash": "7c83eefffeac7ea7b9204a0cf35825e9",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/plug.imageset/Contents.json": {
+    "mtime": 1780941336.4690778,
+    "ast_hash": "40e9bd9fd55a44d9917aec79168a9a27",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/sparkle.imageset/Contents.json": {
+    "mtime": 1780941336.4692676,
+    "ast_hash": "172a14ab54e273bbd3ac8c3f5080f225",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/spotlight.imageset/Contents.json": {
+    "mtime": 1780941336.4694173,
+    "ast_hash": "be539fac9097b6c0e1ecd9185c7e8847",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/theboringteam.imageset/Contents.json": {
+    "mtime": 1780941336.4695475,
+    "ast_hash": "35f96c4cff6897e1edc8e412665d32a2",
+    "semantic_hash": ""
+  },
+  "boringNotch/BoringViewCoordinator.swift": {
+    "mtime": 1780941336.4700377,
+    "ast_hash": "c164dd4ccc18b613beb113c7f1fcfae4",
+    "semantic_hash": ""
+  },
+  "boringNotch/ContentView.swift": {
+    "mtime": 1783824002.6425977,
+    "ast_hash": "cc77d93e10344787e6f602fe1682061e",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/AppleMusicController.swift": {
+    "mtime": 1780941336.4711115,
+    "ast_hash": "8badbffad7721f49752dde44dffb60d1",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/MediaControllerProtocol.swift": {
+    "mtime": 1780941336.4711945,
+    "ast_hash": "be98b0a59fbc635f9714a7f6272e1f9f",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/NowPlayingController.swift": {
+    "mtime": 1780941336.47126,
+    "ast_hash": "8126e73d5320d30319456dc4867dbcee",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/SpotifyController.swift": {
+    "mtime": 1780941336.4713137,
+    "ast_hash": "d3af4f0dcca8483da6fefa6223b15ac4",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/YouTube Music Controller/YouTubeMusicAuthentication.swift": {
+    "mtime": 1780941336.4713895,
+    "ast_hash": "bfd9c4ee66a479d69310687e60ec7eb7",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/YouTube Music Controller/YouTubeMusicController.swift": {
+    "mtime": 1780941336.4714704,
+    "ast_hash": "8a9b0b2b457dea35cf816f396547216c",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/YouTube Music Controller/YouTubeMusicModels.swift": {
+    "mtime": 1780941336.471674,
+    "ast_hash": "68eed1190c1c3a0f3396cc6b8057f136",
+    "semantic_hash": ""
+  },
+  "boringNotch/MediaControllers/YouTube Music Controller/YouTubeMusicNetworking.swift": {
+    "mtime": 1780941336.47174,
+    "ast_hash": "834aeb718093554c02a414d267398a83",
+    "semantic_hash": ""
+  },
+  "boringNotch/Preview Content/Preview Assets.xcassets/Contents.json": {
+    "mtime": 1780941336.4718478,
+    "ast_hash": "9deb2ada1cc834bbebf8bbad9c8978a1",
+    "semantic_hash": ""
+  },
+  "boringNotch/Providers/CalendarServiceProviding.swift": {
+    "mtime": 1780941336.4719563,
+    "ast_hash": "fd2ae7346651b58a04ed768472b64897",
+    "semantic_hash": ""
+  },
+  "boringNotch/Shortcuts/ShortcutConstants.swift": {
+    "mtime": 1780941336.472028,
+    "ast_hash": "6f9fed6d0f700054c1a693b9b1d77895",
+    "semantic_hash": ""
+  },
+  "boringNotch/XPCHelperClient/BoringNotchXPCHelperProtocol.swift": {
+    "mtime": 1783800913.538436,
+    "ast_hash": "18c67ee103d92058772cadac260a0064",
+    "semantic_hash": ""
+  },
+  "boringNotch/XPCHelperClient/UsageReportDTO.swift": {
+    "mtime": 1783800878.6023564,
+    "ast_hash": "9fd55941b69d4cbf5360e73af90e0833",
+    "semantic_hash": ""
+  },
+  "boringNotch/XPCHelperClient/XPCHelperClient.swift": {
+    "mtime": 1783801095.2104514,
+    "ast_hash": "da0563d38d44d4bb525edad1682df187",
+    "semantic_hash": ""
+  },
+  "boringNotch/animations/HelloAnimation.swift": {
+    "mtime": 1780941336.4722977,
+    "ast_hash": "3cd938e20e3f2509bf7c110a96927352",
+    "semantic_hash": ""
+  },
+  "boringNotch/animations/drop.swift": {
+    "mtime": 1780941336.4723558,
+    "ast_hash": "38afd1da432c3bca94c611e71b1dae08",
+    "semantic_hash": ""
+  },
+  "boringNotch/boringNotchApp.swift": {
+    "mtime": 1783829499.0582361,
+    "ast_hash": "16c007dc23940f661f50716fd6c92097",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/AnimatedFace.swift": {
+    "mtime": 1780941336.4731994,
+    "ast_hash": "5542582a29cdea53fe4f52e766266365",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/BottomRoundedRectangle.swift": {
+    "mtime": 1780941336.4732585,
+    "ast_hash": "6985ffca051c4b001b6803637ee87e96",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Calendar/BoringCalendar.swift": {
+    "mtime": 1783828697.1186981,
+    "ast_hash": "b34e11d69c80d5685029833101754e14",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/EmptyState.swift": {
+    "mtime": 1780941336.4734397,
+    "ast_hash": "ff264e5b5b442e3f600cc5a7f580c185",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/HoverButton.swift": {
+    "mtime": 1780941336.473505,
+    "ast_hash": "e4c687a4811059132c2c01fa97ef1cb7",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/BoringBattery.swift": {
+    "mtime": 1780941336.4736204,
+    "ast_hash": "9aa94ec133d7d0a8878ec23786ba0e0d",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/DownloadView.swift": {
+    "mtime": 1780941336.4736767,
+    "ast_hash": "68466e938d8104f42e6cb1edf8a26503",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/InlineHUD.swift": {
+    "mtime": 1780950962.5712163,
+    "ast_hash": "2a2cc74bc62d702a54aae9e8b9c2685d",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/LiveActivityModifier.swift": {
+    "mtime": 1780941336.4738066,
+    "ast_hash": "8dd03a35e193d68cfc6da69976f356e7",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/MarqueeTextView.swift": {
+    "mtime": 1780941336.47388,
+    "ast_hash": "766779e43cc7a2720247d28c190abe4c",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/OpenNotchHUD.swift": {
+    "mtime": 1780941336.473932,
+    "ast_hash": "7f3a46ce9942fbc200d8210792ff2715",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Live activities/SystemEventIndicatorModifier.swift": {
+    "mtime": 1780941336.4739842,
+    "ast_hash": "5938c716a4d6b4bb0ace218700197639",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/LottieView.swift": {
+    "mtime": 1780941336.4740272,
+    "ast_hash": "6d1570ad31509d5111fdc2acab63c86e",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Music/LottieAnimationView.swift": {
+    "mtime": 1780941336.4740915,
+    "ast_hash": "e87e01b4bc442d94eff692080236996e",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Music/MusicVisualizer.swift": {
+    "mtime": 1780941336.4741411,
+    "ast_hash": "076478502a06e3359d68b5025f56744c",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/BoringExtrasMenu.swift": {
+    "mtime": 1780941336.474228,
+    "ast_hash": "5d8901c1ddc4227a321c944b6a17ae24",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/BoringHeader.swift": {
+    "mtime": 1783801379.2804286,
+    "ast_hash": "7a1685487ed9eca2ce5abac120741aae",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/BoringNotchSkyLightWindow.swift": {
+    "mtime": 1780941336.4743402,
+    "ast_hash": "a107c48a7040c4dfdf843e3c597c37c6",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/BoringNotchWindow.swift": {
+    "mtime": 1780941336.4743888,
+    "ast_hash": "0e755f518843f5fd7e0bc783e20bba51",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/NotchHomeView.swift": {
+    "mtime": 1780948617.8974817,
+    "ast_hash": "6bdde07840bca650a92a300dfbd6cd25",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Notch/NotchShape.swift": {
+    "mtime": 1780941336.474684,
+    "ast_hash": "e6018d3493d5659ece33e2ee261a1524",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/MusicControllerSelectionView.swift": {
+    "mtime": 1780941336.4747705,
+    "ast_hash": "25d6dd95aeea111f8e58457537c8fa40",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/OnboardingFinishView.swift": {
+    "mtime": 1780941336.474822,
+    "ast_hash": "fcf58bf98ea2a76b5fe7e4ce90c6d654",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/OnboardingView.swift": {
+    "mtime": 1780941336.4748852,
+    "ast_hash": "1952c995780e484aeac1136c48cde143",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/PermissionsRequestView.swift": {
+    "mtime": 1780941336.4749408,
+    "ast_hash": "5dbe920a38dec16dc0bd10ef762c63c9",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/SparkleView.swift": {
+    "mtime": 1780941336.4749968,
+    "ast_hash": "c7e9d971d4325373dc19e8358863abdc",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Onboarding/WelcomeView.swift": {
+    "mtime": 1780941336.4751034,
+    "ast_hash": "93c35ce43781bbde2063d571045b1787",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/ProgressIndicator.swift": {
+    "mtime": 1780941336.4751532,
+    "ast_hash": "ce13bf974308cbd895ad09a04ea695fe",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/EditPanelView.swift": {
+    "mtime": 1780941336.4752247,
+    "ast_hash": "c6f7af150199153d51941330f7066360",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/ListItemPopover.swift": {
+    "mtime": 1780941336.4752803,
+    "ast_hash": "3c4b6b935bf4010b0816b816bb32cda0",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/MusicSlotConfigurationView.swift": {
+    "mtime": 1780941336.4753587,
+    "ast_hash": "7fe57b64da69dbc427081c54c9285c96",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/SettingsView.swift": {
+    "mtime": 1783819563.8349817,
+    "ast_hash": "963ee814ce1d4968850771abc5858ef6",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/SettingsWindowController.swift": {
+    "mtime": 1780941336.475669,
+    "ast_hash": "77bd82da66143281a12708d393aecfd4",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/SoftwareUpdater.swift": {
+    "mtime": 1780941336.4757102,
+    "ast_hash": "38cf028972c10edf54dfa8ee41b1de78",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/UsageMonitorSettings.swift": {
+    "mtime": 1783819655.014434,
+    "ast_hash": "8ee0d07cf0686efa6dabbec2b12bab94",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Models/Bookmark.swift": {
+    "mtime": 1780941336.4758027,
+    "ast_hash": "23873cb8e917ba223332a11bfbbb2870",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Models/ShelfItem.swift": {
+    "mtime": 1780941336.4758563,
+    "ast_hash": "6f166c5b891f53e2e70126e50364124c",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ImageProcessingService.swift": {
+    "mtime": 1780941336.475958,
+    "ast_hash": "76fa41fbea3edbd94eac0622faf13a2a",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/QuickLookService.swift": {
+    "mtime": 1780941336.4760106,
+    "ast_hash": "857cc6df19a9a8706c26058eb87235b1",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/QuickShareService.swift": {
+    "mtime": 1780941336.4760752,
+    "ast_hash": "b446017270198551331d964e2b4db0da",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ShareServiceFinder.swift": {
+    "mtime": 1780941336.476124,
+    "ast_hash": "ec4f35dd5368dcaddb855d00197010af",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ShelfActionService.swift": {
+    "mtime": 1780941336.4761674,
+    "ast_hash": "550c32b8e0244887a1cea7cbaf7cb67b",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ShelfDropService.swift": {
+    "mtime": 1780941336.476209,
+    "ast_hash": "6ca8bb6e6591b415889dd63901464c50",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ShelfPersistenceService.swift": {
+    "mtime": 1780941336.4762516,
+    "ast_hash": "8c2fc6cb7ebdca25d9005ffa69abdb84",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/TemporaryFileStorageService.swift": {
+    "mtime": 1780941336.4763153,
+    "ast_hash": "78785d34f96267ffe071a8ac3db1499f",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ThumbnailService.swift": {
+    "mtime": 1780941336.4763598,
+    "ast_hash": "64b7a650cf2b82cee3970bb6f1d9a1fd",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/ViewModels/ShelfItemViewModel.swift": {
+    "mtime": 1780941336.476492,
+    "ast_hash": "23e85e6d03f45a41260581c90cc06a24",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/ViewModels/ShelfSelectionModel.swift": {
+    "mtime": 1780941336.4767208,
+    "ast_hash": "c40c091c932bb792381a4a07eba93fc4",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/ViewModels/ShelfStateViewModel.swift": {
+    "mtime": 1780941336.4767668,
+    "ast_hash": "261f438e57eaf3fba6a96056127109b5",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/DragPreviewView.swift": {
+    "mtime": 1780941336.4768262,
+    "ast_hash": "04806ad0d8b1a6eb8004c9ef3708254c",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/FileShareView.swift": {
+    "mtime": 1780941336.4768744,
+    "ast_hash": "04a7d046168f38f86603a16a023a772f",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfItemView.swift": {
+    "mtime": 1780941336.476948,
+    "ast_hash": "9a12db6c12e00fe6a17253215512105e",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfView.swift": {
+    "mtime": 1780941336.476999,
+    "ast_hash": "b6aebfa4b372f557c54e64a5fd69ba81",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Tabs/TabButton.swift": {
+    "mtime": 1783812811.61225,
+    "ast_hash": "f987cfa264b9bc72edc85855ce5fcd0c",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Tabs/TabSelectionView.swift": {
+    "mtime": 1783812804.955175,
+    "ast_hash": "036d1977588d221ad5bf0fca0eccac0a",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/TestView.swift": {
+    "mtime": 1780941336.4771404,
+    "ast_hash": "c00caad112954633177058ba2570f37d",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Tips/TipStore.swift": {
+    "mtime": 1780941336.4772267,
+    "ast_hash": "1ae240629b0f57a8587c17d394d60900",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/UsageMonitor/UsageMonitorView.swift": {
+    "mtime": 1783852739.577206,
+    "ast_hash": "5282f9a4fde8d3bf6a0a5d0071beac7a",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/UsageMonitor/UsageNotchBadge.swift": {
+    "mtime": 1783848933.6222596,
+    "ast_hash": "575d319b78655e4875ef1b9f17418e6e",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Webcam/WebcamView.swift": {
+    "mtime": 1780941336.477319,
+    "ast_hash": "e2f92007e7d97d5d9e95dd7d8c5d725b",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/WhatsNewView.swift": {
+    "mtime": 1780941336.4773726,
+    "ast_hash": "9871f8dfc2299f0bdf1c86f0df5c50db",
+    "semantic_hash": ""
+  },
+  "boringNotch/enums/generic.swift": {
+    "mtime": 1783801123.603385,
+    "ast_hash": "cdbfc36f2f8ef76a449c8a67039eef5e",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/ActionBar.swift": {
+    "mtime": 1780941336.4775279,
+    "ast_hash": "13bf1d50895aba3a1e4cc035e9faa791",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/BundleInfos.swift": {
+    "mtime": 1780941336.4775808,
+    "ast_hash": "f60a42ae129b0b9c65083f6a25ece11e",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/Button+Bouncing.swift": {
+    "mtime": 1780941336.4776278,
+    "ast_hash": "3139726bff297f1b80c90232d23df75f",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/Color+AccentColor.swift": {
+    "mtime": 1780941336.4776714,
+    "ast_hash": "9fa12144d1e937b3adfcb38681eb1bc8",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/ConditionalModifier.swift": {
+    "mtime": 1780941336.477721,
+    "ast_hash": "6542a97427f2b71d52f31e0918a71a93",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/DataTypes+Extensions.swift": {
+    "mtime": 1780941336.4777744,
+    "ast_hash": "d2e8c851c0fd992aef200247e7f151a2",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/KeyboardShortcutsHelper.swift": {
+    "mtime": 1780941336.4778323,
+    "ast_hash": "55105a8c3b5b18e07db0dbe2cc8a0f19",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/MouseTracker.swift": {
+    "mtime": 1780941336.477881,
+    "ast_hash": "e733ba98bc7924960c988d27628de30d",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/NSImage+Extensions.swift": {
+    "mtime": 1780941336.477941,
+    "ast_hash": "5d330285275f36b7f36d26b8a90e7bd5",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/NSItemProvider+LoadHelpers.swift": {
+    "mtime": 1780941336.4780028,
+    "ast_hash": "d62e8ba6c9caf1eee5ad72a6d4ad1d4e",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/NSMenu+AssociatedObject.swift": {
+    "mtime": 1780941336.4780579,
+    "ast_hash": "626a89f4e6f71970b5576f925918bc9a",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/NSScreen+UUID.swift": {
+    "mtime": 1780941336.4781103,
+    "ast_hash": "a5c1f6b091444117a4ca4c1591e5de3b",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/PanGesture.swift": {
+    "mtime": 1780941336.4781706,
+    "ast_hash": "60f5ccd9c15ef6d3adeeada7ec5153ae",
+    "semantic_hash": ""
+  },
+  "boringNotch/extensions/URL+SecurityScoped.swift": {
+    "mtime": 1780941336.47822,
+    "ast_hash": "cb7dae28a5f1237dbab35c3caf3f9028",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/AppIcons.swift": {
+    "mtime": 1780948601.902015,
+    "ast_hash": "6f5ddf372677bd4fdfa28c6c59bf6439",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/AppleScriptHelper.swift": {
+    "mtime": 1780941336.4783537,
+    "ast_hash": "3898400ccc991e753e588e57fe1dc6fc",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/ApplicationRelauncher.swift": {
+    "mtime": 1780941336.4784074,
+    "ast_hash": "ba69c68aea856329a9be25216532e7a9",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/AssociatedObject.swift": {
+    "mtime": 1780941336.4784632,
+    "ast_hash": "4871d67d131e3427184c70daaf1273d4",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/AudioPlayer.swift": {
+    "mtime": 1780941336.4785118,
+    "ast_hash": "7c88caa4b5cb4938961516880945d723",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/Clipboard+Content.swift": {
+    "mtime": 1780941336.4785597,
+    "ast_hash": "fba9eebcd0a173e456dbeb087315758b",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/MediaChecker.swift": {
+    "mtime": 1780941336.47862,
+    "ast_hash": "b34338cab41fad5d664a17e33ba628d6",
+    "semantic_hash": ""
+  },
+  "boringNotch/helpers/MeetingLinkResolver.swift": {
+    "mtime": 1783852368.342599,
+    "ast_hash": "6bf30271fa971b804cf7628cd9b2d3eb",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/BatteryActivityManager.swift": {
+    "mtime": 1780941336.4787152,
+    "ast_hash": "e822aadfdf973896c845cc952167f528",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/BrightnessManager.swift": {
+    "mtime": 1780941336.4787683,
+    "ast_hash": "93f010c52ba21627c5ce5c5eb48dac0e",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/CalendarManager.swift": {
+    "mtime": 1780941336.4788244,
+    "ast_hash": "9cb4dc4334330c6e21bca76d2f248ec5",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/ImageService.swift": {
+    "mtime": 1780941336.4788718,
+    "ast_hash": "99517ed6c4ab716a4fc2be6fac8a473d",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/MusicManager.swift": {
+    "mtime": 1780941336.4789608,
+    "ast_hash": "10ab08d69c1f04026adb59b609e9cb05",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/NotchSpaceManager.swift": {
+    "mtime": 1780941336.4790254,
+    "ast_hash": "b5f899143c98e3489e3c39ebb7e9a97d",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/UsageMonitorManager.swift": {
+    "mtime": 1783852345.3186913,
+    "ast_hash": "31ac59e19292ef12ebfabd5c93b8f7cc",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/VolumeManager.swift": {
+    "mtime": 1780941336.4791098,
+    "ast_hash": "b89f37f2cffc8e2a9b9e77a3e084c39d",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/WebcamManager.swift": {
+    "mtime": 1780941336.479204,
+    "ast_hash": "2f18c44c5b29a3ee0be537da2ca1095f",
+    "semantic_hash": ""
+  },
+  "boringNotch/menu/StatusBarMenu.swift": {
+    "mtime": 1780941336.47928,
+    "ast_hash": "e3f84dfa8131dbd246145376c16ff488",
+    "semantic_hash": ""
+  },
+  "boringNotch/metal/visualizer.metal": {
+    "mtime": 1780941336.4793603,
+    "ast_hash": "9770d28a884408d38f7a6856aaf71255",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/BatteryStatusViewModel.swift": {
+    "mtime": 1780941336.479455,
+    "ast_hash": "cb4dcc19404de5c9c0935441adab3355",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/BoringViewModel.swift": {
+    "mtime": 1780941336.479531,
+    "ast_hash": "c47a5992b59ea538540753edfc217f06",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/CalendarModel.swift": {
+    "mtime": 1780941336.4795828,
+    "ast_hash": "62af4891931ea072763bebf7ed6ceb1e",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/Constants.swift": {
+    "mtime": 1783852325.699291,
+    "ast_hash": "1096e5d93ff4a30f7deac8c69d8df006",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/EventModel.swift": {
+    "mtime": 1780948580.6224759,
+    "ast_hash": "5139013b6a3a6fadba5c0508582a445d",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/MusicControlButton.swift": {
+    "mtime": 1780941336.479783,
+    "ast_hash": "2a3916cbb66100f29f68c01c17e021f8",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/PlaybackState.swift": {
+    "mtime": 1780941336.4798381,
+    "ast_hash": "4df6370c930c8b57fedbdb1239880e21",
+    "semantic_hash": ""
+  },
+  "boringNotch/models/SharingStateManager.swift": {
+    "mtime": 1780941336.4798942,
+    "ast_hash": "a2a38adeff28c30dab4635534e23d637",
+    "semantic_hash": ""
+  },
+  "boringNotch/observers/DragDetector.swift": {
+    "mtime": 1780941336.479987,
+    "ast_hash": "c66a84d4f53b62bf1f54cd12b9505794",
+    "semantic_hash": ""
+  },
+  "boringNotch/observers/FullscreenMediaDetection.swift": {
+    "mtime": 1780941336.480037,
+    "ast_hash": "d3746c3f068a394d9c32cb5f82daea79",
+    "semantic_hash": ""
+  },
+  "boringNotch/observers/MediaKeyInterceptor.swift": {
+    "mtime": 1780941336.480117,
+    "ast_hash": "564adbab192362bd7f897a20d0366686",
+    "semantic_hash": ""
+  },
+  "boringNotch/private/CGSSpace.swift": {
+    "mtime": 1780941336.480209,
+    "ast_hash": "f8d9e9e1903e635e8a33fddf457e27ea",
+    "semantic_hash": ""
+  },
+  "boringNotch/sizing/matters.swift": {
+    "mtime": 1780943134.8255444,
+    "ast_hash": "281c364ec62a98d588c4eba98b7dc665",
+    "semantic_hash": ""
+  },
+  "boringNotch/utils/Logger.swift": {
+    "mtime": 1780941336.4803877,
+    "ast_hash": "79ead4858efd5bac9821b4f02c02ccf0",
+    "semantic_hash": ""
+  },
+  "scripts/deploy.sh": {
+    "mtime": 1783813030.978732,
+    "ast_hash": "7ff304ef6dc9a48bc72eddea4d415346",
+    "semantic_hash": ""
+  },
+  ".github/FUNDING.yml": {
+    "mtime": 1780941336.4630013,
+    "ast_hash": "79796c215a6d29e500da7391cba63590",
+    "semantic_hash": ""
+  },
+  ".github/ISSUE_TEMPLATE/1-bug-report-form.yml": {
+    "mtime": 1780941336.463082,
+    "ast_hash": "1a25cf290efbbf7b86fa7aeeb0c356ea",
+    "semantic_hash": ""
+  },
+  ".github/ISSUE_TEMPLATE/1-feature-request-form.yml": {
+    "mtime": 1780941336.4631338,
+    "ast_hash": "1d9b955356f5a20160fd0570f7a34e61",
+    "semantic_hash": ""
+  },
+  ".github/ISSUE_TEMPLATE/config.yml": {
+    "mtime": 1780941336.4631793,
+    "ast_hash": "74c7aebcc7755d1241890df4fd87c662",
+    "semantic_hash": ""
+  },
+  ".github/ISSUE_TEMPLATE/feature_request.md": {
+    "mtime": 1780941336.4632277,
+    "ast_hash": "2e7743b17b133bae1cb4de7d826adc3d",
+    "semantic_hash": ""
+  },
+  ".github/ISSUE_TEMPLATE/old_bug_report.md": {
+    "mtime": 1780941336.4632733,
+    "ast_hash": "663e7c2b976eddbb53398bdc06ec5e81",
+    "semantic_hash": ""
+  },
+  ".github/PULL_REQUEST.md": {
+    "mtime": 1780941336.463315,
+    "ast_hash": "37005b9e3d5b4b1840429f7c869882c6",
+    "semantic_hash": ""
+  },
+  ".github/dependabot.yml": {
+    "mtime": 1780941336.463359,
+    "ast_hash": "bb93b113d1e5067e9fee4a552989fd7f",
+    "semantic_hash": ""
+  },
+  ".github/workflows/base_ref_check.yml": {
+    "mtime": 1780941336.4636023,
+    "ast_hash": "c5806e9ed12c9667af6179263dc78fd0",
+    "semantic_hash": ""
+  },
+  ".github/workflows/base_ref_check_comment.yml": {
+    "mtime": 1780941336.4636638,
+    "ast_hash": "c8225e1b348613bdc884204f55f70b34",
+    "semantic_hash": ""
+  },
+  ".github/workflows/build_reusable.yml": {
+    "mtime": 1780941336.4637916,
+    "ast_hash": "922a45e0f41de5e3fb5856800bebd98c",
+    "semantic_hash": ""
+  },
+  ".github/workflows/cicd.yml": {
+    "mtime": 1780941336.463847,
+    "ast_hash": "e647aa8fc9dc8e4e50d0ac2127a6c57f",
+    "semantic_hash": ""
+  },
+  ".github/workflows/crowdin.yml": {
+    "mtime": 1780941336.4638934,
+    "ast_hash": "1599fb5ed7bb5aad9fa1bbba8f6019e3",
+    "semantic_hash": ""
+  },
+  ".github/workflows/manual_build.yml": {
+    "mtime": 1780941336.463938,
+    "ast_hash": "a11bb6379567705d48284bef0c960c4b",
+    "semantic_hash": ""
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1780941336.464014,
+    "ast_hash": "23b900975bd8a05eeef7c4d37ee2dc72",
+    "semantic_hash": ""
+  },
+  ".github/workflows/static.yml": {
+    "mtime": 1780941336.4640884,
+    "ast_hash": "fbcbed5a18703f63fd7d788e24c92397",
+    "semantic_hash": ""
+  },
+  ".github/workflows/update-version-dropdown.yml": {
+    "mtime": 1780941336.4641502,
+    "ast_hash": "5bf54f747b7ab53cba3fcf46573e6b2c",
+    "semantic_hash": ""
+  },
+  "CONTRIBUTING.md": {
+    "mtime": 1780941336.464555,
+    "ast_hash": "106baaf96e5abaa07c2bba111f09e5b7",
+    "semantic_hash": ""
+  },
+  "Configuration/dmg/requirements.txt": {
+    "mtime": 1780941336.4648705,
+    "ast_hash": "2c623ee19e93bc9f49160d6162585d61",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1780941336.4650679,
+    "ast_hash": "1309f20bc91c125506c1f5e34d872a9d",
+    "semantic_hash": ""
+  },
+  "SECURITY.md": {
+    "mtime": 1780941336.4651158,
+    "ast_hash": "540bc15d4cb5a576fe3803db47ade5c9",
+    "semantic_hash": ""
+  },
+  "crowdin.yml": {
+    "mtime": 1780941336.4804425,
+    "ast_hash": "6e4bc48f952aeb18fa8f125f19b31de6",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 10.png": {
+    "mtime": 1780941336.4664583,
+    "ast_hash": "0b452ed56b7f139b7034dec1f35f297c",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 11.png": {
+    "mtime": 1780941336.4666865,
+    "ast_hash": "62bf8235746196a4f191c1e35001f303",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 12.png": {
+    "mtime": 1780941336.466775,
+    "ast_hash": "503d78f8cea9bb1845472bcb25bac7c8",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 13.png": {
+    "mtime": 1780941336.4668758,
+    "ast_hash": "9dceca40cb6cd82d78a038c9c80ca94d",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 2.png": {
+    "mtime": 1780941336.4669285,
+    "ast_hash": "041a82b01be1cf16f72a443683093a69",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 5.png": {
+    "mtime": 1780941336.4669716,
+    "ast_hash": "1bf65dbe5e1938c9811bc54683215cc2",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 6.png": {
+    "mtime": 1780941336.467009,
+    "ast_hash": "1bf65dbe5e1938c9811bc54683215cc2",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 7.png": {
+    "mtime": 1780941336.4670994,
+    "ast_hash": "9dceca40cb6cd82d78a038c9c80ca94d",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 8.png": {
+    "mtime": 1780941336.4672465,
+    "ast_hash": "40077f1a25583607b8b3bd70174466d6",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/AppIcon.appiconset/notch-stage-icon2 9.png": {
+    "mtime": 1780941336.4673924,
+    "ast_hash": "40077f1a25583607b8b3bd70174466d6",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/Github.imageset/GitHub Mark White 1.svg": {
+    "mtime": 1780941336.4675784,
+    "ast_hash": "a0b00583d93c2f7084ad151ee0849934",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/Github.imageset/GitHub Mark White 2.svg": {
+    "mtime": 1780941336.4676204,
+    "ast_hash": "a0b00583d93c2f7084ad151ee0849934",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/Github.imageset/GitHub Mark White.svg": {
+    "mtime": 1780941336.4676638,
+    "ast_hash": "a0b00583d93c2f7084ad151ee0849934",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/bolt.imageset/bolt.png": {
+    "mtime": 1780941336.4677887,
+    "ast_hash": "6472c67278e25c0bfba9d995951cd556",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/chrome.imageset/Google Chrome macOS BigSur Icon 1.png": {
+    "mtime": 1780941336.4679275,
+    "ast_hash": "c4f6b29a2560731cdee27511bfbc4dd4",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/chrome.imageset/Google Chrome macOS BigSur Icon 2.png": {
+    "mtime": 1780941336.4679847,
+    "ast_hash": "c4f6b29a2560731cdee27511bfbc4dd4",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/chrome.imageset/Google Chrome macOS BigSur Icon.png": {
+    "mtime": 1780941336.4680486,
+    "ast_hash": "c4f6b29a2560731cdee27511bfbc4dd4",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/logo.imageset/256-mac 1.png": {
+    "mtime": 1780941336.4681973,
+    "ast_hash": "987356888a03fe8aa68c1c620cd17017",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/logo2.imageset/BoringNotch icon.png": {
+    "mtime": 1780941336.4687185,
+    "ast_hash": "5d9a7f6eb26802547cba07841efe41b6",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/plug.imageset/plug.png": {
+    "mtime": 1780941336.4691393,
+    "ast_hash": "0c11260a0ad2befc26d91c46bcb5a474",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/sparkle.imageset/sparkle.svg": {
+    "mtime": 1780941336.4693296,
+    "ast_hash": "74989cf5c4b521d646fa105709ec8059",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/spotlight.imageset/spotlight.svg": {
+    "mtime": 1780941336.4694743,
+    "ast_hash": "3c34c4c01cdbfad8bf3341adbbcb64df",
+    "semantic_hash": ""
+  },
+  "boringNotch/Assets.xcassets/theboringteam.imageset/TheBoringTeam.svg": {
+    "mtime": 1780941336.4696507,
+    "ast_hash": "a93800989da15130b1792d5c32c73276",
+    "semantic_hash": ""
+  },
+  "boringNotch/boring.m4a": {
+    "mtime": 1780941336.472665,
+    "ast_hash": "0cd61eb3b9977d6d5c84fa1a01126b98",
+    "semantic_hash": ""
+  }
+}

@@ -51,6 +51,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Usage") {
+                    Label("Usage", systemImage: "gauge.with.needle")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -85,6 +88,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Usage":
+                    UsageMonitorSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
@@ -567,6 +572,11 @@ struct HUD: View {
                 Defaults.Toggle(key: .showClosedNotchHUDPercentage) {
                     Text("Show percentage")
                 }
+
+                Defaults.Toggle(key: .showInlineHUDLabel) {
+                    Text("Show label")
+                }
+                .disabled(!inlineHUD)
             } header: {
                 Text("Closed Notch")
             }
@@ -730,6 +740,9 @@ struct CalendarSettings: View {
             }
             Defaults.Toggle(key: .showFullEventTitles) {
                 Text("Always show full event titles")
+            }
+            Defaults.Toggle(key: .openMeetingsInApp) {
+                Text("Open meetings in native app")
             }
             Section(header: Text("Calendars")) {
                 if calendarManager.calendarAuthorizationStatus != .fullAccess {

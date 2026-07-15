@@ -159,6 +159,7 @@ extension Defaults.Keys {
     static let showOpenNotchHUD = Key<Bool>("showOpenNotchHUD", default: true)
     static let showOpenNotchHUDPercentage = Key<Bool>("showOpenNotchHUDPercentage", default: true)
     static let showClosedNotchHUDPercentage = Key<Bool>("showClosedNotchHUDPercentage", default: false)
+    static let showInlineHUDLabel = Key<Bool>("showInlineHUDLabel", default: false)
     // Option key modifier behaviour for media keys
     static let optionKeyAction = Key<OptionKeyAction>("optionKeyAction", default: OptionKeyAction.openSettings)
     
@@ -170,12 +171,22 @@ extension Defaults.Keys {
     static let copyOnDrag = Key<Bool>("copyOnDrag", default: false)
     static let autoRemoveShelfItems = Key<Bool>("autoRemoveShelfItems", default: false)
     static let expandedDragDetection = Key<Bool>("expandedDragDetection", default: true)
+
+    // MARK: Usage Monitor
+    static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
+    static let usageMonitorRefreshInterval = Key<Double>("usageMonitorRefreshInterval", default: 300)
+    static let showUsageBesideNotch = Key<Bool>("showUsageBesideNotch", default: false)
+    // Last successful usage report per provider (UsageReportDTO JSON), shown
+    // while a fresh probe fails or before the first probe completes.
+    static let cachedClaudeUsage = Key<Data?>("cachedClaudeUsage", default: nil)
+    static let cachedCodexUsage = Key<Data?>("cachedCodexUsage", default: nil)
     
     // MARK: Calendar
     static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)
     static let hideAllDayEvents = Key<Bool>("hideAllDayEvents", default: false)
     static let showFullEventTitles = Key<Bool>("showFullEventTitles", default: false)
     static let autoScrollToNextEvent = Key<Bool>("autoScrollToNextEvent", default: true)
+    static let openMeetingsInApp = Key<Bool>("openMeetingsInApp", default: true)
     
     // MARK: Fullscreen Media Detection
     static let hideNotchOption = Key<HideNotchOption>("hideNotchOption", default: .nowPlayingOnly)

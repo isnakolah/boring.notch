@@ -14,13 +14,72 @@ import SwiftUI
 
 struct MusicPlayerView: View {
     @EnvironmentObject var vm: BoringViewModel
+    @ObservedObject var musicManager = MusicManager.shared
     let albumArtNamespace: Namespace.ID
+    @State private var isHovering = false
 
     var body: some View {
-        HStack {
-            AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace).padding(.all, 5)
-            MusicControlsView().drawingGroup().compositingGroup()
+        ZStack {
+            HStack(spacing: 8) {
+                AlbumArtView(vm: vm, albumArtNamespace: albumArtNamespace)
+                    .frame(width: 46, height: 46)
+                    .padding(.all, 3)
+                MusicControlsView().compositingGroup()
+            }
+            .blur(radius: isHovering ? 4 : 0)
+            .opacity(isHovering ? 0.25 : 1)
+
+            // Transport controls reveal on hover, centered across the full media
+            // width (incl. the album art) so all three icons fit without clipping.
+            transportControls
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
         }
+        .overlay(alignment: .bottomLeading) {
+            // Small pill naming the source app; tapping it opens that app. Replaces
+            // the old tap-the-album-art-to-open behavior.
+            appPill
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var appPill: some View {
+        if let bundleID = musicManager.bundleIdentifier, let name = AppName(for: bundleID) {
+            Button {
+                musicManager.openMusicApp()
+            } label: {
+                Text(name)
+                    .font(.system(size: 9, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(.white.opacity(0.18)))
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private var transportControls: some View {
+        HStack(spacing: 8) {
+            HoverButton(icon: "backward.fill", scale: .medium) {
+                MusicManager.shared.previousTrack()
+            }
+            HoverButton(icon: musicManager.isPlaying ? "pause.fill" : "play.fill", scale: .large) {
+                MusicManager.shared.togglePlay()
+            }
+            HoverButton(icon: "forward.fill", scale: .medium) {
+                MusicManager.shared.nextTrack()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 }
 
@@ -42,12 +101,7 @@ struct AlbumArtView: View {
         Image(nsImage: musicManager.albumArt)
             .resizable()
             .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             .aspectRatio(1, contentMode: .fit)
             .scaleEffect(x: 1.3, y: 1.4)
             .rotationEffect(.degrees(92))
@@ -55,19 +109,16 @@ struct AlbumArtView: View {
             .opacity(musicManager.isPlaying ? 0.5 : 0)
     }
 
+    // The album art is now display-only; opening the source app moves to the
+    // hover pill in MusicPlayerView.
     private var albumArtButton: some View {
         ZStack {
-            Button {
-                musicManager.openMusicApp()
-            } label: {
-                ZStack(alignment:.bottomTrailing) {
-                    albumArtImage
-                    appIconOverlay
-                }
+            ZStack(alignment: .bottomTrailing) {
+                albumArtImage
+                appIconOverlay
             }
-            .buttonStyle(PlainButtonStyle())
             .scaleEffect(musicManager.isPlaying ? 1 : 0.85)
-            
+
             albumArtDarkOverlay
         }
     }
@@ -87,12 +138,7 @@ struct AlbumArtView: View {
             .aspectRatio(1, contentMode: .fit)
             .matchedGeometryEffect(id: "albumArt", in: albumArtNamespace)
             .clipped()
-            .clipShape(
-                RoundedRectangle(
-                    cornerRadius: Defaults[.cornerRadiusScaling]
-                        ? MusicPlayerImageSizes.cornerRadiusInset.opened
-                        : MusicPlayerImageSizes.cornerRadiusInset.closed)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
     @ViewBuilder
@@ -101,8 +147,8 @@ struct AlbumArtView: View {
             AppIcon(for: musicManager.bundleIdentifier ?? "com.apple.Music")
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: 30, height: 30)
-                .offset(x: 10, y: 10)
+                .frame(width: 24, height: 24)
+                .offset(x: 2, y: 2)
                 .transition(.scale.combined(with: .opacity))
                 .zIndex(2)
         }
@@ -119,12 +165,11 @@ struct MusicControlsView: View {
     @Default(.musicControlSlots) private var slotConfig
     @Default(.musicControlSlotLimit) private var slotLimit
 
+    // Just the song info + progress; transport controls live in MusicPlayerView and
+    // overlay this on hover.
     var body: some View {
-        VStack(alignment: .leading) {
-            songInfoAndSlider
-            slotToolbar
-        }
-        .buttonStyle(PlainButtonStyle())
+        songInfoAndSlider
+            .buttonStyle(PlainButtonStyle())
     }
 
     private var songInfoAndSlider: some View {
@@ -134,58 +179,26 @@ struct MusicControlsView: View {
                 musicSlider
             }
         }
-        .padding(.top, 10)
+        .padding(.top, 6)
         .padding(.leading, 5)
     }
 
     private func songInfo(width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 1) {
             MarqueeText(
-                $musicManager.songTitle, font: .headline, nsFont: .headline, textColor: .white,
+                $musicManager.songTitle, font: .callout, nsFont: .callout, textColor: .white,
                 frameWidth: width)
+            .fontWeight(.semibold)
             MarqueeText(
                 $musicManager.artistName,
-                font: .headline,
-                nsFont: .headline,
+                font: .caption,
+                nsFont: .caption1,
                 textColor: Defaults[.playerColorTinting]
                     ? Color(nsColor: musicManager.avgColor)
                         .ensureMinimumBrightness(factor: 0.6) : .gray,
                 frameWidth: width
             )
             .fontWeight(.medium)
-            if Defaults[.enableLyrics] {
-                TimelineView(.animation(minimumInterval: 0.25)) { timeline in
-                    let currentElapsed: Double = {
-                        guard musicManager.isPlaying else { return musicManager.elapsedTime }
-                        let delta = timeline.date.timeIntervalSince(musicManager.timestampDate)
-                        let progressed = musicManager.elapsedTime + (delta * musicManager.playbackRate)
-                        return min(max(progressed, 0), musicManager.songDuration)
-                    }()
-                    let line: String = {
-                        if musicManager.isFetchingLyrics { return "Loading lyrics…" }
-                        if !musicManager.syncedLyrics.isEmpty {
-                            return musicManager.lyricLine(at: currentElapsed)
-                        }
-                        let trimmed = musicManager.currentLyrics.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return trimmed.isEmpty ? "No lyrics found" : trimmed.replacingOccurrences(of: "\n", with: " ")
-                    }()
-                    let isPersian = line.unicodeScalars.contains { scalar in
-                        let v = scalar.value
-                        return v >= 0x0600 && v <= 0x06FF
-                    }
-                    MarqueeText(
-                        .constant(line),
-                        font: .subheadline,
-                        nsFont: .subheadline,
-                        textColor: musicManager.isFetchingLyrics ? .gray.opacity(0.7) : .gray,
-                        frameWidth: width
-                    )
-                    .font(isPersian ? .custom("Vazirmatn-Regular", size: NSFont.preferredFont(forTextStyle: .subheadline).pointSize) : .subheadline)
-                    .lineLimit(1)
-                    .opacity(musicManager.isPlaying ? 1 : 0)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
         }
     }
 
@@ -210,12 +223,17 @@ struct MusicControlsView: View {
         }
     }
 
+    // Minimal, fixed transport controls for the compact home view: prev / play / next.
     private var slotToolbar: some View {
-        let slots = activeSlots
-        return HStack(spacing: 6) {
-            ForEach(Array(slots.enumerated()), id: \.offset) { index, slot in
-                slotView(for: slot)
-                    .frame(alignment: .center)
+        HStack(spacing: 8) {
+            HoverButton(icon: "backward.fill", scale: .medium) {
+                MusicManager.shared.previousTrack()
+            }
+            HoverButton(icon: musicManager.isPlaying ? "pause.fill" : "play.fill", scale: .large) {
+                MusicManager.shared.togglePlay()
+            }
+            HoverButton(icon: "forward.fill", scale: .medium) {
+                MusicManager.shared.nextTrack()
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
@@ -440,25 +458,37 @@ struct NotchHomeView: View {
     }
 
     private var mainContent: some View {
-        HStack(alignment: .top, spacing: (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15) {
-            MusicPlayerView(albumArtNamespace: albumArtNamespace)
+        GeometryReader { geo in
+            let spacing: CGFloat = (shouldShowCamera && Defaults[.showCalendar]) ? 10 : 15
+            // When the calendar is shown (and no camera), give media ~35% and the
+            // calendar ~65% of the available width — the calendar is the centerpiece,
+            // and the extra width lands on the agenda (the date plate is fixed-width).
+            let splitCalendar = Defaults[.showCalendar] && !shouldShowCamera
+            let mediaWidth = splitCalendar ? (geo.size.width - spacing) * 0.35 : nil
+            let calendarWidth = splitCalendar ? (geo.size.width - spacing) * 0.65 : (shouldShowCamera ? 170 : 215)
 
-            if Defaults[.showCalendar] {
-                CalendarView()
-                    .frame(width: shouldShowCamera ? 170 : 215)
-                    .onHover { isHovering in
-                        vm.isHoveringCalendar = isHovering
-                    }
-                    .environmentObject(vm)
-                    .transition(.opacity)
-            }
+            HStack(alignment: .top, spacing: spacing) {
+                MusicPlayerView(albumArtNamespace: albumArtNamespace)
+                    .frame(width: mediaWidth, alignment: .leading)
+                    .clipped()
 
-            if shouldShowCamera {
-                CameraPreviewView(webcamManager: webcamManager)
-                    .scaledToFit()
-                    .opacity(vm.notchState == .closed ? 0 : 1)
-                    .blur(radius: vm.notchState == .closed ? 20 : 0)
-                    .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.76, blendDuration: 0), value: shouldShowCamera)
+                if Defaults[.showCalendar] {
+                    CalendarView()
+                        .frame(width: calendarWidth)
+                        .onHover { isHovering in
+                            vm.isHoveringCalendar = isHovering
+                        }
+                        .environmentObject(vm)
+                        .transition(.opacity)
+                }
+
+                if shouldShowCamera {
+                    CameraPreviewView(webcamManager: webcamManager)
+                        .scaledToFit()
+                        .opacity(vm.notchState == .closed ? 0 : 1)
+                        .blur(radius: vm.notchState == .closed ? 20 : 0)
+                        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.76, blendDuration: 0), value: shouldShowCamera)
+                }
             }
         }
         .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
@@ -504,7 +534,8 @@ struct MusicSliderView: View {
                 Defaults[.playerColorTinting]
                     ? Color(nsColor: color).ensureMinimumBrightness(factor: 0.6) : .gray
             )
-            .font(.caption)
+            .font(.caption2)
+            .monospacedDigit()
         }
         .onChange(of: currentDate) {
            guard !dragging, timestampDate.timeIntervalSince(lastDragged) > -1 else { return }
