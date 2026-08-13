@@ -15,87 +15,87 @@
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/BoringNotchXPCHelper.swift": {
-    "mtime": 1783800931.2444391,
+    "mtime": 1784155845.399831,
     "ast_hash": "3acda358de00737b9b5cebc274b653a0",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/BoringNotchXPCHelperProtocol.swift": {
-    "mtime": 1783800907.7391114,
+    "mtime": 1784155845.4001591,
     "ast_hash": "88a3e96323c2b412103431e3df21ccd9",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/BinaryLocator.swift": {
-    "mtime": 1783800672.579786,
+    "mtime": 1784155845.40044,
     "ast_hash": "120ac9a7cb287768462addcc63a949f1",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/CLIExecutor.swift": {
-    "mtime": 1783821682.5625453,
+    "mtime": 1784155845.4006708,
     "ast_hash": "4374db39b3e7279ada7526ba1b07e122",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/ClaudeUsageProbe.swift": {
-    "mtime": 1783823006.0070975,
+    "mtime": 1784155845.4011378,
     "ast_hash": "bf0d9f23167c4f89bbf81bee8b3da86f",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/CodexRPCClient.swift": {
-    "mtime": 1783812862.5048695,
-    "ast_hash": "e1f8b55214f8aa0930a3df5518c52729",
+    "mtime": 1784155845.4016612,
+    "ast_hash": "2b3635000f22b829155583d0a2717e26",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/CodexUsageProbe.swift": {
-    "mtime": 1783812875.4838755,
-    "ast_hash": "cc060f6b4257c90a16889c0c685c3781",
+    "mtime": 1784155845.4019108,
+    "ast_hash": "f2420656cdbb3cae803a2b755408a105",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/DefaultCLIExecutor.swift": {
-    "mtime": 1783821689.511277,
+    "mtime": 1784155845.402141,
     "ast_hash": "31792ea914e5204c3de3b1eca8939264",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/InteractiveRunner.swift": {
-    "mtime": 1783821721.6428602,
+    "mtime": 1784155845.4024725,
     "ast_hash": "213e7b7f8ea7211f5eba4ea52cf6b9fd",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/ProcessRPCTransport.swift": {
-    "mtime": 1783800707.7098293,
+    "mtime": 1784155845.4027019,
     "ast_hash": "ed386f7daf96dbca713835e17e71171e",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/RPCTransport.swift": {
-    "mtime": 1783800695.8166473,
+    "mtime": 1784155845.4029307,
     "ast_hash": "ec03f535fedd4e88c860a709503b478e",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/Shell.swift": {
-    "mtime": 1783800672.5769494,
+    "mtime": 1784155845.4031281,
     "ast_hash": "59b7ed1ed1c3c963c0f26235e9ba3c13",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/TerminalRenderer.swift": {
-    "mtime": 1783800672.584547,
+    "mtime": 1784155845.4033082,
     "ast_hash": "4e5a6e82f3f945ea2d626c97f75988f1",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/UsageLog.swift": {
-    "mtime": 1783800665.6962602,
+    "mtime": 1784155845.4034958,
     "ast_hash": "31d06aa15747ca63485dbb971e41c7a3",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/UsageModels.swift": {
-    "mtime": 1783800726.692832,
+    "mtime": 1784155845.4037504,
     "ast_hash": "9e9461ec72ddb700d6e2120a6569be2d",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageProbes/UsageProbeService.swift": {
-    "mtime": 1783800893.3464904,
+    "mtime": 1784155845.4039378,
     "ast_hash": "cd03ebaad6ef32b482f3e4169315a20a",
     "semantic_hash": ""
   },
   "BoringNotchXPCHelper/UsageReportDTO.swift": {
-    "mtime": 1783800872.2856863,
+    "mtime": 1784155845.404119,
     "ast_hash": "9fd55941b69d4cbf5360e73af90e0833",
     "semantic_hash": ""
   },
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "boringNotch/ContentView.swift": {
-    "mtime": 1783824002.6425977,
-    "ast_hash": "cc77d93e10344787e6f602fe1682061e",
+    "mtime": 1786563543.4046142,
+    "ast_hash": "b6d5d9f9c9566d531e9f480691568700",
     "semantic_hash": ""
   },
   "boringNotch/MediaControllers/AppleMusicController.swift": {
@@ -240,22 +240,22 @@
     "semantic_hash": ""
   },
   "boringNotch/Shortcuts/ShortcutConstants.swift": {
-    "mtime": 1780941336.472028,
-    "ast_hash": "6f9fed6d0f700054c1a693b9b1d77895",
+    "mtime": 1786213217.0658033,
+    "ast_hash": "f510f3fc905313e2a6b10989e4149e72",
     "semantic_hash": ""
   },
   "boringNotch/XPCHelperClient/BoringNotchXPCHelperProtocol.swift": {
-    "mtime": 1783800913.538436,
+    "mtime": 1784155845.4060295,
     "ast_hash": "18c67ee103d92058772cadac260a0064",
     "semantic_hash": ""
   },
   "boringNotch/XPCHelperClient/UsageReportDTO.swift": {
-    "mtime": 1783800878.6023564,
+    "mtime": 1784155845.4061363,
     "ast_hash": "9fd55941b69d4cbf5360e73af90e0833",
     "semantic_hash": ""
   },
   "boringNotch/XPCHelperClient/XPCHelperClient.swift": {
-    "mtime": 1783801095.2104514,
+    "mtime": 1784155845.4064407,
     "ast_hash": "da0563d38d44d4bb525edad1682df187",
     "semantic_hash": ""
   },
@@ -270,8 +270,8 @@
     "semantic_hash": ""
   },
   "boringNotch/boringNotchApp.swift": {
-    "mtime": 1783829499.0582361,
-    "ast_hash": "16c007dc23940f661f50716fd6c92097",
+    "mtime": 1786563543.4058347,
+    "ast_hash": "93f954a5719d3f914e7bc5363d63f240",
     "semantic_hash": ""
   },
   "boringNotch/components/AnimatedFace.swift": {
@@ -285,8 +285,8 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Calendar/BoringCalendar.swift": {
-    "mtime": 1783828697.1186981,
-    "ast_hash": "b34e11d69c80d5685029833101754e14",
+    "mtime": 1785873705.817688,
+    "ast_hash": "3f45b0933ce056611c4039f1a45ff73f",
     "semantic_hash": ""
   },
   "boringNotch/components/EmptyState.swift": {
@@ -310,7 +310,7 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Live activities/InlineHUD.swift": {
-    "mtime": 1780950962.5712163,
+    "mtime": 1784155845.4078097,
     "ast_hash": "2a2cc74bc62d702a54aae9e8b9c2685d",
     "semantic_hash": ""
   },
@@ -355,13 +355,13 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Notch/BoringHeader.swift": {
-    "mtime": 1783801379.2804286,
-    "ast_hash": "7a1685487ed9eca2ce5abac120741aae",
+    "mtime": 1786551482.2363338,
+    "ast_hash": "4f77abd6e27f3bba1574c535b1e42e7a",
     "semantic_hash": ""
   },
   "boringNotch/components/Notch/BoringNotchSkyLightWindow.swift": {
-    "mtime": 1780941336.4743402,
-    "ast_hash": "a107c48a7040c4dfdf843e3c597c37c6",
+    "mtime": 1785874920.4627516,
+    "ast_hash": "8ced3ecf0cc412c1b9ed7afaab5406e4",
     "semantic_hash": ""
   },
   "boringNotch/components/Notch/BoringNotchWindow.swift": {
@@ -370,7 +370,7 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Notch/NotchHomeView.swift": {
-    "mtime": 1780948617.8974817,
+    "mtime": 1784155845.408493,
     "ast_hash": "6bdde07840bca650a92a300dfbd6cd25",
     "semantic_hash": ""
   },
@@ -410,8 +410,8 @@
     "semantic_hash": ""
   },
   "boringNotch/components/ProgressIndicator.swift": {
-    "mtime": 1780941336.4751532,
-    "ast_hash": "ce13bf974308cbd895ad09a04ea695fe",
+    "mtime": 1785873485.9008832,
+    "ast_hash": "96c22dfe01f90f63549bc8dafa8bfca3",
     "semantic_hash": ""
   },
   "boringNotch/components/Settings/EditPanelView.swift": {
@@ -430,13 +430,13 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Settings/SettingsView.swift": {
-    "mtime": 1783819563.8349817,
-    "ast_hash": "963ee814ce1d4968850771abc5858ef6",
+    "mtime": 1786564564.1845543,
+    "ast_hash": "2f4785c085dcfef9dae201b25e5b20a7",
     "semantic_hash": ""
   },
   "boringNotch/components/Settings/SettingsWindowController.swift": {
-    "mtime": 1780941336.475669,
-    "ast_hash": "77bd82da66143281a12708d393aecfd4",
+    "mtime": 1786559543.1440775,
+    "ast_hash": "5941d28d407aba6b90d0f17f1fb17dc9",
     "semantic_hash": ""
   },
   "boringNotch/components/Settings/SoftwareUpdater.swift": {
@@ -445,7 +445,7 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Settings/UsageMonitorSettings.swift": {
-    "mtime": 1783819655.014434,
+    "mtime": 1784155845.4095194,
     "ast_hash": "8ee0d07cf0686efa6dabbec2b12bab94",
     "semantic_hash": ""
   },
@@ -465,18 +465,13 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/Services/QuickLookService.swift": {
-    "mtime": 1780941336.4760106,
-    "ast_hash": "857cc6df19a9a8706c26058eb87235b1",
+    "mtime": 1786564539.1415043,
+    "ast_hash": "cf5b6373b23830ce69421b4bc91d9557",
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/Services/QuickShareService.swift": {
-    "mtime": 1780941336.4760752,
-    "ast_hash": "b446017270198551331d964e2b4db0da",
-    "semantic_hash": ""
-  },
-  "boringNotch/components/Shelf/Services/ShareServiceFinder.swift": {
-    "mtime": 1780941336.476124,
-    "ast_hash": "ec4f35dd5368dcaddb855d00197010af",
+    "mtime": 1786568189.5386605,
+    "ast_hash": "c47a38d056f80657b387070f0efe499c",
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/Services/ShelfActionService.swift": {
@@ -505,18 +500,18 @@
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/ViewModels/ShelfItemViewModel.swift": {
-    "mtime": 1780941336.476492,
-    "ast_hash": "23e85e6d03f45a41260581c90cc06a24",
+    "mtime": 1786564954.400656,
+    "ast_hash": "f9e9608a9e25ee929c4974493dc34427",
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/ViewModels/ShelfSelectionModel.swift": {
-    "mtime": 1780941336.4767208,
-    "ast_hash": "c40c091c932bb792381a4a07eba93fc4",
+    "mtime": 1786564952.7879024,
+    "ast_hash": "91631da4d0db4228387461cb2ab7b24f",
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/ViewModels/ShelfStateViewModel.swift": {
-    "mtime": 1780941336.4767668,
-    "ast_hash": "261f438e57eaf3fba6a96056127109b5",
+    "mtime": 1786572460.5523849,
+    "ast_hash": "8a21fed39ec80efd938a3abe1d8c1eba",
     "semantic_hash": ""
   },
   "boringNotch/components/Shelf/Views/DragPreviewView.swift": {
@@ -524,29 +519,19 @@
     "ast_hash": "04806ad0d8b1a6eb8004c9ef3708254c",
     "semantic_hash": ""
   },
-  "boringNotch/components/Shelf/Views/FileShareView.swift": {
-    "mtime": 1780941336.4768744,
-    "ast_hash": "04a7d046168f38f86603a16a023a772f",
-    "semantic_hash": ""
-  },
-  "boringNotch/components/Shelf/Views/ShelfItemView.swift": {
-    "mtime": 1780941336.476948,
-    "ast_hash": "9a12db6c12e00fe6a17253215512105e",
-    "semantic_hash": ""
-  },
   "boringNotch/components/Shelf/Views/ShelfView.swift": {
-    "mtime": 1780941336.476999,
-    "ast_hash": "b6aebfa4b372f557c54e64a5fd69ba81",
+    "mtime": 1786572461.927667,
+    "ast_hash": "ad419093c2469d76600785d20276e227",
     "semantic_hash": ""
   },
   "boringNotch/components/Tabs/TabButton.swift": {
-    "mtime": 1783812811.61225,
+    "mtime": 1784155845.409803,
     "ast_hash": "f987cfa264b9bc72edc85855ce5fcd0c",
     "semantic_hash": ""
   },
   "boringNotch/components/Tabs/TabSelectionView.swift": {
-    "mtime": 1783812804.955175,
-    "ast_hash": "036d1977588d221ad5bf0fca0eccac0a",
+    "mtime": 1786551482.2358975,
+    "ast_hash": "6a42562f19d29241152a3b12e34fe222",
     "semantic_hash": ""
   },
   "boringNotch/components/TestView.swift": {
@@ -560,13 +545,13 @@
     "semantic_hash": ""
   },
   "boringNotch/components/UsageMonitor/UsageMonitorView.swift": {
-    "mtime": 1783852739.577206,
-    "ast_hash": "5282f9a4fde8d3bf6a0a5d0071beac7a",
+    "mtime": 1784155845.4105325,
+    "ast_hash": "4380e07e1ed46439c902554dd9c0016f",
     "semantic_hash": ""
   },
   "boringNotch/components/UsageMonitor/UsageNotchBadge.swift": {
-    "mtime": 1783848933.6222596,
-    "ast_hash": "575d319b78655e4875ef1b9f17418e6e",
+    "mtime": 1784155845.410786,
+    "ast_hash": "7e3bf301849d8efed79702aac1e57e75",
     "semantic_hash": ""
   },
   "boringNotch/components/Webcam/WebcamView.swift": {
@@ -580,8 +565,8 @@
     "semantic_hash": ""
   },
   "boringNotch/enums/generic.swift": {
-    "mtime": 1783801123.603385,
-    "ast_hash": "cdbfc36f2f8ef76a449c8a67039eef5e",
+    "mtime": 1785873344.6488764,
+    "ast_hash": "b5a3cbec0655a26a61aa707282fca5d4",
     "semantic_hash": ""
   },
   "boringNotch/extensions/ActionBar.swift": {
@@ -655,7 +640,7 @@
     "semantic_hash": ""
   },
   "boringNotch/helpers/AppIcons.swift": {
-    "mtime": 1780948601.902015,
+    "mtime": 1784155845.4113927,
     "ast_hash": "6f5ddf372677bd4fdfa28c6c59bf6439",
     "semantic_hash": ""
   },
@@ -690,7 +675,7 @@
     "semantic_hash": ""
   },
   "boringNotch/helpers/MeetingLinkResolver.swift": {
-    "mtime": 1783852368.342599,
+    "mtime": 1784155845.4115794,
     "ast_hash": "6bf30271fa971b804cf7628cd9b2d3eb",
     "semantic_hash": ""
   },
@@ -725,7 +710,7 @@
     "semantic_hash": ""
   },
   "boringNotch/managers/UsageMonitorManager.swift": {
-    "mtime": 1783852345.3186913,
+    "mtime": 1784155845.4117846,
     "ast_hash": "31ac59e19292ef12ebfabd5c93b8f7cc",
     "semantic_hash": ""
   },
@@ -765,12 +750,12 @@
     "semantic_hash": ""
   },
   "boringNotch/models/Constants.swift": {
-    "mtime": 1783852325.699291,
-    "ast_hash": "1096e5d93ff4a30f7deac8c69d8df006",
+    "mtime": 1786564219.365828,
+    "ast_hash": "e4f2d6458b383d533e3c6389b65e7683",
     "semantic_hash": ""
   },
   "boringNotch/models/EventModel.swift": {
-    "mtime": 1780948580.6224759,
+    "mtime": 1784155845.4123669,
     "ast_hash": "5139013b6a3a6fadba5c0508582a445d",
     "semantic_hash": ""
   },
@@ -810,8 +795,8 @@
     "semantic_hash": ""
   },
   "boringNotch/sizing/matters.swift": {
-    "mtime": 1780943134.8255444,
-    "ast_hash": "281c364ec62a98d588c4eba98b7dc665",
+    "mtime": 1785874954.2894056,
+    "ast_hash": "685483b23fb5e403d57c6cefa630eff1",
     "semantic_hash": ""
   },
   "boringNotch/utils/Logger.swift": {
@@ -820,8 +805,8 @@
     "semantic_hash": ""
   },
   "scripts/deploy.sh": {
-    "mtime": 1783813030.978732,
-    "ast_hash": "7ff304ef6dc9a48bc72eddea4d415346",
+    "mtime": 1786551710.6173656,
+    "ast_hash": "6823baad0e53edb2aa47f6d7d4a287ce",
     "semantic_hash": ""
   },
   ".github/FUNDING.yml": {
@@ -830,13 +815,13 @@
     "semantic_hash": ""
   },
   ".github/ISSUE_TEMPLATE/1-bug-report-form.yml": {
-    "mtime": 1780941336.463082,
-    "ast_hash": "1a25cf290efbbf7b86fa7aeeb0c356ea",
+    "mtime": 1784155850.5118632,
+    "ast_hash": "fcd35a453b1f11870c2e6281f8ef4c3a",
     "semantic_hash": ""
   },
   ".github/ISSUE_TEMPLATE/1-feature-request-form.yml": {
-    "mtime": 1780941336.4631338,
-    "ast_hash": "1d9b955356f5a20160fd0570f7a34e61",
+    "mtime": 1784155850.512295,
+    "ast_hash": "7b8dc98fa008f9712dc478d5abec5371",
     "semantic_hash": ""
   },
   ".github/ISSUE_TEMPLATE/config.yml": {
@@ -875,13 +860,13 @@
     "semantic_hash": ""
   },
   ".github/workflows/build_reusable.yml": {
-    "mtime": 1780941336.4637916,
-    "ast_hash": "922a45e0f41de5e3fb5856800bebd98c",
+    "mtime": 1784155850.5127923,
+    "ast_hash": "c8c4512896bf96cacebbd43e71612656",
     "semantic_hash": ""
   },
   ".github/workflows/cicd.yml": {
-    "mtime": 1780941336.463847,
-    "ast_hash": "e647aa8fc9dc8e4e50d0ac2127a6c57f",
+    "mtime": 1784155850.512968,
+    "ast_hash": "28e05625d219886c9b4b5fd9a7015524",
     "semantic_hash": ""
   },
   ".github/workflows/crowdin.yml": {
@@ -895,18 +880,18 @@
     "semantic_hash": ""
   },
   ".github/workflows/release.yml": {
-    "mtime": 1780941336.464014,
-    "ast_hash": "23b900975bd8a05eeef7c4d37ee2dc72",
+    "mtime": 1784155850.5134284,
+    "ast_hash": "400cb1d2cac0b283e8bd9b7722bc123d",
     "semantic_hash": ""
   },
   ".github/workflows/static.yml": {
-    "mtime": 1780941336.4640884,
-    "ast_hash": "fbcbed5a18703f63fd7d788e24c92397",
+    "mtime": 1784155850.513644,
+    "ast_hash": "a2c5a98e1feda18cbe54c2902849773b",
     "semantic_hash": ""
   },
   ".github/workflows/update-version-dropdown.yml": {
-    "mtime": 1780941336.4641502,
-    "ast_hash": "5bf54f747b7ab53cba3fcf46573e6b2c",
+    "mtime": 1784155850.5138295,
+    "ast_hash": "871c99a12749139e87752fc987aac8fd",
     "semantic_hash": ""
   },
   "CONTRIBUTING.md": {
@@ -915,13 +900,13 @@
     "semantic_hash": ""
   },
   "Configuration/dmg/requirements.txt": {
-    "mtime": 1780941336.4648705,
-    "ast_hash": "2c623ee19e93bc9f49160d6162585d61",
+    "mtime": 1784155850.514023,
+    "ast_hash": "a666fa624b8a77415ef02498dae86598",
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1780941336.4650679,
-    "ast_hash": "1309f20bc91c125506c1f5e34d872a9d",
+    "mtime": 1784155850.5143642,
+    "ast_hash": "cabb35b50b5481e682e5897b0945ac68",
     "semantic_hash": ""
   },
   "SECURITY.md": {
@@ -1052,6 +1037,76 @@
   "boringNotch/boring.m4a": {
     "mtime": 1780941336.472665,
     "ast_hash": "0cd61eb3b9977d6d5c84fa1a01126b98",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Pomodoro/PomodoroModels.swift": {
+    "mtime": 1786213917.9390283,
+    "ast_hash": "3fec6cdd0c186e2ac2681b042ba20413",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Pomodoro/PomodoroNotchBadge.swift": {
+    "mtime": 1786212934.1940439,
+    "ast_hash": "fe1e302ac104302d42478ad1a7e78701",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Pomodoro/PomodoroPlanner.swift": {
+    "mtime": 1785873337.0363631,
+    "ast_hash": "2aee64dde1a7c0c8414bb2da9357f59b",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Pomodoro/PomodoroView.swift": {
+    "mtime": 1786213217.0661263,
+    "ast_hash": "90bc136f8942f6da0b08d4da7e57b197",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Settings/PomodoroSettings.swift": {
+    "mtime": 1786213917.9415622,
+    "ast_hash": "2628b14ceb542deaaf9da7382e2411be",
+    "semantic_hash": ""
+  },
+  "boringNotch/managers/PomodoroManager.swift": {
+    "mtime": 1785873472.9555745,
+    "ast_hash": "36216c416e7a1482b7e72d3d3da3234b",
+    "semantic_hash": ""
+  },
+  "boringNotch/boringNotch-Bridging-Header.h": {
+    "mtime": 1786566222.6989915,
+    "ast_hash": "85713144974b04bfbf01a5c53c6afced",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/KDECertificateServiceHelper.h": {
+    "mtime": 1786567988.0950594,
+    "ast_hash": "5a7d3331df82a73df9361fe2b3c22cb0",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/KDECertificateServiceHelper.m": {
+    "mtime": 1786567988.0955122,
+    "ast_hash": "615200f50d4150425291e94381133450",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Services/ShelfItemMetadataCache.swift": {
+    "mtime": 1786564712.226578,
+    "ast_hash": "b1ae282e3ec0a4a70bd727a080afeebd",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfDragHandler.swift": {
+    "mtime": 1786564877.145132,
+    "ast_hash": "3d88d4dc261cb87992e8bea5f635c297",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfQueueChip.swift": {
+    "mtime": 1786572362.1892426,
+    "ast_hash": "35d06974b19215c03efaa2c7e27a7369",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfSendBar.swift": {
+    "mtime": 1786572467.256377,
+    "ast_hash": "cc75898474c4c88d86b6d6c85670d339",
+    "semantic_hash": ""
+  },
+  "boringNotch/components/Shelf/Views/ShelfToolbar.swift": {
+    "mtime": 1786564719.1988585,
+    "ast_hash": "c0c5900cf6e464585ac82898709e746c",
     "semantic_hash": ""
   }
 }
