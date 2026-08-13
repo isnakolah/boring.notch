@@ -20,7 +20,8 @@ struct SettingsView: View {
 
     let updaterController: SPUStandardUpdaterController?
 
-    init(updaterController: SPUStandardUpdaterController? = nil) {
+    init(initialTab: String = "General", updaterController: SPUStandardUpdaterController? = nil) {
+        _selectedTab = State(initialValue: initialTab)
         self.updaterController = updaterController
     }
 
@@ -52,7 +53,10 @@ struct SettingsView: View {
                     Label("Shelf", systemImage: "books.vertical")
                 }
                 NavigationLink(value: "Usage") {
-                    Label("Usage", systemImage: "gauge.with.needle")
+                    Label("Usage", systemImage: "chart.bar.xaxis")
+                }
+                NavigationLink(value: "Pomodoro") {
+                    Label("Pomodoro", systemImage: "timer.circle.fill")
                 }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
@@ -90,6 +94,8 @@ struct SettingsView: View {
                     Shelf()
                 case "Usage":
                     UsageMonitorSettings()
+                case "Pomodoro":
+                    PomodoroSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
@@ -925,16 +931,13 @@ struct About: View {
 struct Shelf: View {
     
     @Default(.shelfTapToOpen) var shelfTapToOpen: Bool
-    @Default(.quickShareProvider) var quickShareProvider
     @Default(.expandedDragDetection) var expandedDragDetection: Bool
     @StateObject private var quickShareService = QuickShareService.shared
-
-    private var selectedProvider: QuickShareProvider? {
-        quickShareService.availableProviders.first(where: { $0.id == quickShareProvider })
-    }
+    @StateObject private var kdeConnectService = KDEConnectService.shared
     
     init() {
-        Task { await QuickShareService.shared.discoverAvailableProviders() }
+        QuickShareService.shared.refreshDiscovery()
+        KDEConnectService.shared.refreshDiscovery()
     }
     
     var body: some View {
@@ -961,6 +964,9 @@ struct Shelf: View {
                 Defaults.Toggle(key: .autoRemoveShelfItems) {
                     Text("Remove from shelf after dragging")
                 }
+                Defaults.Toggle(key: .shelfRemoveAfterSend) {
+                    Text("Remove from shelf after sending")
+                }
 
             } header: {
                 HStack {
@@ -969,65 +975,129 @@ struct Shelf: View {
             }
             
             Section {
-                Picker("Quick Share Service", selection: $quickShareProvider) {
-                    ForEach(quickShareService.availableProviders, id: \.id) { provider in
-                        HStack {
-                            Group {
-                                if let imgData = provider.imageData, let nsImg = NSImage(data: imgData) {
-                                    Image(nsImage: nsImg)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                } else {
-                                    Image(systemName: "square.and.arrow.up")
-                                }
-                            }
-                            .frame(width: 16, height: 16)
-                            .foregroundColor(.accentColor)
-                            Text(provider.id)
-                        }
-                        .tag(provider.id)
-                    }
+                ForEach(LocalSendDestination.allCases) { destination in
+                    localSendDestinationRow(destination)
                 }
-                .pickerStyle(.menu)
-                
-                if let selectedProvider = selectedProvider {
-                    HStack {
-                        Group {
-                            if let imgData = selectedProvider.imageData, let nsImg = NSImage(data: imgData) {
-                                Image(nsImage: nsImg)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                            } else {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                        }
-                        .frame(width: 16, height: 16)
-                        .foregroundColor(.accentColor)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Currently selected: \(selectedProvider.id)")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("Files dropped on the shelf will be shared via this service")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
+
+                Button {
+                    quickShareService.refreshDiscovery()
+                } label: {
+                    Label("Refresh nearby devices", systemImage: "arrow.clockwise")
                 }
-                // Providers are always enabled; user can pick default service above.
-                
+                .disabled(quickShareService.isDiscovering)
             } header: {
                 HStack {
-                    Text("Quick Share")
+                    Text("LocalSend")
                 }
             } footer: {
-                Text("Choose which service to use when sharing files from the shelf. Click the shelf button to select files, or drag files onto it to share immediately.")
+                Text("Shelf sends natively to paired LocalSend Phone or TV. Pair each receiver while LocalSend is open on same Wi-Fi. Context-menu Share… remains available as macOS fallback.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
+                ForEach(LocalSendDestination.allCases) { destination in
+                    kdeConnectDestinationRow(destination)
+                }
+
+                Button {
+                    kdeConnectService.refreshDiscovery()
+                } label: {
+                    Label("Refresh nearby devices", systemImage: "arrow.clockwise")
+                }
+                .disabled(kdeConnectService.isDiscovering)
+            } header: {
+                HStack {
+                    Text("KDE Connect")
+                }
+            } footer: {
+                Text("Shelf sends natively through KDE Connect. Pair once with matching code while KDE Connect is open on same Wi-Fi. Select KDE Connect from Shelf Send card before sending.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
         }
         .accentColor(.effectiveAccent)
         .navigationTitle("Shelf")
+    }
+
+    @ViewBuilder
+    private func localSendDestinationRow(_ destination: LocalSendDestination) -> some View {
+        let binding = quickShareService.binding(for: destination)
+        HStack(spacing: 10) {
+            Image(systemName: destination.symbolName)
+                .frame(width: 18)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(destination.title)
+                if let binding {
+                    Text("\(binding.device.alias)\(quickShareService.isOnline(destination) ? " · Online" : " · Offline")")
+                        .font(.caption)
+                        .foregroundStyle(quickShareService.isOnline(destination) ? .green : .secondary)
+                } else {
+                    Text("Not paired")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Menu(binding == nil ? "Pair" : "Replace") {
+                if quickShareService.nearbyDevices.isEmpty {
+                    Text("No nearby LocalSend devices")
+                } else {
+                    ForEach(quickShareService.nearbyDevices) { device in
+                        Button(device.displayName) {
+                            quickShareService.bind(device, to: destination)
+                        }
+                    }
+                }
+            }
+            if binding != nil {
+                Button("Unpair", role: .destructive) {
+                    quickShareService.unbind(destination)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func kdeConnectDestinationRow(_ destination: LocalSendDestination) -> some View {
+        let binding = kdeConnectService.binding(for: destination)
+        HStack(spacing: 10) {
+            Image(systemName: destination.symbolName)
+                .frame(width: 18)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(destination.title)
+                if let binding {
+                    Text("\(binding.device.name)\(kdeConnectService.isOnline(destination) ? " · Online" : " · Offline")")
+                        .font(.caption)
+                        .foregroundStyle(kdeConnectService.isOnline(destination) ? .green : .secondary)
+                } else {
+                    Text("Not paired")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            Menu(binding == nil ? "Pair" : "Replace") {
+                if kdeConnectService.nearbyDevices.isEmpty {
+                    Text("No nearby KDE Connect devices")
+                } else {
+                    ForEach(kdeConnectService.nearbyDevices) { device in
+                        Button(device.displayName) {
+                            kdeConnectService.beginPair(device, to: destination)
+                        }
+                    }
+                }
+            }
+            if binding != nil {
+                Button("Forget", role: .destructive) {
+                    kdeConnectService.unbind(destination)
+                }
+                .buttonStyle(.borderless)
+            }
+        }
     }
 }
 

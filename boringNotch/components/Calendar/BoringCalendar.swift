@@ -271,6 +271,8 @@ struct EventListView: View {
     let events: [EventModel]
     @Default(.autoScrollToNextEvent) private var autoScrollToNextEvent
     @Default(.showFullEventTitles) private var showFullEventTitles
+    @Default(.pomodoroTab) private var pomodoroTab
+    @Default(.pomodoroCalendarIcon) private var pomodoroCalendarIcon
 
 
     static func filteredEvents(events: [EventModel]) -> [EventModel] {
@@ -315,28 +317,13 @@ struct EventListView: View {
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 4) {
                     ForEach(filteredEvents) { event in
-                        Button(action: {
-                            // Events with a video call open the call directly; everything
-                            // else falls back to opening the event in the calendar app.
-                            if let url = event.videoCallURL ?? event.calendarAppURL() {
-                                // Prefer the native meeting app (Zoom/Teams) when the
-                                // setting is on. Sandbox can't check installation up
-                                // front, so attempt the app URL and fall back to the
-                                // browser if no handler accepts it.
-                                if Defaults[.openMeetingsInApp],
-                                   let native = MeetingLinkResolver.nativeURL(for: url),
-                                   NSWorkspace.shared.open(native) {
-                                    // opened in the native app
-                                } else {
-                                    openURL(url)
-                                }
-                            }
-                        }) {
-                            eventRow(event)
-                                .contentShape(Rectangle())
-                        }
-                        .id(event.id)
-                        .buttonStyle(PlainButtonStyle())
+                        // A tap gesture rather than a Button wrapper: the row now
+                        // holds its own timer Button, and nested buttons do not
+                        // hit-test reliably on macOS.
+                        eventRow(event)
+                            .contentShape(Rectangle())
+                            .onTapGesture { openEvent(event) }
+                            .id(event.id)
                     }
                 }
                 .padding(.trailing, 4)
@@ -351,6 +338,41 @@ struct EventListView: View {
                 scrollToRelevantEvent(proxy: proxy)
             }
         }
+    }
+
+    /// Events with a video call open the call directly; everything else falls
+    /// back to opening the event in the calendar app.
+    private func openEvent(_ event: EventModel) {
+        guard let url = event.videoCallURL ?? event.calendarAppURL() else { return }
+        // Prefer the native meeting app (Zoom/Teams) when the setting is on.
+        // Sandbox can't check installation up front, so attempt the app URL and
+        // fall back to the browser if no handler accepts it.
+        if Defaults[.openMeetingsInApp],
+           let native = MeetingLinkResolver.nativeURL(for: url),
+           NSWorkspace.shared.open(native) {
+            // opened in the native app
+        } else {
+            openURL(url)
+        }
+    }
+
+    /// Turns the event's remaining time window into a Pomodoro plan and starts
+    /// it, then jumps the notch to the timer.
+    private func startPomodoro(for event: EventModel) {
+        let preset = PomodoroManager.shared.selectedPreset
+        let blocks = PomodoroPlanner.plan(for: event, preset: preset)
+        guard !blocks.isEmpty else { return }
+        PomodoroManager.shared.start(
+            blocks: blocks,
+            preset: preset,
+            title: event.title,
+            sourceEventID: event.id
+        )
+        BoringViewCoordinator.shared.currentView = .pomodoro
+    }
+
+    private func canStartPomodoro(for event: EventModel) -> Bool {
+        pomodoroTab && pomodoroCalendarIcon && !event.isAllDay && event.eventStatus != .ended
     }
 
     // Soft, leading-aligned color wash behind a card, tinted by the event's calendar.
@@ -415,6 +437,9 @@ struct EventListView: View {
         } else {
             let isInProgress = event.eventStatus == .inProgress
             let isEnded = event.eventStatus == .ended && Calendar.current.isDateInToday(event.start)
+            // Computed once per row: the accessor runs NSDataDetector over the
+            // event's notes, which is far too expensive to repeat per body pass.
+            let videoCallURL = event.videoCallURL
             return AnyView(
                 HStack(spacing: 10) {
                     // Full-height status accent — brighter for the event happening now.
@@ -456,10 +481,25 @@ struct EventListView: View {
                     }
                     Spacer(minLength: 0)
                     // Affordance hinting that tapping this event joins its video call.
-                    if event.videoCallURL != nil {
+                    if videoCallURL != nil {
                         Image(systemName: "video.fill")
                             .font(.system(size: 9.5))
                             .foregroundColor(barColor)
+                    }
+                    // Its own hit target — unlike the video glyph, this does
+                    // something different from tapping the row.
+                    if canStartPomodoro(for: event) {
+                        Button {
+                            startPomodoro(for: event)
+                        } label: {
+                            Image(systemName: "timer")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(.white.opacity(0.55))
+                                .frame(width: 16, height: 16)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Start a focus timer for this event")
                     }
                 }
                 .padding(.horizontal, 8)

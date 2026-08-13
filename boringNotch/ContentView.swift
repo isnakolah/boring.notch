@@ -7,6 +7,7 @@
 //
 
 import AVFoundation
+import AppKit
 import Combine
 import Defaults
 import KeyboardShortcuts
@@ -23,7 +24,9 @@ struct ContentView: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
+    @ObservedObject var pomodoro = PomodoroManager.shared
     @State private var hoverTask: Task<Void, Never>?
+    @State private var pomodoroAutoCloseTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
@@ -65,6 +68,9 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
+        } else if pomodoro.isActive && vm.notchState == .closed && !vm.hideOnClosed {
+            // Room for the phase ring and the "20m 15s" countdown.
+            chinWidth += 150
         } else if Defaults[.showUsageBesideNotch] && vm.notchState == .closed && !vm.hideOnClosed {
             // Room for a "CLAUDE 23/38" badge on each side of the notch.
             chinWidth += 150
@@ -94,7 +100,14 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 let mainLayout = NotchLayout()
-                    .frame(alignment: .top)
+                    // Pin the open content to the full open height instead of
+                    // letting it size to whatever the current tab needs —
+                    // otherwise the notch changes height as you switch tabs.
+                    // The 12 accounts for the bottom padding applied below.
+                    .frame(
+                        height: vm.notchState == .open ? max(0, vm.notchSize.height - 12) : nil,
+                        alignment: .top
+                    )
                     .padding(
                         .horizontal,
                         vm.notchState == .open
@@ -290,6 +303,18 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if pomodoro.isActive && vm.notchState == .closed && !vm.hideOnClosed {
+                          // A live session owns this slot; the usage badges come
+                          // back the moment it ends.
+                          PomodoroNotchBadge(
+                              notchWidth: vm.closedNotchSize.width - 20,
+                              height: vm.effectiveClosedNotchHeight,
+                              onBadgeHover: {
+                                  coordinator.currentView = .pomodoro
+                                  doOpen()
+                              }
+                          )
+                          .transition(.opacity)
                       } else if Defaults[.showUsageBesideNotch] && vm.notchState == .closed && !vm.hideOnClosed {
                           UsageNotchBadges(
                               notchWidth: vm.closedNotchSize.width - 20,
@@ -365,6 +390,8 @@ struct ContentView: View {
                         ShelfView()
                     case .usage:
                         UsageMonitorView()
+                    case .pomodoro:
+                        PomodoroView()
                     }
                 }
                 .transition(
@@ -377,7 +404,48 @@ struct ContentView: View {
                 .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
             }
         }
-        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting))
+        .onDrop(
+            of: [.fileURL, .url, .utf8PlainText, .plainText, .data],
+            delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting) { providers in
+                // Root drop target covers closed notch. It must accept instead
+                // of cancelling, otherwise it shadows the background detector.
+                coordinator.currentView = .shelf
+                vm.dropEvent = true
+                doOpen()
+                ShelfStateViewModel.shared.load(providers)
+                Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
+            }
+        )
+        .onReceive(NotificationCenter.default.publisher(for: .pomodoroPhaseEnded)) { _ in
+            showPomodoroPhaseChange()
+        }
+        .onChange(of: vm.notchState) { _, state in
+            // Only an open notch may host a caret. Closing hands the keyboard
+            // back to whatever the user was actually working in.
+            BoringNotchSkyLightWindow.acceptsKeyFocus = state == .open
+            if state == .closed {
+                NSApp.deactivate()
+            }
+        }
+    }
+
+    /// A finished phase pops the notch open on the Pomodoro tab, then gets out
+    /// of the way — a notch that stays open after every break is worse than no
+    /// popup at all. Hovering keeps it up.
+    private func showPomodoroPhaseChange() {
+        coordinator.currentView = .pomodoro
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) {
+            vm.open()
+        }
+
+        pomodoroAutoCloseTask?.cancel()
+        pomodoroAutoCloseTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, !isHovering, vm.notchState == .open else { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
+                vm.close()
+            }
+        }
     }
 
     @ViewBuilder
@@ -496,6 +564,25 @@ struct ContentView: View {
                 alignment: .center
             )
         }
+        // SwiftUI `onDrop` is unreliable in our non-activating transparent
+        // panel while closed. Native AppKit drag registration owns that state.
+        .overlay {
+            NotchFileDropTarget(
+                enabled: Defaults[.boringShelf],
+                onEntered: {
+                    guard vm.notchState == .closed else { return }
+                    coordinator.currentView = .shelf
+                    doOpen()
+                },
+                onDrop: { providers in
+                    coordinator.currentView = .shelf
+                    vm.dropEvent = true
+                    doOpen()
+                    ShelfStateViewModel.shared.load(providers)
+                    Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
+                }
+            )
+        }
         .frame(
             height: vm.effectiveClosedNotchHeight,
             alignment: .center
@@ -509,8 +596,14 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
+            // A completed drop is authoritative. Open Shelf here rather than
+            // relying on `isTargeted`, which becomes false before providers
+            // finish loading and used to leave a closed notch behind.
+            coordinator.currentView = .shelf
             vm.dropEvent = true
+            doOpen()
             ShelfStateViewModel.shared.load(providers)
+            Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
             return true
         }
         } else {
@@ -649,6 +742,7 @@ struct FullScreenDropDelegate: DropDelegate {
 
 struct GeneralDropTargetDelegate: DropDelegate {
     @Binding var isTargeted: Bool
+    let onDrop: ([NSItemProvider]) -> Void
 
     func dropEntered(info: DropInfo) {
         isTargeted = true
@@ -659,11 +753,83 @@ struct GeneralDropTargetDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .cancel)
+        DropProposal(operation: .copy)
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        return false
+        isTargeted = false
+        let providers = info.itemProviders(for: [.fileURL, .url, .utf8PlainText, .plainText, .data])
+        guard !providers.isEmpty else { return false }
+        onDrop(providers)
+        return true
+    }
+}
+
+/// AppKit destination for Finder drags over the closed non-activating notch.
+/// SwiftUI's drop bridge does not reliably receive those drags on this panel.
+private struct NotchFileDropTarget: NSViewRepresentable {
+    let enabled: Bool
+    let onEntered: () -> Void
+    let onDrop: ([NSItemProvider]) -> Void
+
+    func makeNSView(context: Context) -> NativeNotchDropView {
+        let view = NativeNotchDropView()
+        view.update(enabled: enabled, onEntered: onEntered, onDrop: onDrop)
+        return view
+    }
+
+    func updateNSView(_ view: NativeNotchDropView, context: Context) {
+        view.update(enabled: enabled, onEntered: onEntered, onDrop: onDrop)
+    }
+}
+
+private final class NativeNotchDropView: NSView {
+    private var enabled = false
+    private var onEntered: (() -> Void)?
+    private var onDrop: (([NSItemProvider]) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        registerForDraggedTypes([.fileURL, .URL, .string])
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func update(enabled: Bool, onEntered: @escaping () -> Void, onDrop: @escaping ([NSItemProvider]) -> Void) {
+        self.enabled = enabled
+        self.onEntered = onEntered
+        self.onDrop = onDrop
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard enabled, !providers(from: sender.draggingPasteboard).isEmpty else { return [] }
+        DispatchQueue.main.async { [onEntered] in onEntered?() }
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        enabled && !providers(from: sender.draggingPasteboard).isEmpty ? .copy : []
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        enabled && !providers(from: sender.draggingPasteboard).isEmpty
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let providers = providers(from: sender.draggingPasteboard)
+        guard !providers.isEmpty else { return false }
+        DispatchQueue.main.async { [onDrop] in onDrop?(providers) }
+        return true
+    }
+
+    private func providers(from pasteboard: NSPasteboard) -> [NSItemProvider] {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            return urls.map { NSItemProvider(object: $0 as NSURL) }
+        }
+        if let string = pasteboard.string(forType: .string), !string.isEmpty {
+            return [NSItemProvider(object: string as NSString)]
+        }
+        return []
     }
 }
 

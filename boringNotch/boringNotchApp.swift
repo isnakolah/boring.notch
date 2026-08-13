@@ -15,13 +15,17 @@ import SwiftUI
 
 @main
 struct DynamicNotchApp: App {
+    private static let pomodoroShortcutMigrationKey = "didMigratePomodoroStartPauseShortcutToT"
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @Default(.menubarIcon) var showMenuBarIcon
+    @Default(.pomodoroShowInMenuBar) var showPomodoroInMenuBar
+    @ObservedObject var pomodoro = PomodoroManager.shared
     @Environment(\.openWindow) var openWindow
 
     let updaterController: SPUStandardUpdaterController
 
     init() {
+        Self.migratePomodoroStartPauseShortcut()
         updaterController = SPUStandardUpdaterController(
             startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
@@ -29,8 +33,34 @@ struct DynamicNotchApp: App {
         SettingsWindowController.shared.setUpdaterController(updaterController)
     }
 
+    /// Existing installs persist the former Cmd+Shift+P default. Move that
+    /// exact default once, while leaving any user-chosen binding alone.
+    private static func migratePomodoroStartPauseShortcut() {
+        guard !UserDefaults.standard.bool(forKey: Self.pomodoroShortcutMigrationKey) else { return }
+        defer { UserDefaults.standard.set(true, forKey: Self.pomodoroShortcutMigrationKey) }
+
+        let formerDefault = KeyboardShortcuts.Shortcut(.p, modifiers: [.command, .shift])
+        let newDefault = KeyboardShortcuts.Shortcut(.t, modifiers: [.command, .shift])
+        if KeyboardShortcuts.getShortcut(for: .pomodoroStartPause) == formerDefault {
+            KeyboardShortcuts.setShortcut(newDefault, for: .pomodoroStartPause)
+        }
+    }
+
     var body: some Scene {
-        MenuBarExtra("boring.notch", systemImage: "sparkle", isInserted: $showMenuBarIcon) {
+        MenuBarExtra(isInserted: $showMenuBarIcon) {
+            if pomodoro.isActive {
+                Button(pomodoro.isRunning ? "Pause timer" : "Resume timer") {
+                    pomodoro.toggle()
+                }
+                Button("Skip to next block") { pomodoro.skip() }
+                Button("Stop timer") { pomodoro.stop() }
+                Divider()
+            } else if Defaults[.pomodoroTab] {
+                Button("Start focus timer") {
+                    pomodoro.start(preset: pomodoro.selectedPreset)
+                }
+                Divider()
+            }
             Button("Settings") {
                 DispatchQueue.main.async {
                     SettingsWindowController.shared.showWindow()
@@ -46,6 +76,16 @@ struct DynamicNotchApp: App {
                 NSApplication.shared.terminate(self)
             }
             .keyboardShortcut(KeyEquivalent("Q"), modifiers: .command)
+        } label: {
+            // A running session takes over the menu bar title so the countdown
+            // is readable without opening anything.
+            if showPomodoroInMenuBar && pomodoro.isActive {
+                Image(systemName: pomodoro.statusIcon)
+                Text(twoUnitString(pomodoro.remaining))
+                    .monospacedDigit()
+            } else {
+                Image(systemName: "sparkle")
+            }
         }
     }
 }
@@ -61,7 +101,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
     let vm: BoringViewModel = .init()
     @ObservedObject var coordinator = BoringViewCoordinator.shared
-    var quickShareService = QuickShareService.shared
+    var shelfShareService = ShelfShareService.shared
     var whatsNewWindow: NSWindow?
     var timer: Timer?
     var closeNotchTask: Task<Void, Never>?
@@ -356,6 +396,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     self?.onScreenUnlocked(notification)
                 }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .pomodoroStartPause) {
+            Task { @MainActor in PomodoroManager.shared.toggle() }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .pomodoroSkipPhase) {
+            Task { @MainActor in PomodoroManager.shared.skip() }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .pomodoroStopTimer) {
+            Task { @MainActor in PomodoroManager.shared.stop() }
         }
 
         KeyboardShortcuts.onKeyDown(for: .toggleSneakPeek) { [weak self] in

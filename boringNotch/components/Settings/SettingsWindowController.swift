@@ -91,6 +91,12 @@ class SettingsWindowController: NSWindowController {
             self?.window?.makeKeyAndOrderFront(nil)
         }
     }
+
+    func showShelfWindow() {
+        guard let window else { return }
+        window.contentView = NSHostingView(rootView: SettingsView(initialTab: "Shelf", updaterController: updaterController))
+        showWindow()
+    }
     
     override func close() {
         super.close()

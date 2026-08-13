@@ -109,6 +109,11 @@ class BoringNotchSkyLightWindow: NSPanel {
     
     private var observers: Set<AnyCancellable> = []
     
-    override var canBecomeKey: Bool { false }
+    /// Text fields in the notch (the Pomodoro session title) need the panel to
+    /// take key focus, but only while it is open — a closed notch stealing key
+    /// would pull the caret out of whatever the user is typing in.
+    nonisolated(unsafe) static var acceptsKeyFocus = false
+
+    override var canBecomeKey: Bool { Self.acceptsKeyFocus }
     override var canBecomeMain: Bool { false }
 }

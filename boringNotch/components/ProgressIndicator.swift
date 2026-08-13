@@ -11,13 +11,17 @@ import SwiftUI
 struct CircularProgressView: View {
     let progress: Double
     let color: Color
-    
+    /// 6pt suits a 20pt ring; the closed-notch badge draws a much smaller one
+    /// and needs a proportionally thinner stroke.
+    var lineWidth: CGFloat = 6
+    var trackOpacity: Double = 0.2
+
     var body: some View {
         ZStack {
             Circle()
                 .stroke(
-                    Color.white.opacity(0.2),
-                    lineWidth: 6
+                    Color.white.opacity(trackOpacity),
+                    lineWidth: lineWidth
                 )
             Circle()
                 .trim(from: 0, to: progress)
@@ -25,7 +29,7 @@ struct CircularProgressView: View {
                     color,
                     // 1
                     style: StrokeStyle(
-                        lineWidth: 6,
+                        lineWidth: lineWidth,
                         lineCap: .round
                     )
                 )
