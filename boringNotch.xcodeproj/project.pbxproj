@@ -7,11 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00A1B2C30000000000000001 /* ShelfItemMetadataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A1B2C30000000000000000 /* ShelfItemMetadataCache.swift */; };
+		00A1B2C30000000000000003 /* ShelfDragHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A1B2C30000000000000002 /* ShelfDragHandler.swift */; };
+		00A1B2C30000000000000005 /* ShelfQueueChip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A1B2C30000000000000004 /* ShelfQueueChip.swift */; };
+		00A1B2C30000000000000007 /* ShelfToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A1B2C30000000000000006 /* ShelfToolbar.swift */; };
+		00A1B2C30000000000000009 /* ShelfSendBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00A1B2C30000000000000008 /* ShelfSendBar.swift */; };
 		1100290C2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1100290B2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift */; };
 		110029272E84FD4C00035A57 /* TemporaryFileStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110029262E84FD4C00035A57 /* TemporaryFileStorageService.swift */; };
-		1100292A2E8691B400035A57 /* FileShareView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110029292E8691B400035A57 /* FileShareView.swift */; };
 		1100292E2E86940F00035A57 /* QuickShareService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1100292D2E86940F00035A57 /* QuickShareService.swift */; };
-		1113ABC52E80E27000EC13B2 /* ShelfItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1113ABC32E80E27000EC13B2 /* ShelfItemView.swift */; };
+		A1B2C3D4E5F6000000000001 /* KDECertificateServiceHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000003 /* KDECertificateServiceHelper.m */; };
+		A1B2C3D4E5F6000000000002 /* OpenSSL in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F6000000000007 /* OpenSSL */; };
 		1113ABC62E80E27000EC13B2 /* ShelfPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1113ABBE2E80E27000EC13B2 /* ShelfPersistenceService.swift */; };
 		1113ABC82E80E27000EC13B2 /* ShelfItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1113ABB72E80E27000EC13B2 /* ShelfItem.swift */; };
 		1113ABCA2E80E27000EC13B2 /* ShelfSelectionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1113ABC02E80E27000EC13B2 /* ShelfSelectionModel.swift */; };
@@ -49,7 +54,6 @@
 		118D1FD12E98FF5F00A2FF63 /* SharingStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */; };
 		118EBE252E92DCCB00D54B5A /* AssociatedObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE242E92DCCB00D54B5A /* AssociatedObject.swift */; };
 		118EBE272E92DE8400D54B5A /* NSMenu+AssociatedObject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE262E92DE7400D54B5A /* NSMenu+AssociatedObject.swift */; };
-		118EBE292E946B3F00D54B5A /* ShareServiceFinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE282E946B3F00D54B5A /* ShareServiceFinder.swift */; };
 		118EBE2D2E97165600D54B5A /* Bookmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE2C2E97165600D54B5A /* Bookmark.swift */; };
 		118EBE312E9717DB00D54B5A /* URL+SecurityScoped.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE302E9717DB00D54B5A /* URL+SecurityScoped.swift */; };
 		118EBE3B2E9720C500D54B5A /* ShelfStateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118EBE3A2E9720C500D54B5A /* ShelfStateViewModel.swift */; };
@@ -77,6 +81,12 @@
 		DDDD00010000000000000032 /* UsageMonitorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000031 /* UsageMonitorView.swift */; };
 		DDDD00010000000000000062 /* UsageNotchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000061 /* UsageNotchBadge.swift */; };
 		DDDD00010000000000000072 /* MeetingLinkResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000071 /* MeetingLinkResolver.swift */; };
+		DDDD00010000000000000082 /* PomodoroModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000081 /* PomodoroModels.swift */; };
+		DDDD00010000000000000092 /* PomodoroPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000091 /* PomodoroPlanner.swift */; };
+		DDDD000100000000000000A2 /* PomodoroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD000100000000000000A1 /* PomodoroView.swift */; };
+		DDDD000100000000000000B2 /* PomodoroNotchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD000100000000000000B1 /* PomodoroNotchBadge.swift */; };
+		DDDD000100000000000000C2 /* PomodoroManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD000100000000000000C1 /* PomodoroManager.swift */; };
+		DDDD000100000000000000D2 /* PomodoroSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD000100000000000000D1 /* PomodoroSettings.swift */; };
 		11F748732EC9DA9300F841DB /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 11F748722EC9DA9300F841DB /* Lottie */; };
 		11F748822ECB07A400F841DB /* MusicControlButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748812ECB07A400F841DB /* MusicControlButton.swift */; };
 		11F748842ECB27DC00F841DB /* MusicSlotConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */; };
@@ -188,17 +198,23 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		00A1B2C30000000000000000 /* ShelfItemMetadataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfItemMetadataCache.swift; sourceTree = "<group>"; };
+		00A1B2C30000000000000002 /* ShelfDragHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDragHandler.swift; sourceTree = "<group>"; };
+		00A1B2C30000000000000004 /* ShelfQueueChip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfQueueChip.swift; sourceTree = "<group>"; };
+		00A1B2C30000000000000006 /* ShelfToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfToolbar.swift; sourceTree = "<group>"; };
+		00A1B2C30000000000000008 /* ShelfSendBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfSendBar.swift; sourceTree = "<group>"; };
 		1100290B2E847E2800035A57 /* NSItemProvider+LoadHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSItemProvider+LoadHelpers.swift"; sourceTree = "<group>"; };
 		110029262E84FD4C00035A57 /* TemporaryFileStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemporaryFileStorageService.swift; sourceTree = "<group>"; };
-		110029292E8691B400035A57 /* FileShareView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileShareView.swift; sourceTree = "<group>"; };
 		1100292D2E86940F00035A57 /* QuickShareService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickShareService.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000003 /* KDECertificateServiceHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KDECertificateServiceHelper.m; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000004 /* KDECertificateServiceHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KDECertificateServiceHelper.h; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000005 /* boringNotch-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "boringNotch-Bridging-Header.h"; sourceTree = "<group>"; };
 		1113ABB72E80E27000EC13B2 /* ShelfItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfItem.swift; sourceTree = "<group>"; };
 		1113ABBA2E80E27000EC13B2 /* QuickLookService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookService.swift; sourceTree = "<group>"; };
 		1113ABBC2E80E27000EC13B2 /* ShelfActionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfActionService.swift; sourceTree = "<group>"; };
 		1113ABBD2E80E27000EC13B2 /* ShelfDropService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfDropService.swift; sourceTree = "<group>"; };
 		1113ABBE2E80E27000EC13B2 /* ShelfPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfPersistenceService.swift; sourceTree = "<group>"; };
 		1113ABC02E80E27000EC13B2 /* ShelfSelectionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfSelectionModel.swift; sourceTree = "<group>"; };
-		1113ABC32E80E27000EC13B2 /* ShelfItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfItemView.swift; sourceTree = "<group>"; };
 		1113ABCF2E80E6BB00EC13B2 /* ThumbnailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailService.swift; sourceTree = "<group>"; };
 		111BE9942ECF2DEF0079DD4E /* DragDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragDetector.swift; sourceTree = "<group>"; };
 		111BEA602ED09B1B0079DD4E /* NSScreen+UUID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSScreen+UUID.swift"; sourceTree = "<group>"; };
@@ -224,7 +240,6 @@
 		118D1FD02E98FF5F00A2FF63 /* SharingStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingStateManager.swift; sourceTree = "<group>"; };
 		118EBE242E92DCCB00D54B5A /* AssociatedObject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssociatedObject.swift; sourceTree = "<group>"; };
 		118EBE262E92DE7400D54B5A /* NSMenu+AssociatedObject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NSMenu+AssociatedObject.swift"; sourceTree = "<group>"; };
-		118EBE282E946B3F00D54B5A /* ShareServiceFinder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareServiceFinder.swift; sourceTree = "<group>"; };
 		118EBE2C2E97165600D54B5A /* Bookmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bookmark.swift; sourceTree = "<group>"; };
 		118EBE302E9717DB00D54B5A /* URL+SecurityScoped.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+SecurityScoped.swift"; sourceTree = "<group>"; };
 		118EBE3A2E9720C500D54B5A /* ShelfStateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfStateViewModel.swift; sourceTree = "<group>"; };
@@ -251,6 +266,12 @@
 		DDDD00010000000000000031 /* UsageMonitorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageMonitorView.swift; sourceTree = "<group>"; };
 		DDDD00010000000000000061 /* UsageNotchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageNotchBadge.swift; sourceTree = "<group>"; };
 		DDDD00010000000000000071 /* MeetingLinkResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLinkResolver.swift; sourceTree = "<group>"; };
+		DDDD00010000000000000081 /* PomodoroModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroModels.swift; sourceTree = "<group>"; };
+		DDDD00010000000000000091 /* PomodoroPlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroPlanner.swift; sourceTree = "<group>"; };
+		DDDD000100000000000000A1 /* PomodoroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroView.swift; sourceTree = "<group>"; };
+		DDDD000100000000000000B1 /* PomodoroNotchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroNotchBadge.swift; sourceTree = "<group>"; };
+		DDDD000100000000000000C1 /* PomodoroManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroManager.swift; sourceTree = "<group>"; };
+		DDDD000100000000000000D1 /* PomodoroSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroSettings.swift; sourceTree = "<group>"; };
 		11F748812ECB07A400F841DB /* MusicControlButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicControlButton.swift; sourceTree = "<group>"; };
 		11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSlotConfigurationView.swift; sourceTree = "<group>"; };
 		14288DD62C6E015000B9F80C /* AudioPlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
@@ -352,6 +373,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F6000000000002 /* OpenSSL in Frameworks */,
 				111BEA5F2ED07A340079DD4E /* MacroVisionKit in Frameworks */,
 				9A987A102C73CA8D005CA465 /* Collections in Frameworks */,
 				1194E8852EA57D23009C82D6 /* SkyLightWindow in Frameworks */,
@@ -383,8 +405,10 @@
 		1113ABBF2E80E27000EC13B2 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F6000000000003 /* KDECertificateServiceHelper.m */,
+				A1B2C3D4E5F6000000000004 /* KDECertificateServiceHelper.h */,
+				00A1B2C30000000000000000 /* ShelfItemMetadataCache.swift */,
 				1194E87B2EA19E09009C82D6 /* ImageProcessingService.swift */,
-				118EBE282E946B3F00D54B5A /* ShareServiceFinder.swift */,
 				1100292D2E86940F00035A57 /* QuickShareService.swift */,
 				110029262E84FD4C00035A57 /* TemporaryFileStorageService.swift */,
 				1113ABCF2E80E6BB00EC13B2 /* ThumbnailService.swift */,
@@ -409,9 +433,11 @@
 		1113ABC42E80E27000EC13B2 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				00A1B2C30000000000000002 /* ShelfDragHandler.swift */,
+				00A1B2C30000000000000004 /* ShelfQueueChip.swift */,
+				00A1B2C30000000000000006 /* ShelfToolbar.swift */,
+				00A1B2C30000000000000008 /* ShelfSendBar.swift */,
 				11F747CD2EC75CEA00F841DB /* DragPreviewView.swift */,
-				110029292E8691B400035A57 /* FileShareView.swift */,
-				1113ABC32E80E27000EC13B2 /* ShelfItemView.swift */,
 				9A987A032C73CA66005CA465 /* ShelfView.swift */,
 			);
 			path = Views;
@@ -466,6 +492,17 @@
 			path = UsageMonitor;
 			sourceTree = "<group>";
 		};
+		DDDD000100000000000000E1 /* Pomodoro */ = {
+			isa = PBXGroup;
+			children = (
+				DDDD00010000000000000081 /* PomodoroModels.swift */,
+				DDDD00010000000000000091 /* PomodoroPlanner.swift */,
+				DDDD000100000000000000A1 /* PomodoroView.swift */,
+				DDDD000100000000000000B1 /* PomodoroNotchBadge.swift */,
+			);
+			path = Pomodoro;
+			sourceTree = "<group>";
+		};
 		11F748672EC9AC9600F841DB /* XPCHelperClient */ = {
 			isa = PBXGroup;
 			children = (
@@ -515,6 +552,7 @@
 				B1C448992C97375A001F0858 /* Tips */,
 				14C08BB72C8DE49E000F8AA0 /* Calendar */,
 				DDDD00010000000000000041 /* UsageMonitor */,
+				DDDD000100000000000000E1 /* Pomodoro */,
 				9A987A042C73CA66005CA465 /* Shelf */,
 				149E0B982C737D26006418B1 /* Webcam */,
 				B18654312C6F45AE000B926A /* Live activities */,
@@ -545,6 +583,7 @@
 				B1F0A0012E60000100000001 /* BrightnessManager.swift */,
 				59D8C23B2E589FAA00147B33 /* VolumeManager.swift */,
 				DDDD00010000000000000021 /* UsageMonitorManager.swift */,
+				DDDD000100000000000000C1 /* PomodoroManager.swift */,
 			);
 			path = managers;
 			sourceTree = "<group>";
@@ -747,6 +786,7 @@
 				11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */,
 				11C5E3152DFE88510065821E /* SettingsView.swift */,
 				DDDD00010000000000000051 /* UsageMonitorSettings.swift */,
+				DDDD000100000000000000D1 /* PomodoroSettings.swift */,
 				11C5E3112DFE85970065821E /* SettingsWindowController.swift */,
 				B1D6FD422C6603730015F173 /* SoftwareUpdater.swift */,
 				B1B112902C6A572100093D8F /* EditPanelView.swift */,
@@ -831,6 +871,7 @@
 			);
 			name = boringNotch;
 			packageProductDependencies = (
+				A1B2C3D4E5F6000000000007 /* OpenSSL */,
 				14D032192C68F32E0096E6A1 /* LaunchAtLogin */,
 				14D0321C2C68F3350096E6A1 /* Sparkle */,
 				B18654382C6F4990000B926A /* KeyboardShortcuts */,
@@ -877,6 +918,7 @@
 			);
 			mainGroup = 14CEF4092C5CAED200855D72;
 			packageReferences = (
+				A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */,
 				14D032182C68F32E0096E6A1 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
 				14D0321B2C68F3350096E6A1 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				B18654372C6F4990000B926A /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
@@ -935,10 +977,15 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B2C3D4E5F6000000000001 /* KDECertificateServiceHelper.m in Sources */,
+				00A1B2C30000000000000001 /* ShelfItemMetadataCache.swift in Sources */,
+				00A1B2C30000000000000003 /* ShelfDragHandler.swift in Sources */,
+				00A1B2C30000000000000005 /* ShelfQueueChip.swift in Sources */,
+				00A1B2C30000000000000007 /* ShelfToolbar.swift in Sources */,
+				00A1B2C30000000000000009 /* ShelfSendBar.swift in Sources */,
 				115C12EC2ED3D003009754CA /* OpenNotchHUD.swift in Sources */,
 				14C08BB92C8DE4B1000F8AA0 /* BoringCalendar.swift in Sources */,
 				5955950D2E900ED800C66711 /* ApplicationRelauncher.swift in Sources */,
-				1100292A2E8691B400035A57 /* FileShareView.swift in Sources */,
 				147163982C5D35B70068B555 /* MusicVisualizer.swift in Sources */,
 				11CC44A22CEE614100C7244B /* BoringViewCoordinator.swift in Sources */,
 				B186543C2C6F49AE000B926A /* ShortcutConstants.swift in Sources */,
@@ -965,12 +1012,10 @@
 				1153BDA72D99B22200979FB0 /* YouTubeMusicController.swift in Sources */,
 				1163988F2DF5CC870052E6AF /* CalendarModel.swift in Sources */,
 				1153BD9A2D98824300979FB0 /* SpotifyController.swift in Sources */,
-				118EBE292E946B3F00D54B5A /* ShareServiceFinder.swift in Sources */,
 				B19424092CD0FF01003E5DC2 /* LottieAnimationView.swift in Sources */,
 				B1F747F92EC7E94000F841DB /* LottieView.swift in Sources */,
 				B1C974342C642B6D0000E707 /* MarqueeTextView.swift in Sources */,
 				14288DE82C6E01C800B9F80C /* ProgressIndicator.swift in Sources */,
-				1113ABC52E80E27000EC13B2 /* ShelfItemView.swift in Sources */,
 				1113ABC62E80E27000EC13B2 /* ShelfPersistenceService.swift in Sources */,
 				1113ABC82E80E27000EC13B2 /* ShelfItem.swift in Sources */,
 				1113ABCA2E80E27000EC13B2 /* ShelfSelectionModel.swift in Sources */,
@@ -1037,6 +1082,12 @@
 				DDDD00010000000000000032 /* UsageMonitorView.swift in Sources */,
 				DDDD00010000000000000062 /* UsageNotchBadge.swift in Sources */,
 				DDDD00010000000000000072 /* MeetingLinkResolver.swift in Sources */,
+				DDDD00010000000000000082 /* PomodoroModels.swift in Sources */,
+				DDDD00010000000000000092 /* PomodoroPlanner.swift in Sources */,
+				DDDD000100000000000000A2 /* PomodoroView.swift in Sources */,
+				DDDD000100000000000000B2 /* PomodoroNotchBadge.swift in Sources */,
+				DDDD000100000000000000C2 /* PomodoroManager.swift in Sources */,
+				DDDD000100000000000000D2 /* PomodoroSettings.swift in Sources */,
 				118EBE2D2E97165600D54B5A /* Bookmark.swift in Sources */,
 				B1FEB4992C7686630066EBBC /* PanGesture.swift in Sources */,
 				11F748842ECB27DC00F841DB /* MusicSlotConfigurationView.swift in Sources */,
@@ -1074,9 +1125,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BoringNotchXPCHelper/BoringNotchXPCHelper.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Calla Local Signing";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Calla Local Signing";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 271;
 				DEVELOPMENT_TEAM = "";
@@ -1253,15 +1304,15 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES;
 				CODE_SIGN_ENTITLEMENTS = boringNotch/boringNotch.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Development";
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Calla Local Signing";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Calla Local Signing";
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 271;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"boringNotch/Preview Content\"";
 				DEVELOPMENT_TEAM = "";
-				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -1289,6 +1340,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = boringNotch/boringNotch-Bridging-Header.h;
 				SWIFT_STRICT_CONCURRENCY = targeted;
 				SWIFT_VERSION = 5.0;
 				SYSTEM_FRAMEWORK_SEARCH_PATHS = (
@@ -1342,6 +1394,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = boringNotch/boringNotch-Bridging-Header.h;
 				SWIFT_STRICT_CONCURRENCY = targeted;
 				SWIFT_VERSION = 5.0;
 				SYSTEM_FRAMEWORK_SEARCH_PATHS = (
@@ -1384,6 +1437,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzyzanowskim/OpenSSL-Package.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 3.6.3000;
+			};
+		};
 		111BE95B2ECD71E10079DD4E /* XCRemoteSwiftPackageReference "AsyncXPCConnection" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/ChimeHQ/AsyncXPCConnection";
@@ -1483,6 +1544,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D4E5F6000000000007 /* OpenSSL */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */;
+			productName = OpenSSL;
+		};
 		DDDD00010000000000000002 /* SwiftTerm */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = DDDD00010000000000000001 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
