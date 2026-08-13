@@ -167,9 +167,14 @@ extension Defaults.Keys {
     static let boringShelf = Key<Bool>("boringShelf", default: true)
     static let openShelfByDefault = Key<Bool>("openShelfByDefault", default: true)
     static let shelfTapToOpen = Key<Bool>("shelfTapToOpen", default: true)
-    static let quickShareProvider = Key<String>("quickShareProvider", default: QuickShareProvider.defaultProvider.id)
+    static let localSendDestination = Key<String>("localSendDestination", default: LocalSendDestination.phone.rawValue)
+    static let localSendBindings = Key<String>("localSendBindings", default: "[]")
+    static let localSendIdentity = Key<String>("localSendIdentity", default: "")
+    static let shelfShareTransport = Key<String>("shelfShareTransport", default: ShelfShareTransport.localSend.rawValue)
+    static let kdeConnectBindings = Key<String>("kdeConnectBindings", default: "[]")
     static let copyOnDrag = Key<Bool>("copyOnDrag", default: false)
     static let autoRemoveShelfItems = Key<Bool>("autoRemoveShelfItems", default: false)
+    static let shelfRemoveAfterSend = Key<Bool>("shelfRemoveAfterSend", default: false)
     static let expandedDragDetection = Key<Bool>("expandedDragDetection", default: true)
 
     // MARK: Usage Monitor
@@ -180,7 +185,30 @@ extension Defaults.Keys {
     // while a fresh probe fails or before the first probe completes.
     static let cachedClaudeUsage = Key<Data?>("cachedClaudeUsage", default: nil)
     static let cachedCodexUsage = Key<Data?>("cachedCodexUsage", default: nil)
-    
+
+    // MARK: Pomodoro
+    static let pomodoroTab = Key<Bool>("pomodoroTab", default: false)
+    static let pomodoroPresets = Key<[PomodoroPreset]>("pomodoroPresets", default: PomodoroPreset.seeded)
+    static let pomodoroSelectedPresetID = Key<String>("pomodoroSelectedPresetID", default: PomodoroPreset.classic.id)
+    static let pomodoroAutoStartBreaks = Key<Bool>("pomodoroAutoStartBreaks", default: true)
+    static let pomodoroAutoStartWork = Key<Bool>("pomodoroAutoStartWork", default: false)
+    static let pomodoroOpenNotchOnPhaseEnd = Key<Bool>("pomodoroOpenNotchOnPhaseEnd", default: true)
+    static let pomodoroAutoResumeAfterWake = Key<Bool>("pomodoroAutoResumeAfterWake", default: false)
+    static let pomodoroPlaySound = Key<Bool>("pomodoroPlaySound", default: true)
+    // Name of a built-in macOS system sound (NSSound(named:)) — no bundled asset.
+    static let pomodoroSoundName = Key<String>("pomodoroSoundName", default: "Glass")
+    static let pomodoroPostNotification = Key<Bool>("pomodoroPostNotification", default: true)
+    static let pomodoroShowInMenuBar = Key<Bool>("pomodoroShowInMenuBar", default: false)
+    static let pomodoroCalendarIcon = Key<Bool>("pomodoroCalendarIcon", default: true)
+    // Names of user-authored Shortcuts run at focus start/end. macOS exposes no
+    // public API for Do Not Disturb, so this is the only sandbox-safe hook.
+    static let pomodoroFocusShortcutStart = Key<String>("pomodoroFocusShortcutStart", default: "")
+    static let pomodoroFocusShortcutEnd = Key<String>("pomodoroFocusShortcutEnd", default: "")
+    // Live session snapshot (PomodoroPersistedState JSON) so a relaunch resumes.
+    static let pomodoroPersistedState = Key<Data?>("pomodoroPersistedState", default: nil)
+    // Completed phases (PomodoroRecord JSON), trimmed on write.
+    static let pomodoroHistory = Key<Data?>("pomodoroHistory", default: nil)
+
     // MARK: Calendar
     static let calendarSelectionState = Key<CalendarSelectionState>("calendarSelectionState", default: .all)
     static let hideAllDayEvents = Key<Bool>("hideAllDayEvents", default: false)
