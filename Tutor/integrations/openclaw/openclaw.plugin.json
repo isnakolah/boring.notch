@@ -38,6 +38,16 @@
         "type": "string",
         "minLength": 1
       },
+      "nodeContractHash": {
+        "type": "string",
+        "minLength": 16,
+        "maxLength": 128
+      },
+      "engineBuild": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
       "socketPath": {
         "type": "string",
         "minLength": 1
@@ -51,6 +61,10 @@
         "type": "string",
         "minLength": 1,
         "default": "~/.openclaw/tutor"
+      },
+      "agentWorkspace": {
+        "type": "string",
+        "minLength": 1
       },
       "courseSocketPath": {
         "type": "string",

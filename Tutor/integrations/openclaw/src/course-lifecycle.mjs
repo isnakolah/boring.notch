@@ -17,6 +17,7 @@ const MAX_OUTLINE_BYTES = 96 * 1024;
 const MAX_THREAD_ENTRIES = 40;
 const MAX_THREAD_TEXT = 240;
 const TUTOR_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const TUTOR_TOOLING_ROOT = process.env.CALLA_TOOLING_ROOT || path.join(TUTOR_ROOT, "migrations", "tools");
 
 function now() { return new Date().toISOString(); }
 function safeID(value, name = "course_id") {
@@ -240,7 +241,7 @@ export class CourseLifecycleService {
         warnings: [], artifact: result.artifact || null, pack_id: typeof result.pack_id === "string" ? result.pack_id : null});
       if (!job.artifact) throw new Error("validated course has no publishable artifact");
       if (this.install) await this.install(job);
-      else await runPython(path.join(TUTOR_ROOT, "tools", "calla_pack_store.py"), [job.artifact, "--state-directory", path.dirname(this.directory)]);
+      else await runPython(path.join(TUTOR_TOOLING_ROOT, "calla_pack_store.py"), [job.artifact, "--state-directory", path.dirname(this.directory)]);
       await this.set(job, "published", {error: null});
     } catch (error) {
       if (!controller.signal.aborted && job.revision === revision && job.phase !== "cancelled") await this.set(job, "failed", {error: sanitizeCourseText(error instanceof Error ? error.message : String(error))});
@@ -253,7 +254,7 @@ export class CourseLifecycleService {
     const source = path.join(this.sourceDirectory, `${job.id}-r${job.source_revision}.json`);
     const artifact = path.join(this.artifactDirectory, `${job.id}-r${job.revision}.otpack`);
     await fs.mkdir(this.artifactDirectory, {recursive: true, mode: 0o700});
-    const output = await runPython(path.join(TUTOR_ROOT, "tools", "calla_course_compiler.py"), ["--source", source, "--artifact", artifact, "--course-key", job.course_key || job.id, "--asset-bundle", job.asset_bundle], signal);
+    const output = await runPython(path.join(TUTOR_TOOLING_ROOT, "calla_course_compiler.py"), ["--source", source, "--artifact", artifact, "--course-key", job.course_key || job.id, "--asset-bundle", job.asset_bundle], signal);
     const result = JSON.parse(output);
     return {...result, artifact};
   }

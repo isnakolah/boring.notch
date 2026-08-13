@@ -7,7 +7,7 @@ import {retrieveLessonByID} from "./src/local-retrieval.mjs";
 import {markedLesson} from "./src/teaching.mjs";
 import {NODE_COMMAND, parsePluginConfig} from "./src/protocol.mjs";
 import {TEACHING_GUIDANCE} from "./src/teaching.mjs";
-import {createTutorTools, pushCourseCatalogue, pushCourseRuntime} from "./src/tools.mjs";
+import {createTutorTools, pushCourseCatalogue, pushCourseRuntime, pushSessionStart} from "./src/tools.mjs";
 import {pushCourseStatus} from "./src/tools.mjs";
 import {PedagogyStore} from "./src/pedagogy.mjs";
 import {CourseControlServer, CourseLifecycleService, CourseTaskFlowBridge} from "./src/course-lifecycle.mjs";
@@ -79,6 +79,7 @@ const plugin = {
         if (context?.agentId !== "calla") return undefined;
         if (!catalogueSent) {
           catalogueSent = true;
+          void pushSessionStart(api, config);
           void pushCourseCatalogue(api, config);
           void pushCourseRuntime(api, config);
           void courseService.list().then((courses) => pushCourseStatus(api, config, courses));

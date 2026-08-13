@@ -273,6 +273,9 @@ struct EventListView: View {
     @Default(.showFullEventTitles) private var showFullEventTitles
     @Default(.pomodoroTab) private var pomodoroTab
     @Default(.pomodoroCalendarIcon) private var pomodoroCalendarIcon
+    @Default(.callaTutorEnabled) private var callaTutorEnabled
+    @Default(.callaCalendarEnabled) private var callaCalendarEnabled
+    @ObservedObject private var callaEngine = CallaEngineClient.shared
 
 
     static func filteredEvents(events: [EventModel]) -> [EventModel] {
@@ -333,6 +336,7 @@ struct EventListView: View {
             .background(Color.clear)
             .onAppear {
                 scrollToRelevantEvent(proxy: proxy)
+                callaEngine.refresh()
             }
             .onChange(of: filteredEvents) { _, _ in
                 scrollToRelevantEvent(proxy: proxy)
@@ -373,6 +377,37 @@ struct EventListView: View {
 
     private func canStartPomodoro(for event: EventModel) -> Bool {
         pomodoroTab && pomodoroCalendarIcon && !event.isAllDay && event.eventStatus != .ended
+    }
+
+    private func canStartTutor(for event: EventModel) -> Bool {
+        callaTutorEnabled && callaCalendarEnabled && canStartPomodoro(for: event)
+    }
+
+    private func startTutor(for event: EventModel, courseID: String) {
+        // Calendar path is atomic from learner perspective: if its time window
+        // cannot make a Pomodoro plan, do not start a lesson that claims timer
+        // support. Deliberately retain an intentional existing binding.
+        let preset = PomodoroManager.shared.selectedPreset
+        let blocks = PomodoroPlanner.plan(for: event, preset: preset)
+        guard !blocks.isEmpty else {
+            callaEngine.reportLocalFailure("This event has no viable Pomodoro window; lesson was not started.")
+            BoringViewCoordinator.shared.currentView = .tutor
+            return
+        }
+        CallaCalendarBindings.bind(eventID: event.id, courseID: courseID)
+        callaEngine.startCourse(courseID) { status in
+            guard status.lastResult == "started" else {
+                BoringViewCoordinator.shared.currentView = .tutor
+                return
+            }
+            PomodoroManager.shared.start(
+                blocks: blocks,
+                preset: preset,
+                title: event.title,
+                sourceEventID: event.id
+            )
+            BoringViewCoordinator.shared.currentView = .tutor
+        }
     }
 
     // Soft, leading-aligned color wash behind a card, tinted by the event's calendar.
@@ -500,6 +535,39 @@ struct EventListView: View {
                         }
                         .buttonStyle(PlainButtonStyle())
                         .help("Start a focus timer for this event")
+                    }
+                    if canStartTutor(for: event) {
+                        if let courseID = CallaCalendarBindings.courseID(for: event.id) {
+                            Button {
+                                startTutor(for: event, courseID: courseID)
+                            } label: {
+                                Image(systemName: "graduationcap.fill")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .frame(width: 16, height: 16)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("Resume Calla lesson for this event")
+                        } else {
+                            Menu {
+                                if callaEngine.status.courses.isEmpty {
+                                    Text("No published Calla courses")
+                                } else {
+                                    ForEach(callaEngine.status.courses) { course in
+                                        Button(course.title) { startTutor(for: event, courseID: course.id) }
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "graduationcap")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.55))
+                                    .frame(width: 16, height: 16)
+                                    .contentShape(Rectangle())
+                            }
+                            .menuStyle(.borderlessButton)
+                            .help("Choose Calla course for this event")
+                        }
                     }
                 }
                 .padding(.horizontal, 8)

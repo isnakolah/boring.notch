@@ -12,7 +12,23 @@ import {
 } from "../src/memory.mjs";
 import {handleTutorNodeHostCommand, invokeTutorHost} from "../src/node-host.mjs";
 import {createBeforeToolCallPolicy} from "../src/policy.mjs";
-import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildTutorEnvelope, findForbiddenCoordinatePath, parsePluginConfig, TUTOR_TOOL_NAMES, unwrapNodePayload} from "../src/protocol.mjs";
+import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, findForbiddenCoordinatePath, parsePluginConfig, TUTOR_TOOL_NAMES, validateNodeEnvelope, unwrapNodePayload} from "../src/protocol.mjs";
+
+test("internal session_start accepts v2 fallback and compatible v3 range", () => {
+  const handshake = buildSessionStartEnvelope({engineBuild: "boring-1", nodeContractHash: "contract-1"});
+  assert.equal(handshake.protocol_version, 2);
+  assert.equal(handshake.operation, "session_start");
+  assert.doesNotThrow(() => validateNodeEnvelope({...handshake, protocol_version: 3}));
+  assert.throws(() => validateNodeEnvelope({...handshake, protocol_version: 4}), /supported range/);
+});
+
+test("stable Gateway agent workspace is accepted as Calla-owned configuration", () => {
+  const config = parsePluginConfig({
+    role: "gateway",
+    agentWorkspace: "~/.openclaw/apps/calla-tutor/current/agent-workspace",
+  });
+  assert.equal(config.agentWorkspace, path.join(os.homedir(), ".openclaw/apps/calla-tutor/current/agent-workspace"));
+});
 import {buildCourseRuntime} from "../src/course-runtime.mjs";
 import {buildCourseCatalogue, lessonCard, retrieveLocalPacks} from "../src/local-retrieval.mjs";
 import {CourseControlServer, CourseLifecycleService, CourseTaskFlowBridge, sanitizeCourseText} from "../src/course-lifecycle.mjs";

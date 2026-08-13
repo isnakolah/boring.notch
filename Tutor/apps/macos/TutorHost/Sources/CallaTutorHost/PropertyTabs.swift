@@ -121,8 +121,7 @@ enum PropertyTabs {
     }
 
     private static var learned: [String: [String: Band]] = load()
-    private static let file = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Application Support/CallaTutor/property-tabs.json")
+    private static let file = CallaRuntime.file("property-tabs.json")
 
     private static func key(_ snapshot: Snapshot, objectType: String, strip: CGRect) -> String {
         // The strip's aspect is a proxy for how many tabs it holds: they are
@@ -146,8 +145,7 @@ enum PropertyTabs {
     }
 
     private static func load() -> [String: [String: Band]] {
-        let url = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/CallaTutor/property-tabs.json")
+        let url = CallaRuntime.file("property-tabs.json")
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode([String: [String: Band]].self, from: data) else { return [:] }
         return decoded

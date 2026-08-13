@@ -55,6 +55,19 @@ struct BoringHeader: View {
                                     .fill(coordinator.currentView == .shelf ? Color(nsColor: .secondarySystemFill) : .clear)
                             }
                         }
+                        if Defaults[.callaTutorEnabled] {
+                            TabButton(label: "Calla", icon: "graduationcap.fill", selected: coordinator.currentView == .tutor) {
+                                withAnimation(.smooth) {
+                                    coordinator.currentView = .tutor
+                                }
+                            }
+                            .frame(height: 26)
+                            .foregroundStyle(coordinator.currentView == .tutor ? .white : .gray)
+                            .background {
+                                Capsule()
+                                    .fill(coordinator.currentView == .tutor ? Color(nsColor: .secondarySystemFill) : .clear)
+                            }
+                        }
                         if Defaults[.showMirror] {
                             Button(action: {
                                 vm.toggleCameraPreview()

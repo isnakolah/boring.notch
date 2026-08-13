@@ -97,6 +97,12 @@ class SettingsWindowController: NSWindowController {
         window.contentView = NSHostingView(rootView: SettingsView(initialTab: "Shelf", updaterController: updaterController))
         showWindow()
     }
+
+    func showTutorWindow() {
+        guard let window else { return }
+        window.contentView = NSHostingView(rootView: SettingsView(initialTab: "Tutor", updaterController: updaterController))
+        showWindow()
+    }
     
     override func close() {
         super.close()

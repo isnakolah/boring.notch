@@ -80,9 +80,7 @@ final class CourseRuntimeStore: ObservableObject {
     private let file: URL
 
     private init() {
-        let directory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/CallaTutor", isDirectory: true)
-        file = directory.appendingPathComponent("course-runtime.json")
+        file = CallaRuntime.file("course-runtime.json")
         manifest = Self.read(file)
     }
 

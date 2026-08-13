@@ -9,16 +9,15 @@ import ScreenCaptureKit
 /// Which applications Calla may look at, how much detail leaves this Mac, and
 /// how the overlay behaves were all constants in the source. They are the
 /// user's decisions, not the build's, so they live here and are surfaced in the
-/// menu bar. Everything persists in the host's own preferences domain.
+/// Boring settings. This runtime never reads UserDefaults or legacy Calla
+/// preferences; BoringCallaEngine atomically writes complete snapshots here.
 @MainActor
 final class TutorSettings: ObservableObject {
     static let shared = TutorSettings()
 
     /// Applications Calla is permitted to observe. A lesson may narrow this,
     /// never widen it.
-    @Published var allowedBundleIDs: [String] {
-        didSet { defaults.set(allowedBundleIDs, forKey: Key.allowedBundleIDs) }
-    }
+    @Published var allowedBundleIDs: [String]
 
     /// Show the overlay only while the application being taught is in front.
     /// Off keeps it on screen wherever the learner goes, which is useful when
@@ -29,16 +28,11 @@ final class TutorSettings: ObservableObject {
     /// much of a line they get is a property of the screen and the eyes in front
     /// of it rather than something this app can pick once for everyone.
     @Published var tooltipWidth: Int {
-        didSet {
-            defaults.set(tooltipWidth, forKey: Key.tooltipWidth)
-            PointerOverlay.shared.setTooltipWidth(tooltipWidth)
-        }
+        didSet { PointerOverlay.shared.setTooltipWidth(tooltipWidth) }
     }
     /// Hide the tooltip while the learner's own pointer is over it, so it stops
     /// covering what is underneath. The pointer itself never hides.
-    @Published var hideTooltipOnHover: Bool {
-        didSet { defaults.set(hideTooltipOnHover, forKey: Key.hideTooltipOnHover) }
-    }
+    @Published var hideTooltipOnHover: Bool
 
     // Scoping the overlay to the application being taught is deliberately not a
     // preference. Calla annotating a window it is not teaching is a bug, not a
@@ -48,28 +42,20 @@ final class TutorSettings: ObservableObject {
     /// Long edge, in pixels, of the window capture sent for a lesson. Smaller
     /// keeps less legible detail off the network; larger helps the model read
     /// small labels.
-    @Published var captureLongEdge: Int {
-        didSet { defaults.set(captureLongEdge, forKey: Key.captureLongEdge) }
-    }
+    @Published var captureLongEdge: Int
 
     /// Point size of the pointer Calla draws. Larger is easier to follow on a
     /// dense interface; smaller covers less of it.
-    @Published var cursorSize: Int {
-        didSet { defaults.set(cursorSize, forKey: Key.cursorSize) }
-    }
+    @Published var cursorSize: Int
 
     /// Opacity of the lesson tooltip. A slightly translucent tooltip leaves
     /// more of the taught interface visible without making its text hard to
     /// read.
-    @Published var tooltipOpacity: Double {
-        didSet { defaults.set(tooltipOpacity, forKey: Key.tooltipOpacity) }
-    }
+    @Published var tooltipOpacity: Double
 
     /// The small capsule naming what Calla is doing. Useful while learning what
     /// Calla does, noise once that is obvious.
-    @Published var showStatusHUD: Bool {
-        didSet { defaults.set(showStatusHUD, forKey: Key.showStatusHUD) }
-    }
+    @Published var showStatusHUD: Bool
 
     // Two preferences used to live here and have been removed rather than
     // implemented: `overlayFollowsFocus` and `hideTooltipWhenIdle`. Both were
@@ -114,17 +100,22 @@ final class TutorSettings: ObservableObject {
     static let defaultTooltipOpacity = 0.92
     static let defaultAllowedBundleIDs = ["org.blenderfoundation.blender"]
 
-    private let defaults: UserDefaults
+    private struct EnginePreferences: Codable {
+        let captureEnabled: Bool
+        let allowedBundleIDs: [String]
+        let captureLongEdge: Int
+        let tooltipWidth: Int
+        let hideTooltipOnHover: Bool
+        let cursorSize: Int
+        let tooltipOpacity: Double
+        let showStatusHUD: Bool
+        let learnerID: String
+        let hiddenCourseIDs: [String]
 
-    private enum Key {
-        static let allowedBundleIDs = "allowedBundleIDs"
-        static let hideTooltipOnHover = "hideTooltipOnHover"
-        static let tooltipWidth = "tooltipWidth"
-        static let captureLongEdge = "captureLongEdge"
-        static let cursorSize = "cursorSize"
-        static let tooltipOpacity = "tooltipOpacity"
-        static let showStatusHUD = "showStatusHUD"
-        static let learnerID = "learnerID"
+        static func load() -> EnginePreferences? {
+            guard let data = try? Data(contentsOf: CallaRuntime.preferencesFile) else { return nil }
+            return try? JSONDecoder().decode(EnginePreferences.self, from: data)
+        }
     }
 
     /// Both ids travel as words in a remote command string, so they are built
@@ -136,30 +127,21 @@ final class TutorSettings: ObservableObject {
         return "\(prefix)-\(suffix)"
     }
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        let stored = defaults.array(forKey: Key.allowedBundleIDs) as? [String]
-        allowedBundleIDs = stored?.filter { !$0.isEmpty } ?? Self.defaultAllowedBundleIDs
-        // `object(forKey:)` rather than `bool(forKey:)`: an absent preference
-        // must mean the shipped default, and bool(forKey:) cannot tell absent
-        // from false.
-        hideTooltipOnHover = defaults.object(forKey: Key.hideTooltipOnHover) as? Bool ?? true
-        let width = defaults.object(forKey: Key.tooltipWidth) as? Int ?? Self.defaultTooltipWidth
+    init() {
+        let snapshot = EnginePreferences.load()
+        allowedBundleIDs = snapshot?.allowedBundleIDs.filter { !$0.isEmpty } ?? Self.defaultAllowedBundleIDs
+        hideTooltipOnHover = snapshot?.hideTooltipOnHover ?? true
+        let width = snapshot?.tooltipWidth ?? Self.defaultTooltipWidth
         tooltipWidth = Self.tooltipWidthChoices.contains(width) ? width : Self.defaultTooltipWidth
-        let edge = defaults.object(forKey: Key.captureLongEdge) as? Int ?? Self.defaultCaptureLongEdge
+        let edge = snapshot?.captureLongEdge ?? Self.defaultCaptureLongEdge
         captureLongEdge = Self.captureLongEdgeChoices.contains(edge) ? edge : Self.defaultCaptureLongEdge
-        let size = defaults.object(forKey: Key.cursorSize) as? Int ?? 30
+        let size = snapshot?.cursorSize ?? 30
         cursorSize = Self.cursorSizeChoices.contains(size) ? size : 30
-        let opacity = defaults.object(forKey: Key.tooltipOpacity) as? Double ?? Self.defaultTooltipOpacity
+        let opacity = snapshot?.tooltipOpacity ?? Self.defaultTooltipOpacity
         tooltipOpacity = Self.tooltipOpacityChoices.contains(opacity) ? opacity : Self.defaultTooltipOpacity
-        showStatusHUD = defaults.object(forKey: Key.showStatusHUD) as? Bool ?? true
-        if let stored = defaults.string(forKey: Key.learnerID),
-           stored.range(of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil {
-            learnerID = stored
-        } else {
-            learnerID = Self.mintIdentifier(prefix: "learner")
-            defaults.set(learnerID, forKey: Key.learnerID)
-        }
+        showStatusHUD = snapshot?.showStatusHUD ?? true
+        learnerID = snapshot?.learnerID.range(of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil
+            ? snapshot!.learnerID : Self.mintIdentifier(prefix: "learner")
     }
 
     /// Put appearance and behaviour back to the shipped defaults.
@@ -177,6 +159,20 @@ final class TutorSettings: ObservableObject {
         cursorSize = 30
         tooltipOpacity = Self.defaultTooltipOpacity
         showStatusHUD = true
+    }
+
+    /// Engine snapshot is authoritative. This is called by hidden Boring
+    /// runtime; old Settings panes have no path to persist their own values.
+    func reloadFromEngineSnapshot() {
+        guard let snapshot = EnginePreferences.load() else { return }
+        allowedBundleIDs = snapshot.allowedBundleIDs.filter { !$0.isEmpty }
+        if Self.captureLongEdgeChoices.contains(snapshot.captureLongEdge) { captureLongEdge = snapshot.captureLongEdge }
+        if Self.tooltipWidthChoices.contains(snapshot.tooltipWidth) { tooltipWidth = snapshot.tooltipWidth }
+        if Self.cursorSizeChoices.contains(snapshot.cursorSize) { cursorSize = snapshot.cursorSize }
+        if Self.tooltipOpacityChoices.contains(snapshot.tooltipOpacity) { tooltipOpacity = snapshot.tooltipOpacity }
+        hideTooltipOnHover = snapshot.hideTooltipOnHover
+        showStatusHUD = snapshot.showStatusHUD
+        CourseCatalogue.shared.applyHiddenCourseIDs(snapshot.hiddenCourseIDs)
     }
 
     /// Reveal the log folder in Finder.

@@ -177,6 +177,23 @@ extension Defaults.Keys {
     static let shelfRemoveAfterSend = Key<Bool>("shelfRemoveAfterSend", default: false)
     static let expandedDragDetection = Key<Bool>("expandedDragDetection", default: true)
 
+    // MARK: Calla Tutor
+    // These keys are intentionally Boring-owned. Never read the retired
+    // com.calla.tutor-host preference domain.
+    static let callaTutorEnabled = Key<Bool>("callaTutorEnabled", default: true)
+    static let callaCaptureEnabled = Key<Bool>("callaCaptureEnabled", default: true)
+    static let callaAllowedBundleIDs = Key<[String]>("callaAllowedBundleIDs", default: ["org.blenderfoundation.blender"])
+    static let callaCaptureLongEdge = Key<Int>("callaCaptureLongEdge", default: 1600)
+    static let callaTooltipWidth = Key<Int>("callaTooltipWidth", default: 340)
+    static let callaHideTooltipOnHover = Key<Bool>("callaHideTooltipOnHover", default: true)
+    static let callaCursorSize = Key<Int>("callaCursorSize", default: 30)
+    static let callaTooltipOpacity = Key<Double>("callaTooltipOpacity", default: 0.92)
+    static let callaShowStatusHUD = Key<Bool>("callaShowStatusHUD", default: true)
+    static let callaLearnerID = Key<String>("callaLearnerID", default: "")
+    static let callaHiddenCourseIDs = Key<[String]>("callaHiddenCourseIDs", default: [])
+    static let callaCalendarEnabled = Key<Bool>("callaCalendarEnabled", default: true)
+    static let callaCalendarBindings = Key<Data?>("callaCalendarBindings", default: nil)
+
     // MARK: Usage Monitor
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
     static let usageMonitorRefreshInterval = Key<Double>("usageMonitorRefreshInterval", default: 300)

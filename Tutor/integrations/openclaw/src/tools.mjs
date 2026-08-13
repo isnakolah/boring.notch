@@ -1,4 +1,4 @@
-import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildInternalLearningEnvelope, buildTutorEnvelope, unwrapNodePayload} from "./protocol.mjs";
+import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildInternalLearningEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, unwrapNodePayload} from "./protocol.mjs";
 import {buildCourseRuntime} from "./course-runtime.mjs";
 import {buildCourseCatalogue, findCanonicalDescriptor, lessonCard, requireCanonicalDescriptor, requirePackAuthorizedAction, retrieveLessonPrimer, retrievePackPrimer} from "./local-retrieval.mjs";
 import {
@@ -332,6 +332,29 @@ function recordLearning(api, config, sessionID, lessonID, bundleID, succeeded, d
   });
   // Persistence is owner-local and must never hold the feedback lane.
   void api.runtime.nodes.invoke({nodeId: config.nodeId, command: "tutor.host", params: envelope, timeoutMs: 2_000}).catch(() => {});
+}
+
+/// Capability negotiation stays on node transport. It is neither a model tool
+/// nor a teaching turn, and v2 remains wire fallback during migration.
+export async function pushSessionStart(api, config) {
+  if (!config.nodeId || !config.nodeContractHash) return false;
+  try {
+    const envelope = buildSessionStartEnvelope({
+      min: 2,
+      max: 3,
+      engineBuild: config.engineBuild,
+      nodeContractHash: config.nodeContractHash,
+    });
+    const response = unwrapNodePayload(await api.runtime.nodes.invoke({
+      nodeId: config.nodeId,
+      command: "tutor.host",
+      params: envelope,
+      timeoutMs: 2_000,
+    }));
+    return response?.ok !== false;
+  } catch {
+    return false;
+  }
 }
 
 /// Tell the Mac what it may offer.

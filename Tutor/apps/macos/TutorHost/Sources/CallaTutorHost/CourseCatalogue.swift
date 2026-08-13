@@ -44,21 +44,14 @@ final class CourseCatalogue: ObservableObject {
     @Published private(set) var courses: [Course] = []
     /// Hiding a course changes only what this Mac offers. App Packs remain on
     /// the Gateway, where authored lessons and their detectors are owned.
-    @Published private(set) var hiddenCourseIDs: Set<String> {
-        didSet { defaults.set(Array(hiddenCourseIDs), forKey: Self.hiddenCourseIDsKey) }
-    }
+    @Published private(set) var hiddenCourseIDs: Set<String>
 
     private let file: URL
-    private let defaults: UserDefaults
-    private static let hiddenCourseIDsKey = "hiddenCourseIDs"
 
-    private init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-        let directory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/CallaTutor", isDirectory: true)
-        file = directory.appendingPathComponent("catalogue.json")
+    private init() {
+        file = CallaRuntime.file("catalogue.json")
         courses = Self.read(from: file)
-        hiddenCourseIDs = Set(defaults.stringArray(forKey: Self.hiddenCourseIDsKey) ?? [])
+        hiddenCourseIDs = []
     }
 
     /// Replace the catalogue with what the Gateway just sent.
@@ -96,6 +89,10 @@ final class CourseCatalogue: ObservableObject {
         } else {
             hiddenCourseIDs.insert(course.id)
         }
+    }
+
+    func applyHiddenCourseIDs(_ identifiers: [String]) {
+        hiddenCourseIDs = Set(identifiers.filter { !$0.isEmpty })
     }
 
     // MARK: - Disk

@@ -14,7 +14,7 @@ export class TutorHostUnavailableError extends Error {
 }
 
 export function defaultTutorSocketPath() {
-  return path.join(os.homedir(), "Library", "Application Support", "CallaTutor", "tutor-host.sock");
+  return path.join(os.homedir(), "Library", "Application Support", "boringNotch", "Calla", "tutor-host.sock");
 }
 
 export async function invokeTutorHost(envelope, options = {}) {

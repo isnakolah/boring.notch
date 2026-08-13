@@ -52,6 +52,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Tutor") {
+                    Label("Tutor", systemImage: "graduationcap")
+                }
                 NavigationLink(value: "Usage") {
                     Label("Usage", systemImage: "chart.bar.xaxis")
                 }
@@ -92,6 +95,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Tutor":
+                    CallaTutorSettingsView()
                 case "Usage":
                     UsageMonitorSettings()
                 case "Pomodoro":

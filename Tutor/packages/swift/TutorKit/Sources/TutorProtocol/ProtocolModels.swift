@@ -2,6 +2,11 @@ import Foundation
 
 public enum TutorProtocolVersion {
     public static let current = 2
+    public static let supported = 2...3
+
+    public static func accepts(_ value: Int) -> Bool {
+        supported.contains(value)
+    }
 }
 
 public enum JSONValue: Codable, Equatable, Sendable {

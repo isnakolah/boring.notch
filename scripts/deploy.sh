@@ -4,8 +4,10 @@
 #
 # Deploys DEBUG by default. Debug uses persistent local `Calla Local Signing`
 # identity for app and XPC helper, keeping TCC grants stable across local
-# rebuilds. Release remains distribution-only: use Developer ID signing and
-# hardened runtime there.
+# rebuilds. Current private Release builds use that same local identity and
+# disable hardened runtime: it cannot load Boring's locally signed OpenSSL
+# framework under library validation. Restore Developer ID signing and hardened
+# runtime together before any external distribution.
 #
 # Usage:
 #   scripts/deploy.sh                 # build Debug, install, relaunch
@@ -46,8 +48,10 @@ SCHEME="boringNotch"
 APP_NAME="boringNotch.app"
 DEST="/Applications/$APP_NAME"
 HELPER_RELATIVE_PATH="Contents/XPCServices/BoringNotchXPCHelper.xpc"
+CALLA_ENGINE_RELATIVE_PATH="Contents/XPCServices/BoringCallaEngine.xpc"
 APP_BUNDLE_ID="theboringteam.boringnotch"
 HELPER_BUNDLE_ID="theboringteam.boringnotch.BoringNotchXPCHelper"
+CALLA_ENGINE_BUNDLE_ID="theboringteam.boringnotch.BoringCallaEngine"
 
 bundle_identifier() {
   codesign -d --verbose=2 "$1" 2>&1 | sed -n 's/^Identifier=//p'
@@ -120,12 +124,42 @@ echo "▸ Source: $SRC"
 
 verify_signed_bundle "$SRC" "$APP_BUNDLE_ID"
 verify_signed_bundle "$SRC/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
+verify_signed_bundle "$SRC/$CALLA_ENGINE_RELATIVE_PATH" "$CALLA_ENGINE_BUNDLE_ID"
+for required_resource in Calla/openclaw Calla/packs Calla/agent-workspace Calla/scripts Calla/Gateway; do
+  [[ -d "$SRC/Contents/Resources/$required_resource" ]] || { echo "✗ Missing embedded Tutor resource: $required_resource" >&2; exit 1; }
+done
+for required_file in \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaOverlayHelper \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-ask.sh \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-course.sh \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-gateway-check.sh \
+  Contents/Resources/Calla/openclaw/openclaw.plugin.json \
+  Contents/Resources/Calla/scripts/calla-node-host.sh \
+  Contents/Resources/Calla/scripts/gateway-update.sh \
+  Contents/Resources/Calla/Gateway/calla-gateway.tar.gz; do
+  [[ -x "$SRC/$required_file" || -f "$SRC/$required_file" ]] || { echo "✗ Missing embedded Tutor file: $required_file" >&2; exit 1; }
+done
+tar -tzf "$SRC/Contents/Resources/Calla/Gateway/calla-gateway.tar.gz" | rg -qx 'release/manifest.json' \
+  || { echo "✗ Embedded Calla Gateway archive lacks release manifest" >&2; exit 1; }
+for forbidden_file in \
+  Contents/Resources/Calla/scripts/bootstrap-calla-mac.sh \
+  Contents/Resources/Calla/scripts/setup-macos.sh \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/bootstrap-calla-mac.sh; do
+  [[ ! -e "$SRC/$forbidden_file" ]] || { echo "✗ Retired Tutor bootstrap leaked into Boring: $forbidden_file" >&2; exit 1; }
+done
 
 if [[ -d "$DEST" ]]; then
   verify_signed_bundle "$DEST" "$APP_BUNDLE_ID"
   verify_signed_bundle "$DEST/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
   verify_tcc_identity "$SRC" "$DEST"
   verify_tcc_identity "$SRC/$HELPER_RELATIVE_PATH" "$DEST/$HELPER_RELATIVE_PATH"
+  if [[ -d "$DEST/$CALLA_ENGINE_RELATIVE_PATH" ]]; then
+    verify_signed_bundle "$DEST/$CALLA_ENGINE_RELATIVE_PATH" "$CALLA_ENGINE_BUNDLE_ID"
+    verify_tcc_identity "$SRC/$CALLA_ENGINE_RELATIVE_PATH" "$DEST/$CALLA_ENGINE_RELATIVE_PATH"
+  else
+    echo "▸ Existing Boring install predates Calla engine; adding new XPC service."
+  fi
 fi
 
 echo "▸ Quitting running app…"
@@ -141,6 +175,7 @@ BACKUP_APP="$STAGING_DIR/previous-$APP_NAME"
 ditto "$SRC" "$STAGED_APP"
 verify_signed_bundle "$STAGED_APP" "$APP_BUNDLE_ID"
 verify_signed_bundle "$STAGED_APP/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
+verify_signed_bundle "$STAGED_APP/$CALLA_ENGINE_RELATIVE_PATH" "$CALLA_ENGINE_BUNDLE_ID"
 
 if [[ -d "$DEST" ]]; then
   mv "$DEST" "$BACKUP_APP"
@@ -154,6 +189,15 @@ fi
 [[ -d "$DEST/Contents/XPCServices/BoringNotchXPCHelper.xpc" ]] \
   && echo "  ✓ XPC helper embedded" \
   || echo "  ⚠ XPC helper NOT found"
+[[ -d "$DEST/Contents/XPCServices/BoringCallaEngine.xpc" ]] \
+  && echo "  ✓ Calla engine embedded" \
+  || { echo "  ✗ Calla engine NOT found" >&2; exit 1; }
+
+# Boring owns the replacement plugin path and launch labels. This never deletes
+# retired Calla plists/data; it unloads only their active jobs after the new
+# Boring resources have been verified and installed.
+echo "▸ Installing Boring Calla local runtime…"
+CALLA_RUNTIME_LAUNCH="$LAUNCH" /bin/bash "$PROJECT_DIR/scripts/calla/runtime-install.sh"
 
 if [[ "$LAUNCH" == 1 ]]; then
   echo "▸ Launching…"

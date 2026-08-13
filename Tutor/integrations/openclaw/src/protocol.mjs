@@ -5,6 +5,9 @@ import path from "node:path";
 import {validateDetectorDescriptor, validateTargetDescriptor} from "./descriptors.mjs";
 
 export const PROTOCOL_VERSION = 2;
+/// New Gateway and Boring engine understand v2 and v3. Gateway keeps sending
+/// v2 until a paired node's internal handshake proves v3 compatibility.
+export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([2, 3]);
 export const NODE_COMMAND = "tutor.host";
 export const CALLA_ROLES = Object.freeze(["gateway", "node", "both"]);
 /// The tools a model can actually call.
@@ -49,7 +52,7 @@ const TOOL_TO_OPERATION = Object.freeze({
 /// Both are pushes rather than answers to a turn, and neither is a tool: adding
 /// one here does not expose it to the model, and it must not be added to
 /// TUTOR_TOOL_NAMES.
-const INTERNAL_OPERATIONS = new Set(["record_learning", "catalogue", "course_status", "course_runtime"]);
+const INTERNAL_OPERATIONS = new Set(["session_start", "record_learning", "catalogue", "course_status", "course_runtime"]);
 
 const FORBIDDEN_COORDINATE_KEYS = new Set([
   "x",
@@ -297,8 +300,8 @@ export function validateNodeEnvelope(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("node request must be an object");
   }
-  if (value.protocol_version !== PROTOCOL_VERSION) {
-    throw new TypeError("protocol_version must be 2");
+  if (!SUPPORTED_PROTOCOL_VERSIONS.includes(value.protocol_version)) {
+    throw new TypeError("protocol_version must be in supported range 2...3");
   }
   requireString(value.request_id, "request_id", 8);
   requireString(value.session_id, "session_id", 8);
@@ -307,6 +310,14 @@ export function validateNodeEnvelope(value) {
   }
   const toolName = Object.entries(TOOL_TO_OPERATION).find(([, operation]) => operation === value.operation)?.[0];
   if (toolName) validateToolPayload(toolName, value.payload);
+  if (value.operation === "session_start") {
+    const range = value.payload?.supported_protocol_range;
+    if (!range || !Number.isInteger(range.min) || !Number.isInteger(range.max) || range.min > range.max ||
+        range.min < 2 || range.max > 3 || typeof value.payload?.engine_build !== "string" ||
+        typeof value.payload?.node_contract_hash !== "string") {
+      throw new TypeError("session_start requires bounded protocol range, engine build, and node contract hash");
+    }
+  }
   if (value.operation === "record_learning") {
     const payload = value.payload;
     if (typeof payload?.lesson_id !== "string" || typeof payload?.bundle_id !== "string" || typeof payload?.succeeded !== "boolean") {
@@ -406,6 +417,23 @@ export function validateNodeEnvelope(value) {
   return value;
 }
 
+/// Internal-only capability negotiation. Never register this as a model tool.
+/// `protocol_version` stays at v2 for old Gateway/new Mac migration safety.
+export function buildSessionStartEnvelope({min = 2, max = 3, engineBuild, nodeContractHash}) {
+  const envelope = {
+    protocol_version: PROTOCOL_VERSION,
+    request_id: randomUUID(),
+    operation: "session_start",
+    session_id: "calla-session-start",
+    payload: {
+      supported_protocol_range: {min, max},
+      engine_build: requireString(engineBuild, "engine_build"),
+      node_contract_hash: requireString(nodeContractHash, "node_contract_hash"),
+    },
+  };
+  return validateNodeEnvelope(envelope);
+}
+
 /// Hand the Mac the list of courses it may offer.
 ///
 /// `session_id` is required of every envelope and there is no lesson here, so it
@@ -461,6 +489,12 @@ export function parsePluginConfig(raw) {
   }
   const nodeId =
     typeof config.nodeId === "string" && config.nodeId.trim() ? config.nodeId.trim() : null;
+  const nodeContractHash =
+    typeof config.nodeContractHash === "string" && /^[a-f0-9]{16,128}$/i.test(config.nodeContractHash)
+      ? config.nodeContractHash.toLowerCase() : null;
+  const engineBuild =
+    typeof config.engineBuild === "string" && config.engineBuild.trim() && config.engineBuild.length <= 120
+      ? config.engineBuild.trim() : "unknown";
   const timeoutMs = Number.isSafeInteger(config.timeoutMs) ? config.timeoutMs : 10_000;
   if (timeoutMs < 1_000 || timeoutMs > 30_000) {
     throw new TypeError("tutor timeoutMs must be between 1000 and 30000");
@@ -470,9 +504,14 @@ export function parsePluginConfig(raw) {
       ? config.stateDirectory.trim()
       : "~/.openclaw/tutor";
   const stateDirectory = expandHomeDirectory(configuredStateDirectory);
+  const agentWorkspace =
+    typeof config.agentWorkspace === "string" && config.agentWorkspace.trim()
+      ? expandHomeDirectory(config.agentWorkspace.trim()) : null;
   return {
     role,
     nodeId,
+    nodeContractHash,
+    engineBuild,
     socketPath:
       typeof config.socketPath === "string" && config.socketPath.trim()
         ? config.socketPath.trim()
@@ -480,6 +519,7 @@ export function parsePluginConfig(raw) {
     timeoutMs,
     requireOwnerIdentity: config.requireOwnerIdentity === true,
     stateDirectory,
+    agentWorkspace,
     courseSocketPath: typeof config.courseSocketPath === "string" && config.courseSocketPath.trim()
       ? config.courseSocketPath.trim() : path.join(stateDirectory, "course-control.sock"),
     developmentMode: config.developmentMode === true,

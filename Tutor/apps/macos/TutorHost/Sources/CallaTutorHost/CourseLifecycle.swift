@@ -6,7 +6,12 @@ import UserNotifications
 /// updates into noise and hide the important ready/failed/published events.
 @MainActor
 enum CourseNotifications {
+    private static var isEmbeddedBoringRuntime: Bool {
+        ProcessInfo.processInfo.environment["CALLA_RUNTIME_MODE"] == "boring"
+    }
+
     static func requestPermission() {
+        guard !isEmbeddedBoringRuntime else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { _, _ in }
     }
 
@@ -18,6 +23,7 @@ enum CourseNotifications {
     /// off for good. The pane shows them live; a banner is for when the pane is
     /// closed and the answer has changed.
     static func post(for course: CourseLifecycleStore.Course, previous: CourseLifecycleStore.Course?) {
+        guard !isEmbeddedBoringRuntime else { return }
         guard previous?.phase != course.phase else { return }
         let message: (title: String, body: String)?
         switch course.phase {
@@ -116,9 +122,7 @@ final class CourseLifecycleStore: ObservableObject {
     private let file: URL
 
     private init() {
-        let directory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/CallaTutor", isDirectory: true)
-        file = directory.appendingPathComponent("course-status.json")
+        file = CallaRuntime.file("course-status.json")
         courses = Self.read(file)
     }
 
@@ -159,7 +163,7 @@ final class CourseRunStore: ObservableObject {
     private let file: URL
 
     private init() {
-        file = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support/CallaTutor/course-runs.json")
+        file = CallaRuntime.file("course-runs.json")
         runs = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([String: Run].self, from: $0) } ?? [:]
     }
 

@@ -265,8 +265,8 @@ final class TutorHostController: ObservableObject {
     }
 
     private func route(_ request: TutorRequest) async -> TutorResponse {
-        guard request.protocolVersion == TutorProtocolVersion.current else {
-            return failure(request, "unsupported_version", "Tutor protocol version 2 is required")
+        guard TutorProtocolVersion.accepts(request.protocolVersion) else {
+            return failure(request, "unsupported_version", "Tutor protocol version must be in supported range 2...3")
         }
         // Recorded before any validation: the menu needs to show that Calla is
         // reaching this Mac even when what it sent was refused.
@@ -274,7 +274,7 @@ final class TutorHostController: ObservableObject {
         guard request.sessionID.count >= 8 else { return failure(request, "invalid_session", "A valid teaching session is required") }
         // Bookkeeping and the course list are not looking at anything, so a
         // paused capture has no reason to refuse them.
-        guard captureActive || ["record_learning", "catalogue", "course_status", "course_runtime"].contains(request.operation) else {
+        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_resume", "course_stop", "course_ask"].contains(request.operation) else {
             return failure(request, "capture_paused", "Capture is paused locally")
         }
         do {
@@ -311,6 +311,27 @@ final class TutorHostController: ObservableObject {
                 currentSession = request.sessionID
             }
             switch request.operation {
+            case "session_start":
+                guard let range = request.payload["supported_protocol_range"]?.objectValue,
+                      let minimum = range["min"]?.numberValue,
+                      let maximum = range["max"]?.numberValue,
+                      minimum.rounded() == minimum, maximum.rounded() == maximum,
+                      Int(minimum) <= Int(maximum),
+                      request.payload["engine_build"]?.stringValue?.isEmpty == false,
+                      request.payload["node_contract_hash"]?.stringValue?.isEmpty == false else {
+                    return failure(request, "invalid_session_start", "A bounded internal capability handshake is required")
+                }
+                let compatible = TutorProtocolVersion.supported.contains(Int(minimum)) || TutorProtocolVersion.supported.contains(Int(maximum))
+                guard compatible else {
+                    return failure(request, "unsupported_version", "Node and engine do not share a Tutor protocol version")
+                }
+                CallaRuntime.recordCapabilityHandshake(
+                    engineBuild: request.payload["engine_build"]?.stringValue ?? "unknown",
+                    nodeContractHash: request.payload["node_contract_hash"]?.stringValue ?? "unknown"
+                )
+                payload = ["protocol_version": .number(Double(TutorProtocolVersion.current)),
+                           "supported_protocol_min": .number(Double(TutorProtocolVersion.supported.lowerBound)),
+                           "supported_protocol_max": .number(Double(TutorProtocolVersion.supported.upperBound))]
             case "observe":
                 payload = try await engine.observe(request.payload)
                 if let completion = pendingCompletion {
@@ -376,6 +397,38 @@ final class TutorHostController: ObservableObject {
                 }
                 try CourseRuntimeStore.shared.replace(runtime)
                 payload = ["status": .string("stored"), "courses": .number(Double(runtime.courses.count))]
+            // Boring XPC owns these local-only operations. They are never
+            // registered as OpenClaw/model tools; owner-only socket permission
+            // and the engine process are their capability boundary.
+            case "course_start":
+                guard let courseID = request.payload["course_id"]?.stringValue,
+                      let course = CourseCatalogue.shared.courses.first(where: { $0.id == courseID }) else {
+                    return failure(request, "missing_course", "This course is not in the current Gateway catalogue.")
+                }
+                if let reason = await CourseResume.resume(course, allowed: TutorSettings.shared.allowedBundleIDs) {
+                    return failure(request, "course_start_refused", reason)
+                }
+                payload = ["status": .string("started"), "course_id": .string(courseID)]
+            case "course_resume":
+                guard let courseID = CourseRunStore.shared.mostRecentCourseID,
+                      let course = CourseCatalogue.shared.courses.first(where: { $0.id == courseID }) else {
+                    return failure(request, "missing_course", "No course is ready to resume.")
+                }
+                if let reason = await CourseResume.resume(course, allowed: TutorSettings.shared.allowedBundleIDs) {
+                    return failure(request, "course_resume_refused", reason)
+                }
+                payload = ["status": .string("resumed"), "course_id": .string(courseID)]
+            case "course_stop":
+                stopLesson()
+                payload = ["status": .string("stopped")]
+            case "course_ask":
+                guard let text = request.payload["text"]?.stringValue,
+                      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      text.count <= 800 else {
+                    return failure(request, "invalid_question", "Ask needs one short question.")
+                }
+                LessonRelay.shared.handle(event: "ask", text: text)
+                payload = ["status": .string("asking")]
             default: return failure(request, "unsupported_operation", "This TutorHost accepts only documented Tutor operations")
             }
             if ["guide", "narrate"].contains(request.operation), let started = feedbackStartedAt {
@@ -913,7 +966,7 @@ final class TutorHostController: ObservableObject {
         TutorResponse(requestID: request.requestID, ok: false, payload: nil, error: TutorError(code: code, message: message))
     }
 
-    static let socketPath = NSHomeDirectory() + "/Library/Application Support/CallaTutor/tutor-host.sock"
+    static let socketPath = CallaRuntime.file("tutor-host.sock").path
 
     /// Whether some other host is already listening.
     ///
@@ -2194,8 +2247,7 @@ struct BlenderBridgeDescriptor: Decodable {
 }
 
 final class BlenderBridgeObserver {
-    private let directory = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Caches/CallaTutor", isDirectory: true)
+    private let directory = CallaRuntime.cache("bridge")
 
     func observeState() throws -> JSONValue { try observe("observe_state") }
 

@@ -388,6 +388,8 @@ struct ContentView: View {
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
                     case .shelf:
                         ShelfView()
+                    case .tutor:
+                        CallaTabView()
                     case .usage:
                         UsageMonitorView()
                     case .pomodoro:

@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import SwiftUI
-import UserNotifications
 
 @main
 struct CallaTutorHostApp: App {
@@ -21,46 +20,22 @@ struct CallaTutorHostApp: App {
     /// dead teaching session.
     init() { signal(SIGPIPE, SIG_IGN) }
 
-    @StateObject private var host = TutorHostController.shared
-    @StateObject private var settings = TutorSettings.shared
     @NSApplicationDelegateAdaptor(CallaAppDelegate.self) private var appDelegate
 
-    /// Green ready · blue teaching · orange working on it · red stuck · grey paused.
-    private var statusTint: NSColor {
-        if !host.captureActive { return .secondaryLabelColor }
-        if !settings.screenRecordingGranted { return .systemOrange }
-        if case .connected = BackendStatus.shared.link {} else {
-            return BackendStatus.shared.isStuck ? .systemRed : .systemOrange
-        }
-        if settings.allowedBundleIDs.isEmpty { return .systemOrange }
-        return host.lessonActive ? .systemBlue : .systemGreen
-    }
-
     var body: some Scene {
-        MenuBarExtra {
-            CallaMenu(host: host, settings: settings,
-                      backend: BackendStatus.shared, subject: LessonSubject.shared,
-                      relay: LessonRelay.shared)
-        } label: {
-            // The mark carries the status in its colour, so the menu bar answers
-            // "is Calla all right" without being opened.
-            Image(nsImage: CallaMark.image(edge: 16, tint: statusTint))
-        }
-        .menuBarExtraStyle(.window)
-
-        // No `Settings` scene: an accessory application has no Application menu
-        // for the standard action to route through, so the scene is never built
-        // and the window never appears. `SettingsPresenter` owns it instead.
+        // Boring owns visible UI. This child exists only for protected capture,
+        // overlay, socket, local course, and relay runtime.
+        Settings { EmptyView() }
     }
 }
 
 // MenuBarExtra only builds its content when the menu is opened, so a `.task`
 // there would delay the socket until a human clicked the icon. Start at launch.
-final class CallaAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+final class CallaAppDelegate: NSObject, NSApplicationDelegate {
+    private var preferenceTimer: Timer?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
-        UNUserNotificationCenter.current().delegate = self
-        CourseNotifications.requestPermission()
+        NSApp.setActivationPolicy(.prohibited)
         // Started before any lesson: the application a lesson is about has to be
         // known from the moment the learner uses it, not from the moment they
         // get around to asking.
@@ -74,7 +49,9 @@ final class CallaAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificatio
         Task {
             await TutorHostController.shared.start()
             await TutorSettings.shared.refreshPermissionStatus()
-            TutorSettings.shared.requestScreenRecordingApproval()
+        }
+        preferenceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            Task { @MainActor in TutorSettings.shared.reloadFromEngineSnapshot() }
         }
     }
 
@@ -82,12 +59,8 @@ final class CallaAppDelegate: NSObject, NSApplicationDelegate, UNUserNotificatio
     /// this the overlay outlives the host whenever the pipe does not close on
     /// the way out, and there is then nothing left that can hide it.
     func applicationWillTerminate(_ notification: Notification) {
+        preferenceTimer?.invalidate()
         MainActor.assumeIsolated { PointerOverlay.shared.shutdown() }
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter,
-                                willPresent notification: UNNotification,
-                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .list, .sound])
-    }
 }

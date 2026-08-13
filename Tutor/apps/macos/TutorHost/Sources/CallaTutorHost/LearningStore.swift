@@ -10,8 +10,7 @@ final class LearningStore {
     private let directory: URL
 
     private init(fileManager: FileManager = .default) {
-        directory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent("Library/Application Support/CallaTutor/learning", isDirectory: true)
+        directory = CallaRuntime.root.appendingPathComponent("learning", isDirectory: true)
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
                                          attributes: [.posixPermissions: 0o700])
     }

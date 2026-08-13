@@ -31,6 +31,14 @@ struct DynamicNotchApp: App {
 
         // Initialize the settings window controller with the updater controller
         SettingsWindowController.shared.setUpdaterController(updaterController)
+
+        // SwiftUI constructs App before AppDelegate receives launch callbacks.
+        // Start early and retain client singleton for full app lifetime.
+        DispatchQueue.main.async {
+            guard Defaults[.callaTutorEnabled] else { return }
+            CallaEngineClient.shared.start()
+            CallaEngineClient.shared.applyCurrentPreferences()
+        }
     }
 
     /// Existing installs persist the former Cmd+Shift+P default. Move that
@@ -101,7 +109,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
     let vm: BoringViewModel = .init()
     @ObservedObject var coordinator = BoringViewCoordinator.shared
-    var shelfShareService = ShelfShareService.shared
+    // Shelf transport creates/reads its KDE identity from Keychain. Construct
+    // it lazily in Shelf views; doing it during delegate construction can block
+    // the main thread before Calla's embedded engine gets its launch callback.
     var whatsNewWindow: NSWindow?
     var timer: Timer?
     var closeNotchTask: Task<Void, Never>?
@@ -327,6 +337,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
 
         configureLaunchAtLoginIfNeeded()
+        if Defaults[.callaTutorEnabled] {
+            // Retain one XPC connection for app lifetime so node requests keep
+            // reaching Boring-owned engine instead of a visible TutorHost app.
+            CallaEngineClient.shared.start()
+            CallaEngineClient.shared.applyCurrentPreferences()
+        }
 
         NotificationCenter.default.addObserver(
             self,
