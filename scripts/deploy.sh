@@ -49,9 +49,11 @@ APP_NAME="boringNotch.app"
 DEST="/Applications/$APP_NAME"
 HELPER_RELATIVE_PATH="Contents/XPCServices/BoringNotchXPCHelper.xpc"
 CALLA_ENGINE_RELATIVE_PATH="Contents/XPCServices/BoringCallaEngine.xpc"
+SWEEP_SERVICE_RELATIVE_PATH="Contents/XPCServices/SweepService.xpc"
 APP_BUNDLE_ID="theboringteam.boringnotch"
 HELPER_BUNDLE_ID="theboringteam.boringnotch.BoringNotchXPCHelper"
 CALLA_ENGINE_BUNDLE_ID="theboringteam.boringnotch.BoringCallaEngine"
+SWEEP_SERVICE_BUNDLE_ID="theboringteam.boringnotch.SweepService"
 
 bundle_identifier() {
   codesign -d --verbose=2 "$1" 2>&1 | sed -n 's/^Identifier=//p'
@@ -125,6 +127,7 @@ echo "▸ Source: $SRC"
 verify_signed_bundle "$SRC" "$APP_BUNDLE_ID"
 verify_signed_bundle "$SRC/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
 verify_signed_bundle "$SRC/$CALLA_ENGINE_RELATIVE_PATH" "$CALLA_ENGINE_BUNDLE_ID"
+verify_signed_bundle "$SRC/$SWEEP_SERVICE_RELATIVE_PATH" "$SWEEP_SERVICE_BUNDLE_ID"
 for required_resource in Calla/openclaw Calla/packs Calla/agent-workspace Calla/scripts Calla/Gateway; do
   [[ -d "$SRC/Contents/Resources/$required_resource" ]] || { echo "✗ Missing embedded Tutor resource: $required_resource" >&2; exit 1; }
 done
@@ -152,6 +155,9 @@ done
 if [[ -d "$DEST" ]]; then
   verify_signed_bundle "$DEST" "$APP_BUNDLE_ID"
   verify_signed_bundle "$DEST/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
+  if [[ -d "$DEST/$SWEEP_SERVICE_RELATIVE_PATH" ]]; then
+    verify_signed_bundle "$DEST/$SWEEP_SERVICE_RELATIVE_PATH" "$SWEEP_SERVICE_BUNDLE_ID"
+  fi
   verify_tcc_identity "$SRC" "$DEST"
   verify_tcc_identity "$SRC/$HELPER_RELATIVE_PATH" "$DEST/$HELPER_RELATIVE_PATH"
   if [[ -d "$DEST/$CALLA_ENGINE_RELATIVE_PATH" ]]; then
@@ -159,6 +165,9 @@ if [[ -d "$DEST" ]]; then
     verify_tcc_identity "$SRC/$CALLA_ENGINE_RELATIVE_PATH" "$DEST/$CALLA_ENGINE_RELATIVE_PATH"
   else
     echo "▸ Existing Boring install predates Calla engine; adding new XPC service."
+  fi
+  if [[ -d "$DEST/$SWEEP_SERVICE_RELATIVE_PATH" ]]; then
+    verify_tcc_identity "$SRC/$SWEEP_SERVICE_RELATIVE_PATH" "$DEST/$SWEEP_SERVICE_RELATIVE_PATH"
   fi
 fi
 
@@ -176,6 +185,7 @@ ditto "$SRC" "$STAGED_APP"
 verify_signed_bundle "$STAGED_APP" "$APP_BUNDLE_ID"
 verify_signed_bundle "$STAGED_APP/$HELPER_RELATIVE_PATH" "$HELPER_BUNDLE_ID"
 verify_signed_bundle "$STAGED_APP/$CALLA_ENGINE_RELATIVE_PATH" "$CALLA_ENGINE_BUNDLE_ID"
+verify_signed_bundle "$STAGED_APP/$SWEEP_SERVICE_RELATIVE_PATH" "$SWEEP_SERVICE_BUNDLE_ID"
 
 if [[ -d "$DEST" ]]; then
   mv "$DEST" "$BACKUP_APP"
@@ -198,14 +208,21 @@ fi
 # Boring resources have been verified and installed.
 echo "▸ Installing Boring Calla local runtime…"
 CALLA_RUNTIME_LAUNCH="$LAUNCH" /bin/bash "$PROJECT_DIR/scripts/calla/runtime-install.sh"
+[[ -d "$DEST/$SWEEP_SERVICE_RELATIVE_PATH" ]] \
+  && echo "  ✓ Sweep service embedded" \
+  || { echo "  ✗ Sweep service NOT found" >&2; exit 1; }
 
 if [[ "$LAUNCH" == 1 ]]; then
   echo "▸ Launching…"
   open -a "$DEST"
-  sleep 6
-  if pgrep -f "$DEST/Contents/MacOS/boringNotch" >/dev/null; then
-    echo "  ✓ running"
-  else
+  for _ in {1..15}; do
+    if pgrep -f "$DEST/Contents/MacOS/boringNotch" >/dev/null; then
+      echo "  ✓ running"
+      break
+    fi
+    sleep 1
+  done
+  if ! pgrep -f "$DEST/Contents/MacOS/boringNotch" >/dev/null; then
     echo "  ✗ not running — check ~/Library/Logs/DiagnosticReports/boringNotch-*.ips" >&2
     exit 1
   fi

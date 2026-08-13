@@ -75,6 +75,7 @@
 		11F747CE2EC75CEA00F841DB /* DragPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F747CD2EC75CEA00F841DB /* DragPreviewView.swift */; };
 		11F7485B2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 11F7484F2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CA11E0020000000000000002 /* BoringCallaEngine.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = CA11E0010000000000000001 /* BoringCallaEngine.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		BA7000020000000000000002 /* SweepService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = BA7000010000000000000001 /* SweepService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		11F748682EC9AC9600F841DB /* BoringNotchXPCHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748652EC9AC9600F841DB /* BoringNotchXPCHelperProtocol.swift */; };
 		11F748692EC9AC9600F841DB /* XPCHelperClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748662EC9AC9600F841DB /* XPCHelperClient.swift */; };
 		DDDD00010000000000000012 /* UsageReportDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD00010000000000000011 /* UsageReportDTO.swift */; };
@@ -176,6 +177,13 @@
 			remoteInfo = BoringNotchXPCHelper;
 		};
 		CA11E0040000000000000004 /* PBXContainerItemProxy */ = {isa = PBXContainerItemProxy; containerPortal = 14CEF40A2C5CAED200855D72 /* Project object */; proxyType = 1; remoteGlobalIDString = CA11E0030000000000000003; remoteInfo = BoringCallaEngine; };
+		BA7000040000000000000004 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 14CEF40A2C5CAED200855D72 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BA7000030000000000000003;
+			remoteInfo = SweepService;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -187,6 +195,7 @@
 			files = (
 				11F7485B2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc in Embed XPC Services */,
 				CA11E0020000000000000002 /* BoringCallaEngine.xpc in Embed XPC Services */,
+				BA7000020000000000000002 /* SweepService.xpc in Embed XPC Services */,
 			);
 			name = "Embed XPC Services";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -267,6 +276,7 @@
 		11F747CD2EC75CEA00F841DB /* DragPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DragPreviewView.swift; sourceTree = "<group>"; };
 		11F7484F2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = BoringNotchXPCHelper.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA11E0010000000000000001 /* BoringCallaEngine.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = BoringCallaEngine.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA7000010000000000000001 /* SweepService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = SweepService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		11F748652EC9AC9600F841DB /* BoringNotchXPCHelperProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoringNotchXPCHelperProtocol.swift; sourceTree = "<group>"; };
 		11F748662EC9AC9600F841DB /* XPCHelperClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XPCHelperClient.swift; sourceTree = "<group>"; };
 		DDDD00010000000000000011 /* UsageReportDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReportDTO.swift; sourceTree = "<group>"; };
@@ -366,16 +376,23 @@
 			target = 11F7484E2EC9AABA00F841DB /* BoringNotchXPCHelper */;
 		};
 		CA11E0070000000000000007 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Info.plist, ); target = CA11E0030000000000000003 /* BoringCallaEngine */; };
+		BA7000130000000000000013 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (Info.plist, SweepService.entitlements, );
+			target = BA7000030000000000000003 /* SweepService */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		112FB72F2CCF12CC0015238C /* private */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = private; sourceTree = "<group>"; };
 		11F748502EC9AABA00F841DB /* BoringNotchXPCHelper */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (11F7485C2EC9AABA00F841DB /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringNotchXPCHelper; sourceTree = "<group>"; };
 		CA11E0060000000000000006 /* BoringCallaEngine */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (CA11E0070000000000000007 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BoringCallaEngine; sourceTree = "<group>"; };
+		BA7000120000000000000012 /* SweepService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (BA7000130000000000000013 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = SweepService; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		CA11E0090000000000000009 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		BA7000070000000000000007 /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		11F7484C2EC9AABA00F841DB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -626,6 +643,7 @@
 				14CEF4142C5CAED300855D72 /* boringNotch */,
 				11F748502EC9AABA00F841DB /* BoringNotchXPCHelper */,
 				CA11E0060000000000000006 /* BoringCallaEngine */,
+				BA7000120000000000000012 /* SweepService */,
 				14CEF4132C5CAED300855D72 /* Products */,
 				14D031EC2C689DB70096E6A1 /* Frameworks */,
 			);
@@ -637,6 +655,7 @@
 				14CEF4122C5CAED300855D72 /* boringNotch.app */,
 				11F7484F2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc */,
 				CA11E0010000000000000001 /* BoringCallaEngine.xpc */,
+				BA7000010000000000000001 /* SweepService.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -890,6 +909,23 @@
 			productReference = CA11E0010000000000000001 /* BoringCallaEngine.xpc */;
 			productType = "com.apple.product-type.xpc-service";
 		};
+		BA7000030000000000000003 /* SweepService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA7000110000000000000011 /* Build configuration list for PBXNativeTarget "SweepService" */;
+			buildPhases = (
+				BA7000060000000000000006 /* Sources */,
+				BA7000070000000000000007 /* Frameworks */,
+				BA7000080000000000000008 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (BA7000120000000000000012 /* SweepService */, );
+			name = SweepService;
+			packageProductDependencies = ();
+			productName = SweepService;
+			productReference = BA7000010000000000000001 /* SweepService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 		14CEF4112C5CAED300855D72 /* boringNotch */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 14CEF4212C5CAED400855D72 /* Build configuration list for PBXNativeTarget "boringNotch" */;
@@ -907,6 +943,7 @@
 			dependencies = (
 				11F7485A2EC9AABA00F841DB /* PBXTargetDependency */,
 				CA11E0050000000000000005 /* PBXTargetDependency */,
+				BA7000050000000000000005 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				112FB72F2CCF12CC0015238C /* private */,
@@ -981,6 +1018,7 @@
 				14CEF4112C5CAED300855D72 /* boringNotch */,
 				11F7484E2EC9AABA00F841DB /* BoringNotchXPCHelper */,
 				CA11E0030000000000000003 /* BoringCallaEngine */,
+				BA7000030000000000000003 /* SweepService */,
 			);
 		};
 /* End PBXProject section */
@@ -994,6 +1032,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BA7000080000000000000008 /* Resources */ = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		14CEF4102C5CAED300855D72 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1057,6 +1096,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		BA7000060000000000000006 /* Sources */ = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		14CEF40E2C5CAED300855D72 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1207,9 +1247,52 @@
 			targetProxy = 11F748592EC9AABA00F841DB /* PBXContainerItemProxy */;
 		};
 		CA11E0050000000000000005 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = CA11E0030000000000000003 /* BoringCallaEngine */; targetProxy = CA11E0040000000000000004 /* PBXContainerItemProxy */; };
+		BA7000050000000000000005 /* PBXTargetDependency */ = { isa = PBXTargetDependency; target = BA7000030000000000000003 /* SweepService */; targetProxy = BA7000040000000000000004 /* PBXContainerItemProxy */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		BA7000090000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SweepService/SweepService.entitlements;
+				CODE_SIGN_IDENTITY = "Calla Local Signing";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Calla Local Signing";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 271;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SweepService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.7.3;
+				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch.SweepService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = targeted;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BA7000100000000000000010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SweepService/SweepService.entitlements;
+				CODE_SIGN_IDENTITY = "Calla Local Signing";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Calla Local Signing";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 271;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SweepService/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 2.7.3;
+				PRODUCT_BUNDLE_IDENTIFIER = theboringteam.boringnotch.SweepService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_STRICT_CONCURRENCY = targeted;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		11F7485E2EC9AABA00F841DB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1547,6 +1630,12 @@
 		CA11E00B000000000000000B /* Build configuration list for PBXNativeTarget "BoringCallaEngine" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (CA11E00C000000000000000C /* Debug */, CA11E00D000000000000000D /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BA7000110000000000000011 /* Build configuration list for PBXNativeTarget "SweepService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (BA7000090000000000000009 /* Debug */, BA7000100000000000000010 /* Release */, );
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};

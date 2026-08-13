@@ -61,6 +61,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Pomodoro") {
                     Label("Pomodoro", systemImage: "timer.circle.fill")
                 }
+                NavigationLink(value: "Sweep") {
+                    Label("Sweep", systemImage: "externaldrive.badge.checkmark")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -101,6 +104,8 @@ struct SettingsView: View {
                     UsageMonitorSettings()
                 case "Pomodoro":
                     PomodoroSettings()
+                case "Sweep":
+                    SweepSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":
@@ -1884,4 +1889,313 @@ func warningBadge(_ text: String, _ description: String) -> some View {
 
 #Preview {
     HUD()
+}
+
+// MARK: - Sweep
+
+private enum SweepProcessLifetime: String, CaseIterable, Identifiable {
+    case tab = "Stop when leaving Sweep"
+    case settings = "Stop when Settings closes"
+    case app = "Keep until Boring quits"
+    var id: String { rawValue }
+}
+
+@objc private protocol BoringSweepServiceProtocol { func send(_ request: Data, with reply: @escaping (Data) -> Void) }
+
+private struct BoringSweepRequest: Codable {
+    var version = 2
+    var command: String
+    var targetID: String? = nil
+    var categoryID: String? = nil
+    var targetOffset: Int? = nil
+    var typedConfirmation: String? = nil
+    var preferences: BoringSweepPreferences? = nil
+}
+private struct BoringSweepPreferences: Codable { var candidateThresholdBytes: Int64; var extraScanRoots: [String]; var userExclusions: [String]; var resurveyInterval: TimeInterval }
+private struct BoringSweepReply: Codable { var version: Int; var snapshot: BoringSweepSnapshot?; var progress: BoringSweepProgress?; var error: String? }
+private struct BoringSweepProgress: Codable { var isSurveying: Bool; var progress: Double }
+private struct BoringSweepSnapshot: Codable {
+    var isSurveying: Bool; var progress: Double; var analysisIsCached: Bool; var lastSurvey: Date?
+    var volume: BoringSweepVolume?; var categories: [BoringSweepCategory]; var protected: BoringSweepProtected
+    var includesCategoryPage: Bool; var categoryID: String?; var targets: [BoringSweepTarget]; var nextTargetOffset: Int?
+    var reclaimableBytes: Int64; var includesHistory: Bool; var unreadableRoots: [String]
+    var selectedIDs: Set<String>; var selectedBytes: Int64; var preferences: BoringSweepPreferences
+    var history: BoringSweepHistory; var regrowth: [BoringSweepRegrowth]; var pendingPlan: BoringSweepPlan?
+    var lastReport: BoringSweepReport?; var fullDiskAccess: Bool; var migration: BoringSweepMigration
+}
+private struct BoringSweepVolume: Codable { var name: String; var total: Int64; var available: Int64; var availableStrict: Int64 }
+private struct BoringSweepCategory: Codable, Identifiable { var id: String; var label: String; var count: Int; var reclaimableBytes: Int64 }
+private struct BoringSweepProtected: Codable { static let id = "__protected__"; var count: Int; var bytes: Int64 }
+private struct BoringSweepTarget: Codable, Identifiable { var id: String; var title: String; var path: String; var bytes: Int64; var risk: String; var category: String; var summary: String; var defaultReclaim: String; var components: [BoringSweepTarget] }
+private struct BoringSweepHistory: Codable { var samples: [BoringSweepSample]; var cumulativeFreedBytes: Int64; var entries: [BoringSweepHistoryEntry] }
+private struct BoringSweepSample: Codable { var date: Date; var usedBytes: Int64; var totalBytes: Int64 }
+private struct BoringSweepHistoryEntry: Codable, Identifiable { var id: String; var date: Date; var measuredFreedBytes: Int64; var trashedBytes: Int64; var itemCount: Int }
+private struct BoringSweepRegrowth: Codable, Identifiable { var id: String; var path: String; var count: Int; var lastBytes: Int64 }
+private struct BoringSweepPlan: Codable { var itemCount: Int; var requiresTypedConfirmation: Bool; var estimatedBytes: Int64; var sourceTimestamp: Date; var sourceState: String }
+private struct BoringSweepReport: Codable { var measuredFreedBytes: Int64; var trashedBytes: Int64; var failedCount: Int }
+private struct BoringSweepMigration: Codable { var complete: Bool; var importedLegacyData: Bool; var message: String }
+private struct BoringSweepPage { var targets: [BoringSweepTarget]; var nextOffset: Int? }
+
+@MainActor
+private final class BoringSweepCoordinator: ObservableObject {
+    static let shared = BoringSweepCoordinator()
+    @Published private(set) var snapshot: BoringSweepSnapshot?
+    @Published private(set) var categoryPages: [String: BoringSweepPage] = [:]
+    @Published private(set) var isSurveying = false
+    @Published private(set) var surveyProgress = 0.0
+    @Published private(set) var error: String?
+    @Published var showConfirmation = false
+    @Published var lifetime: SweepProcessLifetime { didSet { UserDefaults.standard.set(lifetime.rawValue, forKey: "sweep.serviceLifetime") } }
+
+    private let serviceName = "theboringteam.boringnotch.SweepService"
+    private var connection: NSXPCConnection?
+    private var pollTask: Task<Void, Never>?
+    private var visible = false
+    private var historyRequested = false
+
+    private init() { lifetime = SweepProcessLifetime(rawValue: UserDefaults.standard.string(forKey: "sweep.serviceLifetime") ?? "") ?? .tab }
+    func tabOpened() { visible = true; send(command: "open") }
+    func tabClosed() { visible = false; stopPolling(); if lifetime == .tab { stopService() } }
+    func settingsClosed() { if lifetime != .app { stopService() } }
+    func rescan() { send(command: "rescan") }
+    func cancel() { send(command: "cancel") }
+    func loadHistory() { historyRequested = true; send(command: "loadHistory") }
+    func loadCategory(_ id: String) { send(command: "loadCategory", categoryID: id, targetOffset: 0) }
+    func loadMoreCategory(_ id: String) { guard let offset = categoryPages[id]?.nextOffset else { return }; send(command: "loadCategory", categoryID: id, targetOffset: offset) }
+    func toggle(_ target: BoringSweepTarget) { send(command: "toggleSelection", targetID: target.id) }
+    func selectRecommended() { send(command: "selectRecommended") }
+    func clearSelection() { send(command: "clearSelection") }
+    func clearRegrowth() { send(command: "clearRegrowth") }
+    func apply(_ preferences: BoringSweepPreferences) { send(command: "updatePreferences", preferences: preferences) }
+    func prepareReclaim() { send(command: "prepareReclaim") { [weak self] reply in self?.showConfirmation = reply.snapshot?.pendingPlan != nil } }
+    func confirmReclaim(_ typed: String?) { showConfirmation = false; send(command: "confirmReclaim", typed: typed) }
+
+    private func ensureConnection() -> NSXPCConnection {
+        if let connection { return connection }
+        let connection = NSXPCConnection(serviceName: serviceName)
+        connection.remoteObjectInterface = NSXPCInterface(with: BoringSweepServiceProtocol.self)
+        connection.interruptionHandler = { [weak self] in Task { @MainActor in self?.connection = nil } }
+        connection.invalidationHandler = { [weak self] in Task { @MainActor in self?.connection = nil } }
+        connection.resume(); self.connection = connection
+        return connection
+    }
+
+    private func send(command: String, targetID: String? = nil, categoryID: String? = nil, targetOffset: Int? = nil, typed: String? = nil, preferences: BoringSweepPreferences? = nil, completion: ((BoringSweepReply) -> Void)? = nil) {
+        let request = BoringSweepRequest(command: command, targetID: targetID, categoryID: categoryID, targetOffset: targetOffset, typedConfirmation: typed, preferences: preferences)
+        guard let data = try? JSONEncoder().encode(request) else { return }
+        let proxy = ensureConnection().remoteObjectProxyWithErrorHandler { [weak self] error in Task { @MainActor in self?.error = "Sweep service unavailable: \(error.localizedDescription)" } } as? BoringSweepServiceProtocol
+        proxy?.send(data) { [weak self] data in
+            guard let reply = try? JSONDecoder().decode(BoringSweepReply.self, from: data) else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                let wasSurveying = self.isSurveying
+                if let snapshot = reply.snapshot { self.merge(snapshot) }
+                if let progress = reply.progress { self.isSurveying = progress.isSurveying; self.surveyProgress = progress.progress }
+                self.error = reply.error; self.reconcilePolling()
+                if wasSurveying, !self.isSurveying, self.historyRequested { self.send(command: "loadHistory") }
+                completion?(reply)
+            }
+        }
+    }
+
+    private func merge(_ incoming: BoringSweepSnapshot) {
+        let previous = snapshot
+        let changedAnalysis = previous?.lastSurvey != nil && previous?.lastSurvey != incoming.lastSurvey
+        if changedAnalysis { categoryPages = [:] }
+        if incoming.includesCategoryPage, let categoryID = incoming.categoryID {
+            let old = changedAnalysis ? nil : categoryPages[categoryID]
+            let rows = old.map { $0.targets + incoming.targets } ?? incoming.targets
+            categoryPages[categoryID] = BoringSweepPage(targets: rows, nextOffset: incoming.nextTargetOffset)
+        }
+        var merged = incoming
+        if !incoming.includesHistory, let previous, previous.lastSurvey == incoming.lastSurvey, previous.includesHistory {
+            merged.history = previous.history; merged.regrowth = previous.regrowth; merged.includesHistory = true
+        }
+        snapshot = merged; isSurveying = incoming.isSurveying; surveyProgress = incoming.progress
+    }
+
+    private func reconcilePolling() {
+        guard visible, isSurveying else { stopPolling(); return }
+        guard pollTask == nil else { return }
+        pollTask = Task { [weak self] in while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(500)); guard !Task.isCancelled, self?.visible == true else { break }; self?.send(command: "status") } }
+    }
+    private func stopPolling() { pollTask?.cancel(); pollTask = nil }
+    private func stopService() {
+        stopPolling(); guard let connection else { return }
+        send(command: "shutdown") { [weak self] _ in self?.connection?.invalidate(); self?.connection = nil }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self, connection] in if self?.connection === connection { connection.invalidate(); self?.connection = nil } }
+    }
+}
+
+private enum SweepWorkspaceTab: String, CaseIterable, Identifiable { case overview = "Overview", cleanUp = "Clean Up", history = "History", options = "Options"; var id: Self { self } }
+private enum SweepSizeUnit: String, CaseIterable, Identifiable { case bytes = "bytes", kilobytes = "KB", megabytes = "MB", gigabytes = "GB"; var id: String { rawValue }; var multiplier: Double { switch self { case .bytes: return 1; case .kilobytes: return 1_024; case .megabytes: return 1_048_576; case .gigabytes: return 1_073_741_824 } } }
+private enum SweepIntervalUnit: String, CaseIterable, Identifiable { case seconds = "seconds", minutes = "minutes", hours = "hours"; var id: String { rawValue }; var multiplier: Double { switch self { case .seconds: return 1; case .minutes: return 60; case .hours: return 3_600 } } }
+
+private struct SweepSettings: View {
+    @StateObject private var sweep = BoringSweepCoordinator.shared
+    @State private var minimumValue = ""
+    @State private var minimumUnit: SweepSizeUnit = .megabytes
+    @State private var refreshValue = ""
+    @State private var refreshUnit: SweepIntervalUnit = .minutes
+    @State private var scanRoots: [String] = []
+    @State private var exclusions: [String] = []
+    @State private var typedDelete = ""
+    @State private var selectedTab: SweepWorkspaceTab = .overview
+    @State private var expandedCategoryID: String?
+    @State private var optionsLoaded = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("Sweep section", selection: $selectedTab) { ForEach(SweepWorkspaceTab.allCases) { Text($0.rawValue).tag($0) } }
+                .pickerStyle(.segmented).labelsHidden().padding(16)
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    switch selectedTab {
+                    case .overview: overview
+                    case .cleanUp: cleanUp
+                    case .history: history
+                    case .options: options
+                    }
+                    if let error = sweep.error { Text(error).font(.caption).foregroundStyle(.red) }
+                }.padding(16)
+            }
+            if selectedTab == .cleanUp { cleanupBar }
+            if selectedTab == .options { optionsBar }
+        }
+        .navigationTitle("Sweep")
+        .onAppear { expandedCategoryID = nil; sweep.tabOpened(); loadOptions() }
+        .onDisappear { sweep.tabClosed() }
+        .onReceive(NotificationCenter.default.publisher(for: .boringNotchSettingsWillClose)) { _ in sweep.settingsClosed() }
+        .sheet(isPresented: $sweep.showConfirmation) { confirmationSheet }
+        .onChange(of: sweep.snapshot?.preferences.candidateThresholdBytes) { loadOptions() }
+        .onChange(of: selectedTab) { _, tab in if tab == .history { sweep.loadHistory() } }
+    }
+
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Disk overview").font(.title2.bold())
+            if let volume = sweep.snapshot?.volume {
+                HStack { metric("Free", formatBytes(volume.available)); metric("Reclaimable", formatBytes(sweep.snapshot?.reclaimableBytes ?? 0)); Spacer() }
+                Text("\(volume.name) · \(formatBytes(volume.available)) free of \(formatBytes(volume.total))").font(.caption).foregroundStyle(.secondary)
+            } else { ProgressView("Reading disk") }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    if sweep.isSurveying { ProgressView(value: sweep.surveyProgress) { Text("Scanning disk") }; Text("\(Int(sweep.surveyProgress * 100))% complete. Saved findings remain available.").font(.caption).foregroundStyle(.secondary) }
+                    else { Text("Scan ready").fontWeight(.medium) }
+                    if let date = sweep.snapshot?.lastSurvey { Text("\(sweep.snapshot?.analysisIsCached == true ? "Saved" : "Fresh") findings · \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
+                }
+            }
+            HStack { Button("Scan now") { sweep.rescan() }; if sweep.isSurveying { Button("Stop scan", role: .destructive) { sweep.cancel() } }; Button("Open Clean Up") { selectedTab = .cleanUp }.disabled(sweep.snapshot == nil) }
+            if sweep.snapshot?.fullDiskAccess == false { Button("Open Full Disk Access Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!) } }
+        }
+    }
+
+    private var cleanUp: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Clean Up").font(.title2.bold())
+            Text(sweep.isSurveying && sweep.snapshot?.analysisIsCached == true ? "Using saved findings while fresh scan runs." : "Expand category to load first 25 items.").font(.caption).foregroundStyle(.secondary)
+            let categories = sweep.snapshot?.categories ?? []
+            if categories.isEmpty { sweep.isSurveying ? AnyView(ProgressView("Scanning for reclaimable space")) : AnyView(Text("No reclaimable items found.").foregroundStyle(.secondary)) }
+            ForEach(categories) { category in categoryGroup(id: category.id, label: category.label, count: category.count, bytes: category.reclaimableBytes, protected: false) }
+            if let protected = sweep.snapshot?.protected, protected.count > 0 { categoryGroup(id: BoringSweepProtected.id, label: "Protected items", count: protected.count, bytes: protected.bytes, protected: true) }
+        }
+    }
+
+    private func categoryGroup(id: String, label: String, count: Int, bytes: Int64, protected: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                if expandedCategoryID == id { expandedCategoryID = nil } else { expandedCategoryID = id; if sweep.categoryPages[id] == nil { sweep.loadCategory(id) } }
+            } label: {
+                HStack { Image(systemName: expandedCategoryID == id ? "chevron.down" : "chevron.right").font(.caption); VStack(alignment: .leading) { Text(label).fontWeight(.semibold); Text("\(count) item\(count == 1 ? "" : "s")").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(formatBytes(bytes)).foregroundStyle(.secondary) }
+            }.buttonStyle(.plain)
+            if expandedCategoryID == id {
+                if let page = sweep.categoryPages[id] {
+                    ForEach(page.targets) { target in targetRow(target, protected: protected) }
+                    if page.nextOffset != nil { Button("Load 25 more") { sweep.loadMoreCategory(id) }.font(.caption) }
+                } else { ProgressView("Loading \(label.lowercased())") }
+            }
+        }.padding(12).background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func targetRow(_ target: BoringSweepTarget, protected: Bool) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if protected { Image(systemName: "lock.fill").foregroundStyle(.secondary).frame(width: 18) }
+            else { Button { sweep.toggle(target) } label: { Image(systemName: sweep.snapshot?.selectedIDs.contains(target.id) == true ? "checkmark.circle.fill" : "circle").foregroundStyle(Color.effectiveAccent) }.buttonStyle(.plain).accessibilityLabel("Select \(target.title)") }
+            VStack(alignment: .leading, spacing: 2) { HStack { Text(target.title).fontWeight(.medium); Spacer(); Text(formatBytes(target.bytes)).foregroundStyle(.secondary) }; Text(target.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2); Text(target.defaultReclaim).font(.caption2).foregroundStyle(.secondary) }
+        }.padding(.vertical, 3)
+    }
+
+    private var cleanupBar: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading) { Text("\(sweep.snapshot?.selectedIDs.count ?? 0) selected").fontWeight(.medium); Text(formatBytes(sweep.snapshot?.selectedBytes ?? 0)).font(.caption).foregroundStyle(.secondary) }
+            Spacer(); Button("Clear") { sweep.clearSelection() }.disabled((sweep.snapshot?.selectedIDs.isEmpty ?? true)); Button("Select recommended") { sweep.selectRecommended() }; Button("Review cleanup") { sweep.prepareReclaim() }.buttonStyle(.borderedProminent).disabled((sweep.snapshot?.selectedBytes ?? 0) == 0)
+        }.padding(12).background(.bar)
+    }
+
+    private var history: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("History").font(.title2.bold())
+            if sweep.snapshot?.includesHistory != true { ProgressView("Loading completed cleanups") }
+            else {
+                metric("Measured space freed", formatBytes(sweep.snapshot?.history.cumulativeFreedBytes ?? 0))
+                ForEach((sweep.snapshot?.history.entries ?? []).prefix(10)) { entry in HStack { VStack(alignment: .leading) { Text(entry.date.formatted(date: .abbreviated, time: .shortened)); Text("\(entry.itemCount) items").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(formatBytes(entry.measuredFreedBytes)) } }
+                if let regrowth = sweep.snapshot?.regrowth, !regrowth.isEmpty { Divider(); Text("Learned regrowth").fontWeight(.semibold); ForEach(regrowth.prefix(8)) { item in HStack { Text(item.path).lineLimit(1); Spacer(); Text("\(item.count) times · \(formatBytes(item.lastBytes))").font(.caption).foregroundStyle(.secondary) } }; Button("Clear learned history", role: .destructive) { sweep.clearRegrowth() } }
+            }
+        }
+    }
+
+    private var options: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Options").font(.title2.bold())
+            GroupBox("Scanner") {
+                VStack(alignment: .leading, spacing: 12) {
+                    unitField("Minimum item size", value: $minimumValue, unit: $minimumUnit)
+                    intervalField("Refresh interval", value: $refreshValue, unit: $refreshUnit)
+                    pathEditor("Additional scan locations", paths: $scanRoots, placeholder: "/Users/me/Library/Caches")
+                    pathEditor("Excluded locations", paths: $exclusions, placeholder: "/Users/me/Library/Application Support")
+                }.padding(.top, 4)
+            }
+            GroupBox("Service lifetime") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Keep Sweep running", selection: $sweep.lifetime) { ForEach(SweepProcessLifetime.allCases) { Text($0.rawValue).tag($0) } }
+                    Text("Stop when leaving Sweep: ends scan when this page changes.\nStop when Settings closes: keeps scan while using other Settings pages.\nKeep until Boring quits: lets scan continue until app exits.").font(.caption).foregroundStyle(.secondary)
+                }.padding(.top, 4)
+            }
+            if let migration = sweep.snapshot?.migration { Label(migration.message, systemImage: migration.complete ? "checkmark.circle" : "exclamationmark.triangle").font(.caption).foregroundStyle(migration.complete ? Color.secondary : Color.orange) }
+        }
+    }
+
+    private var optionsBar: some View { HStack { Button("Discard") { optionsLoaded = false; loadOptions() }; Spacer(); Button("Save and rescan") { saveOptions(); selectedTab = .overview }.buttonStyle(.borderedProminent) }.padding(12).background(.bar) }
+    private var confirmationSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Review cleanup").font(.title2.bold())
+            if let plan = sweep.snapshot?.pendingPlan { Text("\(plan.itemCount) items, up to \(formatBytes(plan.estimatedBytes))."); Text("Uses \(plan.sourceState) findings from \(plan.sourceTimestamp.formatted(date: .abbreviated, time: .shortened)). New scans will not change this plan.").font(.caption).foregroundStyle(.secondary) }
+            if sweep.snapshot?.pendingPlan?.requiresTypedConfirmation == true { Text("Permanent deletion selected. Type DELETE to continue.").foregroundStyle(.orange); TextField("DELETE", text: $typedDelete) }
+            HStack { Spacer(); Button("Cancel") { sweep.showConfirmation = false }; Button("Confirm") { sweep.confirmReclaim(sweep.snapshot?.pendingPlan?.requiresTypedConfirmation == true ? typedDelete : nil) }.disabled(sweep.snapshot?.pendingPlan?.requiresTypedConfirmation == true && typedDelete != "DELETE") }
+        }.padding().frame(width: 440)
+    }
+
+    private func metric(_ label: String, _ value: String) -> some View { VStack(alignment: .leading, spacing: 3) { Text(value).font(.title3.bold()); Text(label).font(.caption).foregroundStyle(.secondary) } }
+    private func unitField(_ label: String, value: Binding<String>, unit: Binding<SweepSizeUnit>) -> some View { HStack { Text(label); Spacer(); TextField("0", text: value).multilineTextAlignment(.trailing).frame(width: 84); Picker(label, selection: unit) { ForEach(SweepSizeUnit.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 78) } }
+    private func intervalField(_ label: String, value: Binding<String>, unit: Binding<SweepIntervalUnit>) -> some View { HStack { Text(label); Spacer(); TextField("0", text: value).multilineTextAlignment(.trailing).frame(width: 84); Picker(label, selection: unit) { ForEach(SweepIntervalUnit.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 92) } }
+    private func pathEditor(_ title: String, paths: Binding<[String]>, placeholder: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) { Text(title).fontWeight(.medium); ForEach(paths.wrappedValue.indices, id: \.self) { index in HStack { TextField(placeholder, text: Binding(get: { paths.wrappedValue[index] }, set: { paths.wrappedValue[index] = $0 })); Button(role: .destructive) { paths.wrappedValue.remove(at: index) } label: { Image(systemName: "minus.circle") }.buttonStyle(.plain) } }; Button { paths.wrappedValue.append("") } label: { Label("Add location", systemImage: "plus") }.font(.caption) }
+    }
+    private func loadOptions() {
+        guard !optionsLoaded, let preferences = sweep.snapshot?.preferences else { return }
+        minimumUnit = bestSizeUnit(preferences.candidateThresholdBytes); minimumValue = formattedValue(Double(preferences.candidateThresholdBytes) / minimumUnit.multiplier)
+        refreshUnit = bestIntervalUnit(preferences.resurveyInterval); refreshValue = formattedValue(preferences.resurveyInterval / refreshUnit.multiplier)
+        scanRoots = preferences.extraScanRoots; exclusions = preferences.userExclusions; optionsLoaded = true
+    }
+    private func saveOptions() {
+        guard let minimum = Double(minimumValue), let interval = Double(refreshValue) else { return }
+        let paths: ([String]) -> [String] = { $0.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } }
+        optionsLoaded = false
+        sweep.apply(BoringSweepPreferences(candidateThresholdBytes: max(1, Int64(minimum * minimumUnit.multiplier)), extraScanRoots: paths(scanRoots), userExclusions: paths(exclusions), resurveyInterval: max(60, interval * refreshUnit.multiplier)))
+    }
+    private func bestSizeUnit(_ bytes: Int64) -> SweepSizeUnit { bytes >= Int64(SweepSizeUnit.gigabytes.multiplier) ? .gigabytes : bytes >= Int64(SweepSizeUnit.megabytes.multiplier) ? .megabytes : bytes >= Int64(SweepSizeUnit.kilobytes.multiplier) ? .kilobytes : .bytes }
+    private func bestIntervalUnit(_ seconds: TimeInterval) -> SweepIntervalUnit { seconds >= 3_600 ? .hours : seconds >= 60 ? .minutes : .seconds }
+    private func formattedValue(_ value: Double) -> String { value.rounded() == value ? "\(Int(value))" : String(format: "%.1f", value) }
+    private func formatBytes(_ bytes: Int64) -> String { ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file) }
 }

@@ -119,6 +119,7 @@ class SettingsWindowController: NSWindowController {
 
 extension SettingsWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        NotificationCenter.default.post(name: .boringNotchSettingsWillClose, object: nil)
         relinquishFocus()
     }
     
@@ -134,4 +135,8 @@ extension SettingsWindowController: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
     }
     
+}
+
+extension Notification.Name {
+    static let boringNotchSettingsWillClose = Notification.Name("BoringNotchSettingsWillClose")
 }
