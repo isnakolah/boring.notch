@@ -1,0 +1,29 @@
+id: blender.ui.properties.add_modifier_button
+title: Add Modifier button
+aliases: [Add Modifier]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+region: blender.ui.properties_editor
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+      context: MODIFIER
+      # The editor's main body. The button itself is found by reading its label
+      # inside this rectangle, which is what `visual.text_matcher` below is for:
+      # Blender knows where the panel is, and the panel is where the words are.
+      region_type: WINDOW
+  accessibility:
+    candidates:
+      - role: AXButton
+        label_matcher:
+          pattern: "add modifier"
+          case_insensitive: true
+  visual:
+    text_matcher:
+      pattern: "add modifier"
+      case_insensitive: true
+    constraints: [visible, enabled]
+minimum_confidence:
+  point: 0.75
+  act: 0.94

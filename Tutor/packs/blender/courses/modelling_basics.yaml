@@ -1,0 +1,18 @@
+id: blender.course.simple_lamp
+kind: course
+title: Blender Simple Lamp
+# SF Symbol. The Mac falls back to Blender's own icon if this symbol is missing
+# on the running macOS, so a course is never listed without a mark beside it.
+icon: cube.transparent
+summary: Build a simple lamp, then finish it with a non-destructive Bevel.
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+# Teaching order. One lesson today; this is the list a second lesson joins, and
+# the order is the course's to decide rather than each lesson's, because a lesson
+# can belong to more than one course.
+lessons:
+  - blender.lesson.lamp_base
+  - blender.lesson.lamp_stem
+  - blender.lesson.lamp_shade
+  - blender.lesson.lamp_proportion
+  - blender.lesson.lamp_finish

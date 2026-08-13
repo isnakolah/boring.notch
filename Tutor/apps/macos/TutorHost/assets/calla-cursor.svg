@@ -1,0 +1,21 @@
+<!--
+  Calla's pointer. The corners are rounded by stroking the same gradient over
+  the fill with a round line join rather than by hand-authored arcs, so the
+  radius stays uniform on the concave notch as well as the three points.
+
+  CallaPointerShape in main.swift draws this exact geometry; keep them in step.
+  The tip — the cursor hotspot — sits at (71, 61) in this 512 view box.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="calla" x1="0.08" y1="0.06" x2="0.86" y2="0.82">
+      <stop offset="0" stop-color="#22D3FF"/>
+      <stop offset="1" stop-color="#0080F0"/>
+    </linearGradient>
+  </defs>
+  <path d="M100 90 L418 218 L300 298 L240 418 Z"
+        fill="url(#calla)"
+        stroke="url(#calla)"
+        stroke-width="62"
+        stroke-linejoin="round"/>
+</svg>

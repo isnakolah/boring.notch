@@ -1,0 +1,19 @@
+id: blender.ui.viewport
+title: 3D Viewport
+aliases: [viewport, 3D view, the viewport]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# Editors and regions Blender reports the exact rectangle of.
+# Every one of these resolves from the read-only bridge alone: no
+# Accessibility, which sees nothing inside Blender's window, and no
+# pixels. Authoring a lesson about any part of Blender's layout costs
+# one of these files and no guessing.
+resolve:
+  bridge:
+    selector:
+      editor_type: VIEW_3D
+      region_type: WINDOW
+minimum_confidence:
+  point: 0.72
+  act: 0.92

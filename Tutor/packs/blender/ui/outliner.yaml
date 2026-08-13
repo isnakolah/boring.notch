@@ -1,0 +1,15 @@
+id: blender.ui.outliner
+title: Outliner
+aliases: [outliner, scene tree]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# The scene's contents as a tree, normally above the Properties editor.
+resolve:
+  bridge:
+    selector:
+      editor_type: OUTLINER
+      region_type: WINDOW
+minimum_confidence:
+  point: 0.72
+  act: 0.92

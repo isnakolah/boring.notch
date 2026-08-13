@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/protocol/v2/resolution-receipt.schema.json",
+  "title": "Coordinate-free local resolution receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["semantic_id", "snapshot_id", "confidence", "evidence", "valid_until"],
+  "properties": {
+    "semantic_id": {"type": "string", "minLength": 1},
+    "snapshot_id": {"type": "string", "minLength": 1},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "string"}, "uniqueItems": true},
+    "valid_until": {"enum": ["next_window_mutation", "deadline"]}
+  }
+}

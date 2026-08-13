@@ -1,0 +1,14 @@
+id: blender.lesson.lamp_stem
+title: "Simple Lamp: add stem"
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+objective: {given: Base starter scene is open., behavior: Add centered vertical lamp stem., criterion: Active object is a mesh in Object Mode.}
+prerequisites: [{detector: blender.detector.mode_is_object, say: Leave Edit Mode before adding stem.}]
+steps: [{id: add_stem, instruction: Add narrow cylinder centered over Lamp Base in viewport., target: blender.ui.viewport, success: {detector: blender.detector.active_object_is_mesh}}]
+assessment: {prompt: Add centered stem without hint., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+transfer: {prompt: Make shorter stem while keeping it centered., differs_by: Base begins wider., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+retention: {prompt: "Later, make centered stem from memory.", pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+misconceptions: [{belief: Stem can float beside base., correction: Centered stem carries shade visually and structurally.}]
+assets:
+  - {asset_id: lamp-stem-starter, role: starter, sha256: 293f7711b10fab4660f5574e5877a55bd3a55ceb7c3aa416e51c86638215bc89, bytes: 88116}
+  - {asset_id: lamp-stem-proof, role: proof, sha256: c613eb2ba0803b82788d67d56efeaffbd4e9c860eca81598e24476d6c5ed7abc, bytes: 89259}

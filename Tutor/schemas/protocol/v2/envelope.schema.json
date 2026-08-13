@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/protocol/v2/envelope.schema.json",
+  "title": "Tutor Host Request Envelope v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "request_id",
+    "operation",
+    "session_id",
+    "payload"
+  ],
+  "properties": {
+    "protocol_version": {
+      "const": 2
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "operation": {
+      "enum": [
+        "session_start",
+        "observe",
+        "retrieve",
+        "plan",
+        "guide",
+        "await_change",
+        "narrate",
+        "point",
+        "propose_action",
+        "verify",
+        "record_learning"
+      ]
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

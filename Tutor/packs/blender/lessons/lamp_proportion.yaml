@@ -1,0 +1,14 @@
+id: blender.lesson.lamp_proportion
+title: "Simple Lamp: set proportion"
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+objective: {given: "Base, stem, and shade are visible.", behavior: Balance lamp silhouette., criterion: Active mesh is visible in Object Mode.}
+prerequisites: [{detector: blender.detector.mode_is_object, say: Leave Edit Mode before adjusting proportion.}]
+steps: [{id: proportion, instruction: "Scale and place shade until base, stem, and shade read as one lamp.", target: blender.ui.viewport, success: {detector: blender.detector.active_object_is_mesh}}]
+assessment: {prompt: Balance lamp without hint., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+transfer: {prompt: Make compact desk-lamp variation., differs_by: Start with a shorter stem., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+retention: {prompt: "Later, balance lamp silhouette from memory.", pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+misconceptions: [{belief: Matching dimensions makes good proportion., correction: Proportion depends on relationship between all three forms.}]
+assets:
+  - {asset_id: lamp-proportion-starter, role: starter, sha256: 2f08cfaa6b385096662d94953945c3f435fb7a6f9bada92b283a3cc5b0e4298b, bytes: 88072}
+  - {asset_id: lamp-proportion-proof, role: proof, sha256: c4a5c42cd4315d8c55a63ff82028ede2378914f9e1626d281011551f51353688, bytes: 90035}

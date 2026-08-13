@@ -1,0 +1,16 @@
+id: blender.ui.viewport.header
+title: 3D Viewport header
+aliases: [viewport header, view header]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# The bar along the top of the viewport carrying the mode selector and the
+# View, Select, Add and Object menus.
+resolve:
+  bridge:
+    selector:
+      editor_type: VIEW_3D
+      region_type: HEADER
+minimum_confidence:
+  point: 0.72
+  act: 0.92

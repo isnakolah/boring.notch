@@ -1,0 +1,14 @@
+id: blender.ui.timeline
+title: Timeline
+aliases: [timeline, playback]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+resolve:
+  bridge:
+    selector:
+      editor_type: DOPESHEET_EDITOR
+      ui_type: TIMELINE
+      region_type: WINDOW
+minimum_confidence:
+  point: 0.72
+  act: 0.92

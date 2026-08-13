@@ -1,0 +1,16 @@
+id: blender.lesson.lamp_finish
+title: "Simple Lamp: finish non-destructively"
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+objective: {given: Completed lamp mesh is selected., behavior: Add non-destructive Bevel modifier., criterion: Active mesh has Bevel modifier.}
+prerequisites: [{detector: blender.detector.mode_is_object, say: Leave Edit Mode before adding finish modifier.}]
+steps:
+  - {id: open_modifier, instruction: Open Modifier Properties., target: blender.ui.properties.modifiers_tab, success: {detector: blender.detector.properties_context_is_modifier}}
+  - {id: finish_bevel, instruction: Add Bevel modifier without applying it., target: blender.ui.properties.add_modifier_button, success: {detector: blender.detector.active_object_has_bevel_modifier}}
+assessment: {prompt: Add Bevel to lamp mesh without hint., pass: {target: blender.ui.properties.add_modifier_button, detector: blender.detector.active_object_has_bevel_modifier}}
+transfer: {prompt: Add Bevel before Subdivision Surface on variation., differs_by: Variation already has Subdivision Surface., pass: {target: blender.ui.properties.add_modifier_button, detector: blender.detector.bevel_precedes_subsurf}}
+retention: {prompt: "Later, explain non-destructive finish and add it.", pass: {target: blender.ui.properties.add_modifier_button, detector: blender.detector.active_object_has_bevel_modifier}}
+misconceptions: [{belief: Bevel permanently edits mesh immediately., correction: Modifier stays non-destructive until applied.}]
+assets:
+  - {asset_id: lamp-finish-starter, role: starter, sha256: c397524a56d15c759e485b6933e293b01d77e98c045e7d4b3fe2fc228d57972b, bytes: 88086}
+  - {asset_id: lamp-finish-proof, role: proof, sha256: 022897e13d09c6c0b70264ab1637764d266d5ad0e7b00f73afce4cc867818f01, bytes: 90283}

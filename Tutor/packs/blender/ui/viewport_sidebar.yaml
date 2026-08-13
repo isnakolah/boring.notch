@@ -1,0 +1,15 @@
+id: blender.ui.viewport.sidebar
+title: 3D Viewport sidebar
+aliases: [sidebar, N panel, item panel]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# The panel on the viewport's right edge, opened with N.
+resolve:
+  bridge:
+    selector:
+      editor_type: VIEW_3D
+      region_type: UI
+minimum_confidence:
+  point: 0.72
+  act: 0.92

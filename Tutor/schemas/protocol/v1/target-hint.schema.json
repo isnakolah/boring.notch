@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/protocol/v1/target-hint.schema.json",
+  "title": "Normalised vision search prior",
+  "description": "A vision model may suggest where to look, never where to click. Every value is normalised to the captured window, so the hint carries no pixel or screen coordinate. TutorHost re-resolves the real bounds itself; a hint alone can never authorise a mutation and is accepted only by the point operation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["description", "region"],
+  "properties": {
+    "description": {"type": "string", "minLength": 1, "maxLength": 200},
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {"type": "number", "minimum": 0, "maximum": 1},
+        "y": {"type": "number", "minimum": 0, "maximum": 1},
+        "width": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "height": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

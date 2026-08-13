@@ -1,0 +1,15 @@
+entities:
+  - id: blender.term.modifier
+    kind: terminology
+    title: Modifier
+    aliases: [modifiers, modifier stack]
+    app_versions: ">=5.2 <5.3"
+    source_refs: [blender-manual]
+    text: A non-destructive operation evaluated on an object through an ordered modifier stack.
+  - id: blender.term.object_mode
+    kind: terminology
+    title: Object Mode
+    aliases: [Object mode]
+    app_versions: ">=5.2 <5.3"
+    source_refs: [blender-manual]
+    text: The interaction mode for selecting and transforming whole objects and managing object-level modifiers.

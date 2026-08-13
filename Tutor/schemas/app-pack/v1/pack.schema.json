@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/app-pack/v1/pack.schema.json",
+  "title": "Calla Tutor App Pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "name", "pack_version", "license", "apps", "sources"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)+$"},
+    "name": {"type": "string", "minLength": 1},
+    "pack_version": {"type": "string", "pattern": "^(?:0|[1-9][0-9]*)\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"},
+    "license": {"type": "string", "minLength": 1},
+    "code_license": {"type": "string", "minLength": 1},
+    "apps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "bundle_ids", "versions", "locales"],
+        "properties": {
+          "platform": {"enum": ["macos", "windows", "linux"]},
+          "bundle_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+          "versions": {"type": "string", "minLength": 1},
+          "locales": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 2}, "uniqueItems": true}
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accessibility": {"enum": ["full", "partial", "minimal", "unknown"]},
+        "bridge": {"type": ["string", "null"]},
+        "vision": {"enum": ["required", "optional", "disabled"]}
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "url", "license", "retrieved_at"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+          "url": {"type": "string", "format": "uri"},
+          "license": {"type": "string", "minLength": 1},
+          "retrieved_at": {"type": "string", "format": "date"}
+        }
+      }
+    }
+  }
+}

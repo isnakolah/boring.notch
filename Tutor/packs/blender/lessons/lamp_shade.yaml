@@ -1,0 +1,14 @@
+id: blender.lesson.lamp_shade
+title: "Simple Lamp: add shade"
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+objective: {given: Base and stem are visible., behavior: Add tapered shade above stem., criterion: Active mesh is visible in Object Mode.}
+prerequisites: [{detector: blender.detector.mode_is_object, say: Leave Edit Mode before adding shade.}]
+steps: [{id: add_shade, instruction: Add tapered cone shade above stem in viewport., target: blender.ui.viewport, success: {detector: blender.detector.active_object_is_mesh}}]
+assessment: {prompt: Add tapered shade without hint., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+transfer: {prompt: Make shade narrower at top., differs_by: Stem starts shorter., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+retention: {prompt: "Later, place tapered shade from memory.", pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+misconceptions: [{belief: Shade must be a perfect cylinder., correction: Taper gives simple lamp its readable silhouette.}]
+assets:
+  - {asset_id: lamp-shade-starter, role: starter, sha256: 1fa9f95bf0625557fe9f715b4e5360f58ff30603ce86b7e9825a175d782b742c, bytes: 88076}
+  - {asset_id: lamp-shade-proof, role: proof, sha256: 70d9913677afdd876a4de8115621bd38fc064165095cc83c929aad4ab2ddd278, bytes: 90037}

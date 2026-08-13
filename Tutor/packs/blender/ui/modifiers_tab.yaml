@@ -1,0 +1,34 @@
+id: blender.ui.properties.modifiers_tab
+title: Modifier Properties tab
+aliases: [Modifiers, wrench icon, Modifier Properties]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+region: blender.ui.properties_editor
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+      # The vertical strip of context icons down the editor's left edge, which
+      # is where the wrench lives. Blender reports this region's rectangle
+      # exactly, so the cursor lands on a 25-point strip rather than on a
+      # fraction of a window a model estimated off a JPEG.
+      region_type: NAVIGATION_BAR
+      # Which row of that strip. Calla reads the strip for the selected
+      # tab's highlight and remembers where each context sits, so this
+      # resolves to the icon itself rather than the middle of the column.
+      tab: MODIFIER
+  accessibility:
+    candidates:
+      - role: AXRadioButton
+        label_matcher:
+          pattern: modifier
+          case_insensitive: true
+      - role: AXButton
+        description_matcher:
+          pattern: modifier
+          case_insensitive: true
+neighbor_constraints:
+  expected: [object_data, particles]
+minimum_confidence:
+  point: 0.72
+  act: 0.92

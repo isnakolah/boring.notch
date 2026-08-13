@@ -1,0 +1,25 @@
+schema_version: 1
+id: org.calla.tutor.blender
+name: Calla Tutor for Blender
+pack_version: 0.3.0
+license: CC-BY-SA-4.0
+code_license: Apache-2.0
+apps:
+  - platform: macos
+    bundle_ids:
+      - org.blenderfoundation.blender
+    versions: ">=5.2 <5.3"
+    locales: [en]
+capabilities:
+  accessibility: partial
+  bridge: blender-tutor-bridge-v1
+  vision: optional
+sources:
+  - id: blender-manual
+    url: https://docs.blender.org/manual/en/latest/
+    license: CC-BY-SA-4.0
+    retrieved_at: "2026-08-09"
+  - id: open-tutor-authored
+    url: https://github.com/isnakolah/calla-openclaw/tree/main/apps/tutor
+    license: CC-BY-4.0
+    retrieved_at: "2026-08-09"

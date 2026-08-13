@@ -1,0 +1,110 @@
+entities:
+  - id: blender.detector.active_object_is_mesh
+    title: Active object is a mesh
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.type
+      equals: MESH
+  - id: blender.detector.mode_is_object
+    title: Blender is in Object Mode
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: mode
+      equals: OBJECT
+  # Was an accessibility detector, which in Blender can never be satisfied: the
+  # whole interface below the menu bar is one opaque AXWindow, so there is no
+  # element whose `selected` attribute could be read. Step one of every modifier
+  # lesson was therefore unverifiable even when the pointing worked. Blender's
+  # own read-only bridge reports which Properties tab is open, so ask it.
+  - id: blender.detector.properties_context_is_modifier
+    title: Modifier Properties context is open
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: properties_contexts
+      contains: MODIFIER
+  - id: blender.detector.active_object_has_bevel_modifier
+    title: Active object has a Bevel modifier
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.modifiers
+      any:
+        type: BEVEL
+  - id: blender.detector.bevel_precedes_subsurf
+    title: Bevel precedes Subdivision Surface
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.modifiers
+      ordered:
+        before: BEVEL
+        after: SUBSURF
+  # Detectors that exist to explain a failure rather than to pass a step. Each
+  # names a state the learner can plausibly be in instead of the one the lesson
+  # wants, so the tutor can say which — "you are in Edit Mode", "that is a
+  # Subdivision Surface" — rather than only "not yet".
+  - id: blender.detector.mode_is_edit
+    title: Blender is in Edit Mode
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: mode
+      equals: EDIT_MESH
+  - id: blender.detector.active_object_is_light
+    title: Active object is a light
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.type
+      equals: LIGHT
+  - id: blender.detector.active_object_is_camera
+    title: Active object is a camera
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.type
+      equals: CAMERA
+  - id: blender.detector.active_object_has_subsurf
+    title: Active object has a Subdivision Surface modifier
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: active_object.modifiers
+      any:
+        type: SUBSURF
+  - id: blender.detector.properties_context_is_object
+    title: Object Properties context is open
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: properties_contexts
+      contains: OBJECT
+  - id: blender.detector.properties_context_is_data
+    title: Object Data Properties context is open
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: properties_contexts
+      contains: DATA
+  - id: blender.detector.properties_context_is_material
+    title: Material Properties context is open
+    app_versions: ">=5.2 <5.3"
+    source_refs: [open-tutor-authored]
+    provider: blender_bridge
+    query:
+      path: properties_contexts
+      contains: MATERIAL

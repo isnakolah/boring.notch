@@ -1,0 +1,32 @@
+<!--
+  The application icon: the same pointer as calla-cursor.svg, centred on a
+  rounded tile. One mark for the app, the menu bar, and the cursor Calla draws,
+  so what the learner sees on screen is recognisably the thing in their menu bar.
+
+  scripts/build-tutor-host-app.sh renders this into the bundle's .icns.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#0E1A24"/>
+      <stop offset="1" stop-color="#050A0F"/>
+    </linearGradient>
+    <linearGradient id="calla" x1="0.08" y1="0.06" x2="0.86" y2="0.82">
+      <stop offset="0" stop-color="#22D3FF"/>
+      <stop offset="1" stop-color="#0080F0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196" fill="url(#tile)"/>
+  <rect x="80" y="80" width="864" height="864" rx="196" ry="196"
+        fill="none" stroke="#22D3FF" stroke-opacity="0.16" stroke-width="6"/>
+
+  <!-- calla-cursor.svg's geometry, scaled by 1.05 and centred on the tile. -->
+  <g transform="translate(242 232) scale(1.05)">
+    <path d="M102 92 L420 226 L322 322 L250 414 Z"
+          fill="url(#calla)"
+          stroke="url(#calla)"
+          stroke-width="62"
+          stroke-linejoin="round"/>
+  </g>
+</svg>

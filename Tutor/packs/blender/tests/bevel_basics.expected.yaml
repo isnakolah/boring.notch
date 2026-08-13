@@ -1,0 +1,11 @@
+lesson: blender.lesson.bevel_basics
+required_entities:
+  - blender.ui.properties.modifiers_tab
+  - blender.ui.properties.add_modifier_button
+  - blender.detector.properties_context_is_modifier
+  - blender.detector.active_object_has_bevel_modifier
+  - blender.detector.bevel_precedes_subsurf
+forbidden_actions:
+  - execute_code
+  - shell
+  - click_coordinates

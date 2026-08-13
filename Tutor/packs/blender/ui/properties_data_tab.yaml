@@ -1,0 +1,17 @@
+id: blender.ui.properties.data_tab
+title: Object Data Properties tab
+aliases: [Object Data, green triangle icon]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+      region_type: NAVIGATION_BAR
+      # Which row of that strip. Calla reads the strip for the selected
+      # tab's highlight and remembers where each context sits, so this
+      # resolves to the icon itself rather than the middle of the column.
+      tab: DATA
+minimum_confidence:
+  point: 0.72
+  act: 0.92

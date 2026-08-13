@@ -1,0 +1,15 @@
+id: blender.ui.viewport.tool_header
+title: 3D Viewport tool settings
+aliases: [tool settings, tool header]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# The strip under the viewport header holding the active tool's options.
+resolve:
+  bridge:
+    selector:
+      editor_type: VIEW_3D
+      region_type: TOOL_HEADER
+minimum_confidence:
+  point: 0.72
+  act: 0.92

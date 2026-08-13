@@ -1,0 +1,24 @@
+{
+  "name": "@calla-tutor/openclaw-plugin",
+  "version": "0.0.1",
+  "description": "Teaching-first OpenClaw brain adapter for Calla Tutor",
+  "type": "module",
+  "main": "index.mjs",
+  "files": [
+    "index.mjs",
+    "openclaw.plugin.json",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.mjs"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.7.1-2"
+  },
+  "license": "Apache-2.0"
+}

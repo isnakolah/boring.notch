@@ -1,0 +1,21 @@
+id: blender.ui.properties_editor
+title: Properties editor
+aliases: [Properties, Properties panel]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+region: main_window
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+  accessibility:
+    candidates:
+      - role: AXGroup
+        description_matcher:
+          pattern: properties
+          case_insensitive: true
+  visual:
+    layout_hint: right_side_editor
+minimum_confidence:
+  point: 0.72
+  act: 0.92

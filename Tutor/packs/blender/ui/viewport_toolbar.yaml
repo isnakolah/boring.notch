@@ -1,0 +1,15 @@
+id: blender.ui.viewport.toolbar
+title: 3D Viewport toolbar
+aliases: [toolbar, tool shelf, T panel]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# The column of tool icons down the viewport's left edge.
+resolve:
+  bridge:
+    selector:
+      editor_type: VIEW_3D
+      region_type: TOOLS
+minimum_confidence:
+  point: 0.72
+  act: 0.92

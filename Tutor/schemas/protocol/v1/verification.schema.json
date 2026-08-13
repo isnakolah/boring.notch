@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/protocol/v1/verification.schema.json",
+  "title": "Tutor verification result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["expectation_id", "outcome", "stable_samples", "evidence"],
+  "properties": {
+    "expectation_id": {"type": "string", "minLength": 1},
+    "outcome": {"enum": ["satisfied", "unsatisfied", "unknown"]},
+    "stable_samples": {"type": "integer", "minimum": 0},
+    "evidence": {"type": "array", "items": {"type": "string"}},
+    "reason": {"type": ["string", "null"]}
+  }
+}

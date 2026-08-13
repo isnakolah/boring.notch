@@ -1,0 +1,14 @@
+id: blender.lesson.lamp_base
+title: "Simple Lamp: build base"
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual, open-tutor-authored]
+objective: {given: Starter scene is open in Object Mode., behavior: Shape lamp base from cylinder., criterion: Lamp Base remains selected as mesh.}
+prerequisites: [{detector: blender.detector.mode_is_object, say: Leave Edit Mode before shaping lamp base.}]
+steps: [{id: shape_base, instruction: Select Lamp Base and shape its low round base in viewport., target: blender.ui.viewport, success: {detector: blender.detector.active_object_is_mesh}}]
+assessment: {prompt: Shape base again without hint., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+transfer: {prompt: Make base slightly wider without changing lamp idea., differs_by: Start from a taller cylinder., pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+retention: {prompt: "Later, make lamp base from memory.", pass: {target: blender.ui.viewport, detector: blender.detector.active_object_is_mesh}}
+misconceptions: [{belief: Base must be complex., correction: Simple stable base supports rest of lamp.}]
+assets:
+  - {asset_id: lamp-base-starter, role: starter, sha256: e77372200d6eaa6c3ccdf02bc919222ebb70814c8dbee25dec114f9705c217cf, bytes: 88118}
+  - {asset_id: lamp-base-proof, role: proof, sha256: e77372200d6eaa6c3ccdf02bc919222ebb70814c8dbee25dec114f9705c217cf, bytes: 88118}

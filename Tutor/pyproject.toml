@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "calla-tutor"
+version = "0.0.1"
+description = "Teaching-first desktop application tutor and App Pack toolchain"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+  "PyYAML>=6,<7",
+  "jsonschema>=4.10,<5",
+]
+
+[project.scripts]
+calla-tutor-pack = "calla_tutor_pack.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "tools/packctl/src"}
+
+[tool.setuptools.packages.find]
+where = ["tools/packctl/src"]

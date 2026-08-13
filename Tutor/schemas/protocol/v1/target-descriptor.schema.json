@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/protocol/v1/target-descriptor.schema.json",
+  "title": "Authored semantic target resolver contract",
+  "description": "The App Pack `resolve:` block for one semantic target, forwarded from the gateway so TutorHost carries no application-specific code. App Packs are untrusted input, so pattern lengths are bounded and matching must use a non-backtracking engine with a timeout.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["semantic_id"],
+  "properties": {
+    "semantic_id": {"type": "string", "minLength": 1, "maxLength": 200},
+    "bundle_ids": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {"type": "string", "minLength": 1, "maxLength": 255}
+    },
+    "resolve": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bridge": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"selector": {"type": "object"}}
+        },
+        "accessibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "candidates": {
+              "type": "array",
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "role": {"type": "string", "maxLength": 80},
+                  "label_regex": {"type": "string", "maxLength": 200},
+                  "description_regex": {"type": "string", "maxLength": 200}
+                }
+              }
+            }
+          }
+        },
+        "visual": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "icon": {"type": "string", "maxLength": 80},
+            "relative_to": {"type": "string", "maxLength": 200},
+            "layout_hint": {"type": "string", "maxLength": 80},
+            "constraints": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {"enum": ["visible", "enabled", "focused"]}
+            }
+          }
+        }
+      }
+    },
+    "disambiguate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "expected_neighbors": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {"type": "string", "maxLength": 200}
+        }
+      }
+    },
+    "minimum_confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "point": {"type": "number", "minimum": 0, "maximum": 1},
+        "act": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    }
+  }
+}

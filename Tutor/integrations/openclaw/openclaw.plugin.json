@@ -1,0 +1,91 @@
+{
+  "id": "tutor",
+  "activation": {
+    "onStartup": true
+  },
+  "name": "Calla",
+  "description": "Connect the Calla OpenClaw brain to a user-owned, teaching-first macOS TutorHost.",
+  "contracts": {
+    "commands": [],
+    "tools": [
+      "tutor_observe",
+      "tutor_plan",
+      "tutor_remember",
+      "tutor_guide",
+      "tutor_narrate",
+      "tutor_point",
+      "tutor_propose_action",
+      "tutor_verify"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "role": {
+        "enum": [
+          "gateway",
+          "node",
+          "both"
+        ],
+        "default": "gateway"
+      },
+      "developmentMode": {
+        "type": "boolean",
+        "default": false
+      },
+      "nodeId": {
+        "type": "string",
+        "minLength": 1
+      },
+      "socketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 30000
+      },
+      "stateDirectory": {
+        "type": "string",
+        "minLength": 1,
+        "default": "~/.openclaw/tutor"
+      },
+      "courseSocketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "requireOwnerIdentity": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "toolMetadata": {
+    "tutor_observe": {
+      "risk": "medium"
+    },
+    "tutor_guide": {
+      "risk": "low"
+    },
+    "tutor_narrate": {
+      "risk": "low"
+    },
+    "tutor_point": {
+      "risk": "low"
+    },
+    "tutor_propose_action": {
+      "risk": "high"
+    },
+    "tutor_verify": {
+      "risk": "low"
+    },
+    "tutor_plan": {
+      "risk": "low"
+    },
+    "tutor_remember": {
+      "risk": "low"
+    }
+  }
+}

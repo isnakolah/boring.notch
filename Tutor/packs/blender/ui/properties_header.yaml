@@ -1,0 +1,13 @@
+id: blender.ui.properties.header
+title: Properties header
+aliases: [properties header]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+      region_type: HEADER
+minimum_confidence:
+  point: 0.72
+  act: 0.92

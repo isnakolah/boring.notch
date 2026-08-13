@@ -1,0 +1,506 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.tutor/schemas/app-pack/v1/entity.schema.json",
+  "title": "Calla Tutor App Pack Entity",
+  "type": "object",
+  "required": [
+    "id",
+    "kind",
+    "title"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "kind": {
+      "enum": [
+        "concept",
+        "terminology",
+        "ui_target",
+        "detector",
+        "lesson",
+        "course",
+        "workflow",
+        "command",
+        "shortcut",
+        "recovery"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "app_versions": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "text": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "description": "SF Symbol name. The Mac falls back to the taught application's own icon when this is absent or names a symbol the running macOS does not have."
+    },
+    "lessons": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      },
+      "description": "Lesson ids in teaching order. Ordering lives on the course rather than on each lesson, because a lesson may belong to more than one course."
+    },
+    "objective": {
+      "$ref": "#/$defs/objective"
+    },
+    "assessment": {
+      "$ref": "#/$defs/scoredItem"
+    },
+    "transfer": {
+      "$ref": "#/$defs/transferItem"
+    },
+    "retention": {
+      "$ref": "#/$defs/scoredItem"
+    },
+    "misconceptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "belief",
+          "correction"
+        ],
+        "properties": {
+          "belief": {
+            "type": "string",
+            "minLength": 1
+          },
+          "correction": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 24,
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    },
+    "prerequisites": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": [
+          "detector"
+        ],
+        "properties": {
+          "detector": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "say": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240,
+            "description": "Why the lesson cannot start, in the learner's terms. Without it the refusal names the detector, which means nothing to them."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "concept_refs": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$"
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "explain": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "additionalProperties": false
+    },
+    "teaching_policy": {
+      "type": "object",
+      "properties": {
+        "default_assistance": {
+          "type": "string"
+        },
+        "escalation": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["asset_id", "role", "sha256", "bytes"],
+        "properties": {
+          "asset_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,120}$"},
+          "role": {"enum": ["starter", "proof"]},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "bytes": {"type": "integer", "minimum": 1}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "ui_target"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "resolve",
+          "minimum_confidence"
+        ],
+        "properties": {
+          "resolve": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "minimum_confidence": {
+            "type": "object",
+            "required": [
+              "point",
+              "act"
+            ],
+            "properties": {
+              "point": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              },
+              "act": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "detector"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "provider",
+          "query"
+        ],
+        "properties": {
+          "provider": {
+            "enum": [
+              "blender_bridge",
+              "accessibility"
+            ]
+          },
+          "query": {
+            "type": "object",
+            "minProperties": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "lesson"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "objective",
+          "assessment",
+          "transfer",
+          "retention",
+          "misconceptions",
+          "assets"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "course"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "summary",
+          "lessons"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "given",
+        "behavior",
+        "criterion"
+      ],
+      "properties": {
+        "given": {
+          "type": "string",
+          "minLength": 1
+        },
+        "behavior": {
+          "type": "string",
+          "minLength": 1
+        },
+        "criterion": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "detector"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "detector": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        }
+      }
+    },
+    "scoredItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "pass"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pass": {
+          "$ref": "#/$defs/pass"
+        }
+      }
+    },
+    "transferItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt",
+        "pass",
+        "differs_by"
+      ],
+      "properties": {
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pass": {
+          "$ref": "#/$defs/pass"
+        },
+        "differs_by": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": [
+        "instruction"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "target": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "success": {
+          "type": "object",
+          "required": [
+            "detector"
+          ],
+          "properties": {
+            "detector": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9._-]*$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "hints": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "verbal",
+                  "highlight",
+                  "point"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "target": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "allowed_assistance": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "action",
+              "target"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "move_cursor",
+                  "click",
+                  "scroll",
+                  "keyboard_shortcut",
+                  "type_text"
+                ]
+              },
+              "target": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+              },
+              "reversible": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "diagnose": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "Named ways this step goes wrong. `when` is an existing detector id, checked on the Mac exactly as the success condition is, so a diagnosis can say nothing the host cannot verify. `say` is what the learner is told.",
+          "items": {
+            "type": "object",
+            "required": [
+              "when",
+              "say"
+            ],
+            "properties": {
+              "when": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]*$"
+              },
+              "say": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

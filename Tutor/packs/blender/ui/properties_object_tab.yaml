@@ -1,0 +1,20 @@
+id: blender.ui.properties.object_tab
+title: Object Properties tab
+aliases: [Object Properties, orange square icon]
+app_versions: ">=5.2 <5.3"
+source_refs: [blender-manual]
+
+# Same strip as the Modifier tab: the tabs share one region, so a lesson
+# about any of them points at the strip and names which icon in its words.
+resolve:
+  bridge:
+    selector:
+      editor_type: PROPERTIES
+      region_type: NAVIGATION_BAR
+      # Which row of that strip. Calla reads the strip for the selected
+      # tab's highlight and remembers where each context sits, so this
+      # resolves to the icon itself rather than the middle of the column.
+      tab: OBJECT
+minimum_confidence:
+  point: 0.72
+  act: 0.92
