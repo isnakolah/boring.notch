@@ -68,6 +68,25 @@ final class ShelfSelectionModel: ObservableObject {
         lastAnchorID = nil
     }
 
+    /// The rail's tap-to-clear and a chip's AppKit click both see the same
+    /// mouse event — mouseDown on the chip lands first, so it raises this flag
+    /// and the tap-to-clear that follows on mouseUp skips itself.
+    private var chipClickPending = false
+
+    func noteChipClick() { chipClickPending = true }
+
+    func consumeChipClick() -> Bool {
+        defer { chipClickPending = false }
+        return chipClickPending
+    }
+
+    /// Drops ids that no longer exist on the shelf.
+    func prune(to ids: Set<UUID>) {
+        let survivors = selectedIDs.intersection(ids)
+        if survivors != selectedIDs { selectedIDs = survivors }
+        if let anchor = lastAnchorID, !ids.contains(anchor) { lastAnchorID = survivors.first }
+    }
+
     // Keep anchor sane if items array changed drastically (optional helper)
     func ensureValidAnchor(in allItems: [ShelfItem]) {
         if let anchor = lastAnchorID, !allItems.contains(where: { $0.id == anchor }) {

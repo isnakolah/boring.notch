@@ -12,7 +12,12 @@ final class ShelfStateViewModel: ObservableObject {
     static let shared = ShelfStateViewModel()
 
     @Published private(set) var items: [ShelfItem] = [] {
-        didSet { ShelfPersistenceService.shared.save(items) }
+        didSet {
+            ShelfPersistenceService.shared.save(items)
+            // Selection outlives removal otherwise, so counts and the send
+            // target silently disagree with what is actually on the shelf.
+            ShelfSelectionModel.shared.prune(to: Set(items.map(\.id)))
+        }
     }
 
     @Published var isLoading: Bool = false
@@ -44,8 +49,36 @@ final class ShelfStateViewModel: ObservableObject {
     }
 
     func remove(_ item: ShelfItem) {
+        evictCaches(for: item)
         item.cleanupStoredData()
         items.removeAll { $0.id == item.id }
+    }
+
+    func removeItems(withIDs ids: Set<ShelfItem.ID>) {
+        guard !ids.isEmpty else { return }
+        items.filter { ids.contains($0.id) }.forEach {
+            evictCaches(for: $0)
+            $0.cleanupStoredData()
+        }
+        items.removeAll { ids.contains($0.id) }
+    }
+
+    func clear() {
+        guard !items.isEmpty else { return }
+        items.forEach {
+            evictCaches(for: $0)
+            $0.cleanupStoredData()
+        }
+        items = []
+        ShelfSelectionModel.shared.clear()
+        ShelfShareService.shared.clearTransfers()
+    }
+
+    private func evictCaches(for item: ShelfItem) {
+        let url = ShelfItemMetadataCache.shared.cachedURL(for: item.id)
+        ShelfItemMetadataCache.shared.invalidate(item.id)
+        guard let url else { return }
+        Task { await ThumbnailService.shared.clearCache(for: url) }
     }
 
     func updateBookmark(for item: ShelfItem, bookmark: Data) {
@@ -87,6 +120,28 @@ final class ShelfStateViewModel: ObservableObject {
                 self?.isLoading = false
             }
         }
+    }
+
+    /// The keyboard-and-menu route into the queue. Dropping is the fast path,
+    /// but it cannot be the only one — an empty shelf would otherwise be
+    /// reachable by drag alone.
+    func chooseFiles() {
+        SharingStateManager.shared.beginInteraction()
+        defer { SharingStateManager.shared.endInteraction() }
+
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.title = "Add to Shelf"
+        panel.prompt = "Add"
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+
+        let items = panel.urls.compactMap { url -> ShelfItem? in
+            guard let bookmark = try? Bookmark(url: url).data else { return nil }
+            return ShelfItem(kind: .file(bookmark: bookmark))
+        }
+        add(items)
     }
 
     func cleanupInvalidItems() {

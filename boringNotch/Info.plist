@@ -7,6 +7,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_kdeconnect._udp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>boringNotch discovers paired LocalSend and KDE Connect devices on your local network to send Shelf items.</string>
 	<key>SUEnableDownloaderService</key>
 	<true/>
 	<key>SUEnableInstallerLauncherService</key>

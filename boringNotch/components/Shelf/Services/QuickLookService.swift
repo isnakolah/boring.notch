@@ -8,6 +8,7 @@
 import Foundation
 import UniformTypeIdentifiers
 import SwiftUI
+import QuickLook
 import QuickLookUI
 import AppKit
 

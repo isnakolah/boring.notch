@@ -34,9 +34,13 @@ final class ShelfItemViewModel: ObservableObject {
 
     var isSelected: Bool { selection.isSelected(item.id) }
 
+    /// One size app-wide: ThumbnailService keys its cache on the size string,
+    /// so a second size doubles memory and misses every time.
+    static let thumbnailSize = CGSize(width: 24, height: 24)
+
     func loadThumbnail() async {
         guard let url = item.fileURL else { return }
-        if let image = await ThumbnailService.shared.thumbnail(for: url, size: CGSize(width: 56, height: 56)) {
+        if let image = await ThumbnailService.shared.thumbnail(for: url, size: Self.thumbnailSize) {
             self.thumbnail = image
         }
     }
@@ -98,6 +102,7 @@ final class ShelfItemViewModel: ObservableObject {
 
     // MARK: - Actions
     func handleClick(event: NSEvent, view: NSView) {
+        selection.noteChipClick()
         let flags = event.modifierFlags
         if flags.contains(.shift) {
             selection.shiftSelect(to: item, in: ShelfStateViewModel.shared.items)
@@ -114,6 +119,19 @@ final class ShelfItemViewModel: ObservableObject {
     func handleRightClick(event: NSEvent, view: NSView) {
         if !selection.isSelected(item.id) { selection.selectSingle(item) }
         presentContextMenu(event: event, in: view)
+    }
+
+    /// Quick Look whatever is selected, falling back to this item alone.
+    func quickLookSelection() {
+        let selected = selection.selectedItems(in: ShelfStateViewModel.shared.items)
+        let subjects = selected.contains(where: { $0.id == item.id }) ? selected : [item]
+        let urls: [URL] = subjects.compactMap { subject in
+            if let fileURL = subject.fileURL { return fileURL }
+            if case .link(let url) = subject.kind { return url }
+            return nil
+        }
+        guard !urls.isEmpty else { return }
+        onQuickLookRequest?(urls)
     }
 
     func handleDoubleClick() {
@@ -318,6 +336,8 @@ final class ShelfItemViewModel: ObservableObject {
         }
 
         menu.addItem(NSMenuItem.separator())
+        addMenuItem(title: "Send to Phone")
+        addMenuItem(title: "Send to TV")
         addMenuItem(title: "Share…")
         
         // Add image processing options for image files grouped under "Image Actions"
@@ -477,6 +497,14 @@ final class ShelfItemViewModel: ObservableObject {
 
             case "Share…":
                 viewModel.shareItem(from: view)
+
+            case "Send to Phone":
+                let selected = ShelfSelectionModel.shared.selectedItems(in: ShelfStateViewModel.shared.items)
+                Task { await ShelfShareService.shared.shareShelfItems(selected, to: .phone) }
+
+            case "Send to TV":
+                let selected = ShelfSelectionModel.shared.selectedItems(in: ShelfStateViewModel.shared.items)
+                Task { await ShelfShareService.shared.shareShelfItems(selected, to: .tv) }
 
             case "Rename":
                 let selected = ShelfSelectionModel.shared.selectedItems(in: ShelfStateViewModel.shared.items)
