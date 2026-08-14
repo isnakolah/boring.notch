@@ -132,7 +132,7 @@ for required_resource in Calla/openclaw Calla/packs Calla/agent-workspace Calla/
   [[ -d "$SRC/Contents/Resources/$required_resource" ]] || { echo "✗ Missing embedded Tutor resource: $required_resource" >&2; exit 1; }
 done
 for required_file in \
-  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/MacOS/CallaTutorHost \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaOverlayHelper \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-ask.sh \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-course.sh \

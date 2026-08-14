@@ -15,16 +15,18 @@ for executable in CallaTutorHost CallaOverlayHelper; do
   [[ -x "$BINARIES/$executable" ]] || { echo "missing Tutor runtime executable: $executable" >&2; exit 78; }
 done
 
-mkdir -p "$DESTINATION/assets/blender" "$DESTINATION/scripts"
-ditto "$BINARIES/CallaTutorHost" "$DESTINATION/CallaTutorHost"
+HOST_APP="$DESTINATION/CallaTutorHost.app"
+/bin/rm -f "$DESTINATION/CallaTutorHost"
+mkdir -p "$DESTINATION/assets/blender" "$DESTINATION/scripts" "$HOST_APP/Contents/MacOS"
+ditto "$BINARIES/CallaTutorHost" "$HOST_APP/Contents/MacOS/CallaTutorHost"
+ditto "$ROOT/scripts/calla/CallaTutorHost-Info.plist" "$HOST_APP/Contents/Info.plist"
 ditto "$BINARIES/CallaOverlayHelper" "$DESTINATION/CallaOverlayHelper"
 # TCC identifies each executable that calls CoreGraphics/ScreenCaptureKit.
 # Keep the embedded helpers under Boring's real signing identity; ad-hoc
 # signatures cannot receive the Screen Recording grant that Boring requests.
 if [[ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" && "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]]; then
-  for executable in CallaTutorHost CallaOverlayHelper; do
-    codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$DESTINATION/$executable"
-  done
+  codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$HOST_APP"
+  codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$DESTINATION/CallaOverlayHelper"
 else
   echo "missing expanded Boring signing identity for embedded Calla runtime" >&2
   exit 78
@@ -36,4 +38,4 @@ for script in calla-ask.sh calla-course.sh calla-gateway-check.sh; do
   chmod 700 "$DESTINATION/scripts/$script"
 done
 ditto "$ROOT/Tutor/apps/macos/TutorHost/assets/blender" "$DESTINATION/assets/blender"
-chmod 700 "$DESTINATION/CallaTutorHost" "$DESTINATION/CallaOverlayHelper"
+chmod 700 "$HOST_APP/Contents/MacOS/CallaTutorHost" "$DESTINATION/CallaOverlayHelper"

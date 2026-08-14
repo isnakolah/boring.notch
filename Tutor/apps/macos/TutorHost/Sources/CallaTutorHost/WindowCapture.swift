@@ -118,11 +118,13 @@ enum WindowCapture {
             throw Failure.notPermitted
         }
 
-        // Match on the owning process, not the title: titles are user data and
-        // change constantly.
+        // Match on the owning process, not title or reported bundle ID. The
+        // engine already allowlists `processID` through NSWorkspace; recent
+        // macOS can redact or normalize `SCWindow`'s bundle identifier for an
+        // embedded XPC-launched capture client. PID keeps this one-window
+        // filter bound to the verified allowed application.
         let candidates = content.windows.filter { window in
-            window.owningApplication?.bundleIdentifier == bundleID
-                && window.owningApplication?.processID == processID
+            window.owningApplication?.processID == processID
                 && window.isOnScreen
                 && window.frame.width > 1
                 && window.frame.height > 1
@@ -142,6 +144,17 @@ enum WindowCapture {
                                 windowID: resolved.windowID,
                                 resolvedAt: Date())
         return resolved
+    }
+
+    /// Window identity and geometry must come from same permitted capture
+    /// service as image pixels. `CGWindowListCopyWindowInfo` can return nil to
+    /// a process launched from an embedded XPC service even after macOS has
+    /// granted Screen Recording; ScreenCaptureKit remains the authoritative
+    /// single-window source in that context.
+    @MainActor
+    static func identity(bundleID: String, processID: pid_t) async throws -> (id: CGWindowID, frame: CGRect) {
+        let resolved = try await window(bundleID: bundleID, processID: processID, windowID: nil)
+        return (resolved.windowID, resolved.frame)
     }
 
     /// The filter for a window we just resolved, built once alongside it.

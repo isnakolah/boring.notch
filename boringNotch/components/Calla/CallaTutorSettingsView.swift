@@ -99,6 +99,7 @@ struct CallaTutorSettingsView: View {
     private var permissionsSection: some View {
         SectionBox("Permissions", icon: "lock.shield") {
             LabeledContent("Screen Recording", value: engine.status.screenRecordingGranted ? "Allowed" : "Required")
+            Button("Request Screen Recording") { engine.requestScreenRecording() }
             Button("Open Screen Recording Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
             }

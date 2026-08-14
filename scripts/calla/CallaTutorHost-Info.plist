@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Boring Calla Engine</string>
+    <key>CFBundleExecutable</key>
+    <string>CallaTutorHost</string>
+    <key>CFBundleIdentifier</key>
+    <string>theboringteam.boringnotch.CallaTutorHost</string>
+    <key>CFBundleName</key>
+    <string>Boring Calla Engine</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Calla Tutor captures only an allowed application window to guide your lesson.</string>
+</dict>
+</plist>

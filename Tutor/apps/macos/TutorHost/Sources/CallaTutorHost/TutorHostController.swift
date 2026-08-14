@@ -274,7 +274,7 @@ final class TutorHostController: ObservableObject {
         guard request.sessionID.count >= 8 else { return failure(request, "invalid_session", "A valid teaching session is required") }
         // Bookkeeping and the course list are not looking at anything, so a
         // paused capture has no reason to refuse them.
-        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_resume", "course_stop", "course_ask"].contains(request.operation) else {
+        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_resume", "course_stop", "course_ask", "request_screen_recording"].contains(request.operation) else {
             return failure(request, "capture_paused", "Capture is paused locally")
         }
         do {
@@ -429,6 +429,11 @@ final class TutorHostController: ObservableObject {
                 }
                 LessonRelay.shared.handle(event: "ask", text: text)
                 payload = ["status": .string("asking")]
+            case "request_screen_recording":
+                // Boring engine is sole caller. This stays outside model tools;
+                // direct request gives TCC the exact capture executable.
+                TutorSettings.shared.requestScreenRecordingApproval()
+                payload = ["status": .string("Screen Recording request shown")]
             default: return failure(request, "unsupported_operation", "This TutorHost accepts only documented Tutor operations")
             }
             if ["guide", "narrate"].contains(request.operation), let started = feedbackStartedAt {
@@ -499,9 +504,11 @@ final class TutorHostController: ObservableObject {
     func resumeLesson() {
         guard lessonActive else { return }
         finishAsideForVerification()
-        if !engine.redrawCurrentStep() {
-            PointerOverlay.shared.narrate(step: "Calla", text: "Back to the lesson.",
-                                          status: "Calla — \(engine.stepLabel)", thinking: false)
+        Task { @MainActor in
+            if !(await engine.redrawCurrentStep()) {
+                PointerOverlay.shared.narrate(step: "Calla", text: "Back to the lesson.",
+                                              status: "Calla — \(engine.stepLabel)", thinking: false)
+            }
         }
     }
 
@@ -1119,7 +1126,7 @@ private final class AccessibilityTutorEngine {
 
     func observe(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {
         let focused = try focusedAllowlistedApplication(allowlist(from: payload))
-        let snapshot = try makeSnapshot(for: focused)
+        let snapshot = try await makeSnapshot(for: focused)
         snapshots[snapshot.id] = snapshot
         latestSnapshot = snapshot
         var result: [String: JSONValue] = [
@@ -1196,7 +1203,7 @@ private final class AccessibilityTutorEngine {
     /// the region against the window's *current* geometry, and draws. Nothing
     /// here can click, and no screen coordinate goes back over the wire.
     func guide(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {
-        var result = try drawGuide(payload)
+        var result = try await drawGuide(payload)
         // What the window looked like the moment this step went up. Whether the
         // learner has since done anything is measured from here, so a local
         // advance judges the step rather than the wait.
@@ -1238,11 +1245,11 @@ private final class AccessibilityTutorEngine {
         return result
     }
 
-    private func drawGuide(_ payload: [String: JSONValue]) throws -> [String: JSONValue] {
+    private func drawGuide(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {
         guard let region = try normalizedRegion(payload["region"]) else {
             throw TutorHostFailure(code: "missing_region", message: "guide requires one normalized region of the observed window")
         }
-        let window = try liveWindow(for: payload)
+        let window = try await liveWindow(for: payload)
         let picture = pictureFrame(observed: window.snapshot, live: window.frame)
         let requested = CGRect(x: picture.rect.minX + picture.rect.width * region.left,
                                y: picture.rect.minY + picture.rect.height * region.top,
@@ -1438,7 +1445,7 @@ private final class AccessibilityTutorEngine {
     /// Returns rather than blocks when the wait runs out, so the model can
     /// decide whether to keep waiting, re-word the step, or move on.
     func awaitChange(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {
-        let window = try liveWindow(for: payload)
+        let window = try await liveWindow(for: payload)
         let requested = payload["timeout_seconds"]?.numberValue ?? 15
         let deadline = Date().addingTimeInterval(min(max(requested, 1), 25))
         let threshold = min(max(payload["sensitivity"]?.numberValue ?? Self.changeThreshold, 0.005), 0.5)
@@ -1601,7 +1608,7 @@ private final class AccessibilityTutorEngine {
         guard !plan.isEmpty, let planSnapshot else { return LocalAdvanceRefusal.noPlan.rawValue }
 
         guard let focused = try? focusedAllowlistedApplication(TutorSettings.shared.effectiveAllowlist(requested: nil)),
-              let fresh = try? makeSnapshot(for: focused),
+              let fresh = try? await makeSnapshot(for: focused),
               fresh.processID == planSnapshot.processID, fresh.windowID == planSnapshot.windowID else {
             return LocalAdvanceRefusal.windowChanged.rawValue
         }
@@ -1620,10 +1627,10 @@ private final class AccessibilityTutorEngine {
     ///
     /// Used to come back from an aside: the Mac still holds this step's region
     /// and words, so putting the learner back where they were is free.
-    func redrawCurrentStep() -> Bool {
+    func redrawCurrentStep() async -> Bool {
         guard planIndex < plan.count, let region = plan[planIndex].region, let text = plan[planIndex].text,
               let focused = try? focusedAllowlistedApplication(TutorSettings.shared.effectiveAllowlist(requested: nil)),
-              let fresh = try? makeSnapshot(for: focused), let planSnapshot else { return false }
+              let fresh = try? await makeSnapshot(for: focused), let planSnapshot else { return false }
         let picture = pictureFrame(observed: planSnapshot, live: fresh.windowFrame)
         let frame = CGRect(x: picture.rect.minX + picture.rect.width * region.left,
                            y: picture.rect.minY + picture.rect.height * region.top,
@@ -1657,7 +1664,7 @@ private final class AccessibilityTutorEngine {
     /// window, so process and window identity must still match, and the region
     /// is mapped against the geometry read back in this call rather than the
     /// geometry captured earlier.
-    private func liveWindow(for payload: [String: JSONValue]) throws -> (snapshot: Snapshot, frame: CGRect) {
+    private func liveWindow(for payload: [String: JSONValue]) async throws -> (snapshot: Snapshot, frame: CGRect) {
         guard case .string(let snapshotID)? = payload["snapshot_id"], let prior = snapshots[snapshotID] else {
             throw TutorHostFailure(code: "unknown_snapshot", message: "An observation receipt is required before guiding")
         }
@@ -1665,7 +1672,7 @@ private final class AccessibilityTutorEngine {
             throw TutorHostFailure(code: "stale_snapshot", message: "The observation receipt is stale; observe again")
         }
         let focused = try focusedAllowlistedApplication(allowlist(from: payload))
-        let fresh = try makeSnapshot(for: focused)
+        let fresh = try await makeSnapshot(for: focused)
         guard fresh.processID == prior.processID, fresh.windowID == prior.windowID else {
             throw TutorHostFailure(code: "changed_window", message: "The focused allowlisted window changed after observation")
         }
@@ -1694,7 +1701,7 @@ private final class AccessibilityTutorEngine {
                    highlight: Bool = false) async throws {
         let descriptor = try UITargetDescriptor(raw: raw)
         let focused = try focusedAllowlistedApplication(Set([bundleID]))
-        let snapshot = try makeSnapshot(for: focused)
+        let snapshot = try await makeSnapshot(for: focused)
         guard snapshot.appBundleID == bundleID else {
             throw TutorHostFailure(code: "course_app_changed", message: "Course target app is no longer focused")
         }
@@ -1717,7 +1724,7 @@ private final class AccessibilityTutorEngine {
         let descriptor = try UITargetDescriptor(raw: rawTarget)
         let detector = try DetectorDescriptor(raw: rawDetector)
         let focused = try focusedAllowlistedApplication(Set([bundleID]))
-        let snapshot = try makeSnapshot(for: focused)
+        let snapshot = try await makeSnapshot(for: focused)
         guard snapshot.appBundleID == bundleID else {
             throw TutorHostFailure(code: "course_app_changed", message: "Course target app changed")
         }
@@ -1765,7 +1772,7 @@ private final class AccessibilityTutorEngine {
             hint = nil
         }
         let focused = try focusedAllowlistedApplication(allowlist(from: payload))
-        let fresh = try makeSnapshot(for: focused)
+        let fresh = try await makeSnapshot(for: focused)
         guard fresh.processID == prior.processID, fresh.windowID == prior.windowID, fresh.windowFrame.equalTo(prior.windowFrame) else {
             throw TutorHostFailure(code: "changed_window", message: "The focused allowlisted window changed after observation")
         }
@@ -1955,8 +1962,9 @@ private final class AccessibilityTutorEngine {
     /// stale. The window geometry this host actually needs — id, bounds — comes
     /// from the window server, which only requires Screen Recording. AX is used
     /// afterwards, if at all, to resolve elements *within* the window.
-    private func makeSnapshot(for focused: FocusedApplication) throws -> Snapshot {
-        let window = try frontmostWindow(processID: focused.application.processIdentifier)
+    private func makeSnapshot(for focused: FocusedApplication) async throws -> Snapshot {
+        let window = try await WindowCapture.identity(bundleID: focused.application.bundleIdentifier ?? "",
+                                                       processID: focused.application.processIdentifier)
         let version = focused.application.bundleURL.flatMap {
             Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         } ?? "unknown"

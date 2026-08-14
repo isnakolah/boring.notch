@@ -180,6 +180,16 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    func requestScreenRecording(with reply: @escaping (Data) -> Void) {
+        queue.async {
+            // This request must originate in the executable that owns capture.
+            // Selecting an embedded XPC bundle in System Settings does not make
+            // it the TCC client on current macOS.
+            self.invokeRuntime(operation: "request_screen_recording", payload: [:])
+            reply(self.encodedStatus())
+        }
+    }
+
     func requestAccessibility(with reply: @escaping (Data) -> Void) {
         queue.async {
             let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
@@ -260,9 +270,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private func startRuntime() throws {
         guard runtime?.isRunning != true else { return }
         let resource = Bundle.main.resourceURL?
-            .appendingPathComponent("CallaRuntime/CallaTutorHost")
+            .appendingPathComponent("CallaRuntime/CallaTutorHost.app/Contents/MacOS/CallaTutorHost")
         guard let executable = resource, fileManager.isExecutableFile(atPath: executable.path) else {
-            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "CallaRuntime/CallaTutorHost"])
+            throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "CallaRuntime/CallaTutorHost.app"])
         }
         let process = Process()
         process.executableURL = executable
