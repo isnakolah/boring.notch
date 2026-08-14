@@ -70,6 +70,10 @@ struct CallaTabView: View {
         .task {
             engine.start()
             engine.applyCurrentPreferences()
+            while !Task.isCancelled {
+                engine.refresh()
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
         }
         .onChange(of: engine.status.courses) { _, courses in
             if selectedCourseID.isEmpty || !courses.contains(where: { $0.id == selectedCourseID }) {

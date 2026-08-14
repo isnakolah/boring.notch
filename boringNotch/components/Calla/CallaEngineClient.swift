@@ -103,7 +103,11 @@ final class CallaEngineClient: ObservableObject {
     }
 
     func refresh() {
-        invoke { $0.status(with: $1) }
+        invoke({ $0.status(with: $1) }) { [weak self] status in
+            guard !status.running, Defaults[.callaTutorEnabled] else { return }
+            self?.start()
+            self?.applyCurrentPreferences()
+        }
     }
 
     func requestGatewayUpdate() {
@@ -160,6 +164,12 @@ final class CallaEngineClient: ObservableObject {
     private func makeConnection() -> NSXPCConnection {
         let connection = NSXPCConnection(serviceName: "theboringteam.boringnotch.BoringCallaEngine")
         connection.remoteObjectInterface = NSXPCInterface(with: BoringCallaEngineProtocol.self)
+        connection.invalidationHandler = { [weak self] in
+            Task { @MainActor in
+                self?.connection = nil
+                self?.status.running = false
+            }
+        }
         connection.resume()
         self.connection = connection
         return connection

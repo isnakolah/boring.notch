@@ -90,6 +90,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var runtime: Process?
     private var nodeRuntime: Process?
     private var gatewayUpdate: Process?
+    private var gatewayReachable = false
+    private var gatewayMonitor: DispatchSourceTimer?
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -97,18 +99,23 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private var socketURL: URL { root.appendingPathComponent("tutor-host.sock") }
+    private var runtimePIDURL: URL { root.appendingPathComponent("runtime.pid") }
+    private var nodePIDURL: URL { root.appendingPathComponent("node.pid") }
 
     func start(with reply: @escaping (Data) -> Void) {
         queue.async {
             NSLog("[CallaEngine] start requested")
             do {
+                let wasRunning = self.isRunning
                 try self.prepareRuntimeDirectories()
                 self.restorePreferences()
+                self.reclaimStaleOwnedChildren()
                 try self.startRuntime()
                 try self.startNodeRuntime()
+                self.startGatewayMonitor()
                 self.isRunning = true
                 self.lastResult = "Engine ready; Tutor runtime and Calla Mac node starting"
-                if self.isInstalledBoringApp {
+                if self.isInstalledBoringApp, !wasRunning {
                     self.requestGatewayUpdate(trigger: "launch")
                 }
                 NSLog("[CallaEngine] runtime launched")
@@ -123,10 +130,14 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
 
     func stop(with reply: @escaping (Data) -> Void) {
         queue.async {
-            self.runtime?.terminate()
+            self.stopGatewayMonitor()
+            if let runtime = self.runtime { self.terminateProcessTree(runtime.processIdentifier) }
             self.runtime = nil
-            self.nodeRuntime?.terminate()
+            self.clearOwnedPID(at: self.runtimePIDURL)
+            if let nodeRuntime = self.nodeRuntime { self.terminateProcessTree(nodeRuntime.processIdentifier) }
             self.nodeRuntime = nil
+            self.clearOwnedPID(at: self.nodePIDURL)
+            self.gatewayReachable = false
             self.isRunning = false
             self.lastResult = "Engine stopped"
             reply(self.encodedStatus())
@@ -281,14 +292,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_RUNTIME_ROOT"] = root.path
         environment["CALLA_RUNTIME_MODE"] = "boring"
         process.environment = environment
+        let pidFile = runtimePIDURL
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
+                self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
                 self?.isRunning = false
                 self?.lastResult = "Tutor runtime stopped (status \(child.terminationStatus))"
             }
         }
         try process.run()
         runtime = process
+        try writeOwnedPID(process.processIdentifier, to: runtimePIDURL)
     }
 
     /// Node process has no UI and never owns preferences. Its plugin location
@@ -315,14 +329,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_NODE_DISPLAY_NAME"] = "Calla Mac"
         environment["CALLA_RUNTIME_ROOT"] = root.path
         process.environment = environment
+        let pidFile = nodePIDURL
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
+                self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
                 guard self?.isRunning == true else { return }
                 self?.lastResult = "Calla Mac node stopped (status \(child.terminationStatus)); re-pairing will retry"
             }
         }
         try process.run()
         nodeRuntime = process
+        try writeOwnedPID(process.processIdentifier, to: nodePIDURL)
     }
 
     private func appCallaResources() -> URL? {
@@ -332,6 +349,105 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         return xpc.deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Resources/Calla", isDirectory: true)
+    }
+
+    /// launchd can reclaim an XPC instance before its descendants. Reclaim
+    /// only Boring-recorded PIDs; never scan or kill generic OpenClaw work.
+    private func reclaimStaleOwnedChildren() {
+        if runtime?.isRunning != true {
+            reclaimOwnedProcess(at: runtimePIDURL)
+            runtime = nil
+        }
+        if nodeRuntime?.isRunning != true {
+            reclaimOwnedProcess(at: nodePIDURL)
+            nodeRuntime = nil
+        }
+    }
+
+    private func reclaimOwnedProcess(at file: URL) {
+        guard let value = try? String(contentsOf: file, encoding: .utf8),
+              let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              pid > 1, pid != getpid() else {
+            clearOwnedPID(at: file)
+            return
+        }
+        terminateProcessTree(pid)
+        clearOwnedPID(at: file)
+    }
+
+    private func writeOwnedPID(_ pid: pid_t, to file: URL) throws {
+        let temporary = file.deletingLastPathComponent().appendingPathComponent(".\(file.lastPathComponent)-\(UUID().uuidString)")
+        guard let data = "\(pid)\n".data(using: .utf8) else { return }
+        try data.write(to: temporary, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+        if fileManager.fileExists(atPath: file.path) {
+            _ = try fileManager.replaceItemAt(file, withItemAt: temporary, backupItemName: nil, options: [])
+        } else {
+            try fileManager.moveItem(at: temporary, to: file)
+        }
+    }
+
+    private func clearOwnedPID(at file: URL, matching pid: pid_t? = nil) {
+        if let pid,
+           let value = try? String(contentsOf: file, encoding: .utf8),
+           value.trimmingCharacters(in: .whitespacesAndNewlines) != "\(pid)" { return }
+        try? fileManager.removeItem(at: file)
+    }
+
+    private func terminateProcessTree(_ pid: pid_t) {
+        guard pid > 1, pid != getpid() else { return }
+        for descendant in childProcesses(of: pid).reversed() { Darwin.kill(descendant, SIGTERM) }
+        Darwin.kill(pid, SIGTERM)
+    }
+
+    private func childProcesses(of rootPID: pid_t) -> [pid_t] {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "pid=,ppid="]
+        process.standardOutput = output
+        guard (try? process.run()) != nil else { return [] }
+        process.waitUntilExit()
+        guard process.terminationStatus == 0,
+              let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return [] }
+        let parents = text.split(separator: "\n").reduce(into: [pid_t: [pid_t]]()) { result, line in
+            let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            guard fields.count == 2, let pid = Int32(fields[0]), let parent = Int32(fields[1]) else { return }
+            result[parent, default: []].append(pid)
+        }
+        func descendants(_ parent: pid_t) -> [pid_t] {
+            let children = parents[parent, default: []]
+            return children + children.flatMap(descendants)
+        }
+        return descendants(rootPID)
+    }
+
+    private func startGatewayMonitor() {
+        guard gatewayMonitor == nil else { return }
+        probeGateway()
+        let monitor = DispatchSource.makeTimerSource(queue: queue)
+        monitor.schedule(deadline: .now() + 15, repeating: 15)
+        monitor.setEventHandler { [weak self] in self?.probeGateway() }
+        monitor.resume()
+        gatewayMonitor = monitor
+    }
+
+    private func stopGatewayMonitor() {
+        gatewayMonitor?.cancel()
+        gatewayMonitor = nil
+    }
+
+    /// Fixed private Tailscale Serve route. Capability receipt separately
+    /// proves Tutor contract, while this tracks current route reachability.
+    private func probeGateway() {
+        guard let url = URL(string: "https://nomonhomelab.tailec0dca.ts.net/") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 8
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, _ in
+            let reachable = (response as? HTTPURLResponse).map { (200..<400).contains($0.statusCode) } ?? false
+            self?.queue.async { self?.gatewayReachable = reachable }
+        }.resume()
     }
 
     private var isInstalledBoringApp: Bool {
@@ -466,14 +582,14 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private func encodedStatus() -> Data {
         let handshake = currentCapabilityHandshake()
         let gatewayUpdate = currentGatewayUpdate()
-        let hasRecentHandshake = handshake.map { Date().timeIntervalSince($0.receivedAt) < 600 } ?? false
+        let hasVerifiedHandshake = handshake != nil
         let status = Status(
             running: isRunning,
             socketPath: socketURL.path,
             screenRecordingGranted: CGPreflightScreenCaptureAccess(),
             accessibilityGranted: AXIsProcessTrusted(),
-            gatewayReachable: hasRecentHandshake,
-            nodeConnected: hasRecentHandshake && nodeRuntime?.isRunning == true,
+            gatewayReachable: gatewayReachable,
+            nodeConnected: gatewayReachable && hasVerifiedHandshake && nodeRuntime?.isRunning == true,
             releaseVersion: gatewayUpdate?.currentRelease,
             previousGatewayRelease: gatewayUpdate?.previousRelease,
             lastGatewayUpdate: gatewayUpdate?.summary,
