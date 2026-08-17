@@ -347,6 +347,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             CallaEngineClient.shared.startMonitoring()
         }
 
+        if Defaults[.callaCopilotEnabled] {
+            // The copilot is only useful if it is already listening when the
+            // question is asked, so the detector runs whether or not the notch
+            // has ever been opened. Touching the session here also builds it
+            // before the first status poll lands.
+            _ = CopilotLiveSession.shared
+            CallaEngineClient.shared.start()
+            CallaEngineClient.shared.startMonitoring()
+            MeetingDetector.shared.start()
+        }
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationDidChange),
@@ -485,6 +496,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         viewModel.close()
                     }
                 }
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .copilotToggleCall) {
+            Task { @MainActor in
+                let engine = CallaEngineClient.shared
+                guard Defaults[.callaCopilotEnabled], engine.status.copilot.available else { return }
+                if engine.status.copilot.running {
+                    // Ending by hand has to outrank the detector, or it starts
+                    // the call again while the meeting is still going.
+                    MeetingDetector.shared.suppressUntilMicIdle()
+                    engine.endCall()
+                } else {
+                    engine.startCall(persona: Defaults[.callaCopilotPersona],
+                                     model: Defaults[.callaCopilotLiveModel])
+                }
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .copilotToggleLayout) {
+            Task { @MainActor in
+                CopilotLiveSession.shared.toggleLayout()
+            }
+        }
+
+        KeyboardShortcuts.onKeyDown(for: .copilotDismiss) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                CopilotLiveSession.shared.dismiss()
+                self.vm.close()
             }
         }
 
