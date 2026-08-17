@@ -11,10 +11,10 @@ import SwiftUI
 /// competing navigation models: fourteen items in the sidebar, and a second row
 /// of tabs that appeared only on two of them. One model is the whole fix.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance, advanced
+    case general, appearance, layout, advanced
     case media, battery, huds, calendar
     case shelf
-    case copilot
+    case copilotCall, copilotIntelligence, copilotPrompts, copilotTranscription, copilotHistory
     case tutorCourses, tutorCreate, tutorBehavior, tutorAccess, tutorEngine
     case pomodoro, usage
     case sweep, sweepCleanUp, sweepHistory, sweepOptions
@@ -26,13 +26,18 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "General"
         case .appearance: return "Appearance"
+        case .layout: return "Layout"
         case .advanced: return "Advanced"
         case .media: return "Media"
         case .battery: return "Battery"
         case .huds: return "HUDs"
         case .calendar: return "Calendar"
         case .shelf: return "Shelf"
-        case .copilot: return "Call copilot"
+        case .copilotCall: return "Call"
+        case .copilotIntelligence: return "Intelligence"
+        case .copilotPrompts: return "Prompts"
+        case .copilotTranscription: return "Transcription"
+        case .copilotHistory: return "History"
         case .tutorCourses: return "Courses"
         case .tutorCreate: return "Create"
         case .tutorBehavior: return "Behavior"
@@ -53,13 +58,18 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general: return "gear"
         case .appearance: return "eye"
+        case .layout: return "rectangle.3.group"
         case .advanced: return "gearshape.2"
         case .media: return "play.laptopcomputer"
         case .battery: return "battery.100.bolt"
         case .huds: return "dial.medium.fill"
         case .calendar: return "calendar"
         case .shelf: return "books.vertical"
-        case .copilot: return "waveform.badge.mic"
+        case .copilotCall: return "waveform.badge.mic"
+        case .copilotIntelligence: return "brain"
+        case .copilotPrompts: return "text.quote"
+        case .copilotTranscription: return "waveform"
+        case .copilotHistory: return "clock.arrow.circlepath"
         case .tutorCourses: return "books.vertical.fill"
         case .tutorCreate: return "wand.and.stars"
         case .tutorBehavior: return "slider.horizontal.3"
@@ -80,9 +90,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     /// reader always knows where they are.
     var group: SettingsGroup {
         switch self {
-        case .general, .appearance, .advanced: return .notch
+        case .general, .appearance, .layout, .advanced: return .notch
         case .media, .battery, .huds, .calendar: return .activities
-        case .shelf, .pomodoro, .usage, .copilot: return .tools
+        case .shelf, .pomodoro, .usage: return .tools
+        case .copilotCall, .copilotIntelligence, .copilotPrompts, .copilotTranscription, .copilotHistory:
+            return .copilot
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine: return .tutor
         case .sweep, .sweepCleanUp, .sweepHistory, .sweepOptions: return .sweep
         case .shortcuts, .about: return .app
@@ -109,19 +121,19 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine:
             return .activity(symbol: "graduationcap.fill", text: "Shape the lamp base",
                              tint: NotchTint.active, caption: "A lesson in progress")
-        case .copilot:
+        case .copilotCall, .copilotIntelligence, .copilotPrompts, .copilotTranscription, .copilotHistory:
             return .activity(symbol: "waveform.badge.mic", text: "When could you start?",
                              tint: NotchTint.active, caption: "A pointer mid-call")
         case .pomodoro:
             return .activity(symbol: "timer", text: "24:10 focus",
                              tint: NotchTint.healthy, caption: "Focus timer")
-        case .sweep:
+        case .sweep, .sweepCleanUp, .sweepHistory, .sweepOptions:
             return .activity(symbol: "externaldrive.badge.checkmark", text: "12.4 GB reclaimable",
                              tint: NotchTint.attention, caption: "Sweep result")
         case .usage:
             return .activity(symbol: "chart.bar.xaxis", text: "CPU 32%",
                              tint: NotchTint.active, caption: "Usage monitor")
-        case .general, .appearance, .advanced, .shortcuts, .about:
+        case .general, .appearance, .layout, .advanced, .shortcuts, .about:
             return .shape
         }
     }
@@ -131,12 +143,17 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch legacyIdentifier {
         case "General": self = .general
         case "Appearance": self = .appearance
+        case "Layout", "NotchLayout": self = .layout
         case "Media": self = .media
         case "Calendar": self = .calendar
         case "HUD": self = .huds
         case "Battery": self = .battery
         case "Shelf": self = .shelf
-        case "Copilot", "CallCopilot": self = .copilot
+        case "Copilot", "CallCopilot": self = .copilotCall
+        case "CopilotIntelligence": self = .copilotIntelligence
+        case "CopilotPrompts": self = .copilotPrompts
+        case "CopilotTranscription": self = .copilotTranscription
+        case "CopilotHistory": self = .copilotHistory
         case "Tutor": self = .tutorCourses
         case "Usage": self = .usage
         case "Pomodoro": self = .pomodoro
@@ -155,7 +172,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 /// Notch panes change the slab's geometry and appearance, Activities are what it
 /// displays, Tools are features that own their own data, App is the app itself.
 enum SettingsGroup: String, CaseIterable, Identifiable {
-    case notch, activities, tools, tutor, app
+    case notch, activities, tools, copilot, tutor, sweep, app
 
     var id: String { rawValue }
 
@@ -164,22 +181,32 @@ enum SettingsGroup: String, CaseIterable, Identifiable {
         case .notch: return "Notch"
         case .activities: return "Activities"
         case .tools: return "Tools"
+        case .copilot: return "Call copilot"
         case .tutor: return "Tutor"
+        case .sweep: return "Sweep"
         case .app: return "App"
         }
     }
 
     var tabs: [SettingsTab] {
         switch self {
-        case .notch: return [.general, .appearance, .advanced]
+        case .notch: return [.general, .appearance, .layout, .advanced]
         case .activities: return [.media, .battery, .huds, .calendar]
-        case .tools: return [.shelf, .copilot, .pomodoro, .sweep, .usage]
+        case .tools: return [.shelf, .pomodoro, .usage]
+        // The copilot grew past what one pane can hold — a live call, editable
+        // prompts, a model that has to be downloaded, and an archive. Same
+        // reasoning as Tutor and Sweep: a group header costs one line and hides
+        // nothing, where a second row of tabs inside a pane is a competing
+        // navigation model.
+        case .copilot:
+            return [.copilotCall, .copilotIntelligence, .copilotPrompts, .copilotTranscription, .copilotHistory]
         // Tutor gets a group rather than a disclosure under Tools. A
         // `DisclosureGroup` inside a selectable `List` rendered collapsed
         // regardless of its binding and would not toggle from the label, which
         // put five destinations behind a control that did not work. A group
         // header costs one line and hides nothing.
         case .tutor: return [.tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine]
+        case .sweep: return [.sweep, .sweepCleanUp, .sweepHistory, .sweepOptions]
         case .app: return [.shortcuts, .about]
         }
     }

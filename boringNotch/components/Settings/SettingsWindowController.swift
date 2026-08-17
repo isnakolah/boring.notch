@@ -103,6 +103,8 @@ class SettingsWindowController: NSWindowController {
 
     func showTutorWindow() { show(tab: "Tutor") }
 
+    func showCopilotWindow(tab: String = "Copilot") { show(tab: tab) }
+
     /// Open Settings on a given pane.
     ///
     /// Each deep link used to rebuild `contentView` from scratch, and the Tutor
