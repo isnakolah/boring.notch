@@ -13,6 +13,12 @@ let package = Package(
     products: [
         .executable(name: "CallaCallHost", targets: ["CallaCallHost"]),
     ],
+    dependencies: [
+        // The app's intelligence layer. A local package rather than shared source
+        // paths, because SPM refuses a target path outside its own package root
+        // and the app, the XPC engine and this host all need the same types.
+        .package(path: "../Intelligence"),
+    ],
     targets: [
         // Prebuilt, checksummed. Same pin Mila ships, so the two apps agree on
         // whisper behaviour and on the audio_ctx findings that came with it.
@@ -25,7 +31,11 @@ let package = Package(
         // main.
         .target(
             name: "CallaCallHostKit",
-            dependencies: ["whisper"],
+            dependencies: [
+                "whisper",
+                .product(name: "IntelligenceCore", package: "Intelligence"),
+                .product(name: "IntelligenceProviders", package: "Intelligence"),
+            ],
             // The only model that ships inside the bundle: under a megabyte,
             // and the gate that keeps whisper from hallucinating words onto a
             // fan or a keyboard burst. The transcription models are far too
