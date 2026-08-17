@@ -299,3 +299,41 @@ public struct StatementSegmenter: Sendable {
         return hangingWords.contains(word)
     }
 }
+
+public extension Statement {
+    /// Whether this statement is something that wants answering.
+    ///
+    /// Used by "answers only" mode, where the copilot should speak when it has been
+    /// asked something and stay quiet otherwise. Punctuation alone is not enough:
+    /// Whisper drops question marks often, and an interviewer's most demanding
+    /// prompts are imperatives — "walk me through the architecture", "tell me about
+    /// a time you disagreed" — which are questions in everything but grammar.
+    var invitesAnAnswer: Bool {
+        let text = self.text.lowercased()
+        if text.contains("?") { return true }
+
+        let words = text.split(whereSeparator: { !$0.isLetter && $0 != "'" }).map(String.init)
+        guard let first = words.first else { return false }
+        if Statement.interrogatives.contains(first) { return true }
+        // A leading auxiliary is a yes/no question: "did you ship it", "would you
+        // reach for a queue here".
+        if Statement.auxiliaries.contains(first), words.count > 1 { return true }
+        return Statement.requestPhrases.contains { text.contains($0) }
+    }
+
+    private static let interrogatives: Set<String> = [
+        "what", "why", "how", "when", "where", "who", "whom", "whose", "which",
+    ]
+
+    private static let auxiliaries: Set<String> = [
+        "do", "does", "did", "can", "could", "would", "will", "should", "shall",
+        "is", "are", "was", "were", "have", "has", "had", "am",
+    ]
+
+    /// Imperatives that function as questions in an interview.
+    private static let requestPhrases: [String] = [
+        "tell me", "walk me through", "talk me through", "describe", "explain",
+        "give me an example", "give an example", "take me through",
+        "your thoughts", "elaborate", "any questions",
+    ]
+}

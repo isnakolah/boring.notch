@@ -49,8 +49,13 @@ enum AgyProcessRunner {
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = arguments
         if let workingDirectory { process.currentDirectoryURL = workingDirectory }
-        var environment = ProcessInfo.processInfo.environment
-        for (key, value) in extra { environment[key] = value }
+        // Host-agent variables are stripped so a nested agent cannot be confused
+        // about which harness it is running under. HOME comes from the passwd
+        // database rather than `NSHomeDirectory()`: see `AgyEnvironment`.
+        var environment = AgyEnvironment.processEnvironment(adding: extra)
+        for key in environment.keys where key.hasPrefix("CLAUDE") || key.hasPrefix("WARP") || key.hasPrefix("AI_AGENT") {
+            environment.removeValue(forKey: key)
+        }
         process.environment = environment
 
         let out = Pipe()

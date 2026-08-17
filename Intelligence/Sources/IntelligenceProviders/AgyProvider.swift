@@ -36,8 +36,8 @@ public actor AgyProvider: IntelligenceProvider {
             self.briefExchanges = briefExchanges
         }
 
-        var hostWorkspace: URL { runtimeRoot.appendingPathComponent("copilot/agy/host") }
-        var printWorkspace: URL { runtimeRoot.appendingPathComponent("copilot/agy/print") }
+        var hostWorkspace: URL { runtimeRoot.appendingPathComponent("agy/host") }
+        var printWorkspace: URL { runtimeRoot.appendingPathComponent("agy/print") }
     }
 
     public nonisolated let kind: ProviderKind = .localAgy
@@ -63,6 +63,8 @@ public actor AgyProvider: IntelligenceProvider {
     }
 
     private var sessions: [String: Session] = [:]
+    /// Sessions with an open in flight. See `openSession`.
+    private var opening: Set<String> = []
 
     public init(
         configuration: Configuration,
@@ -104,7 +106,17 @@ public actor AgyProvider: IntelligenceProvider {
         if let cachedAvailability { return cachedAvailability }
         let availability: Availability
         if let binary {
-            availability = .ready(version: AgyLocator.version(of: binary))
+            if AgyLocator.hasCredentials() {
+                availability = .ready(version: AgyLocator.version(of: binary))
+            } else {
+                availability = .unauthenticated
+            }
+        } else if let newest = AgyLocator.installations().first, !newest.isSupported {
+            // Installed but too old to drive: 1.0.x has no `--output-format`, so
+            // every request fails while the binary looks perfectly present. Saying
+            // "missing" sent people hunting for an install they already had.
+            availability = .unreachable(
+                "agy \(newest.version) at \(newest.path) is too old — 1.1 or newer is required")
         } else {
             availability = .missing
         }
@@ -267,6 +279,13 @@ public actor AgyProvider: IntelligenceProvider {
     ) async -> Bool {
         guard let fastTransport else { return false }
         guard sessions[sessionKey]?.conversationID == nil else { return true }
+        // Now that warm-up runs concurrently with the call, the first statement can
+        // arrive mid-open. Actors do not hold isolation across an await, so without
+        // this both paths would pass the check above and open two conversations —
+        // paying the ~15k-token bootstrap twice and discarding one of them.
+        guard !opening.contains(sessionKey) else { return true }
+        opening.insert(sessionKey)
+        defer { opening.remove(sessionKey) }
 
         let priming = IntelligenceRequest(
             task: task,

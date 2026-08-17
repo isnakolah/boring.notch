@@ -415,10 +415,12 @@ case "probe-local":
     let turnsSeen = await advisor.turnsSeen
     let statements = await advisor.statementsEmitted
     let ratio = await advisor.segmentationRatio()
+    let lastLocalFailure = await advisor.lastFailure
     await advisor.shutdown()
 
     let count = await probe.count
     let median = await probe.medianMs
+    if let failure = lastLocalFailure { print("last local failure: \(failure)") }
     print("\n--- probe-local ---")
     print("suggestions:  \(count)")
     print(String(format: "median:       %.0fms", median))

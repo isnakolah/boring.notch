@@ -67,6 +67,31 @@ private struct CopilotStatus: Codable {
     /// "not installed" instead of a call failing the moment someone speaks.
     var agyAvailable = false
     var agyVersion: String? = nil
+    /// Whether `agy` has valid OAuth credentials on disk.
+    var agyLoggedIn = false
+    /// Where the sign-in has got to: `starting`, `opening_browser`,
+    /// `awaiting_code`, `exchanging`, `signed_in`, `failed`.
+    ///
+    /// A stage rather than a sentence, so the UI can show progress as steps
+    /// instead of pattern-matching a status message that anything else can
+    /// overwrite.
+    /// The call currently being re-transcribed, if any.
+    ///
+    /// Re-transcription used to report only into `lastResult`, which History never
+    /// showed — so pressing the button looked like it did nothing for the minutes it
+    /// takes, and the row's badge stayed stale afterwards.
+    var retranscribingCallID: String? = nil
+    /// Whether a previous credential is set aside and can be put back.
+    var agyBackupAvailable = false
+    var agyLoginStage: String? = nil
+    /// The Google sign-in URL, while a sign-in is running. The pane shows it so
+    /// the user is not dependent on a browser having opened by itself.
+    var agyLoginURL: String? = nil
+    /// True exactly while agy is at its "paste the authorization code" prompt, so
+    /// the paste field appears on a fact rather than on matching a status string.
+    var agyAwaitingCode = false
+    /// The Google account `agy` is authenticated as.
+    var agyAccount: String? = nil
     var lastResult: String? = nil
     /// What the *capture host* was granted, read back from the file it writes.
     /// Preflighting here would report this service's own TCC state, which is
@@ -125,13 +150,24 @@ private struct CallSummaryFile: Codable {
     var turnCount: Int
     var persona: String
     var hasAudio: Bool
+    /// Whether `transcript-archive.jsonl` exists — the large model has been over
+    /// this call. Without it, History could not tell a call that was re-transcribed
+    /// from one that never was.
+    var retranscribed: Bool = false
+    /// Turns in the re-transcribed pass, so a better transcript is visibly better.
+    var archivedTurnCount: Int = 0
+    /// How many suggestions the copilot returned during the call. Zero on a call
+    /// that transcribed fine and never answered is the signal worth seeing.
+    var suggestionCount: Int = 0
 
     enum CodingKeys: String, CodingKey {
-        case id, persona
+        case id, persona, retranscribed
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case turnCount = "turn_count"
         case hasAudio = "has_audio"
+        case archivedTurnCount = "archived_turn_count"
+        case suggestionCount = "suggestion_count"
     }
 }
 
@@ -198,9 +234,12 @@ private struct CopilotCommand: Codable {
     var summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     var fallback: Bool?
+    /// Answer only when asked, rather than remarking on every statement.
+    var answersOnly: Bool?
 
     enum CodingKeys: String, CodingKey {
         case action, persona, model, profile, provider, tier, fallback
+        case answersOnly = "answers_only"
         case summaryModel = "summary_model"
         case callID = "call_id"
     }
@@ -379,10 +418,37 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var copilotTier = "balanced"
     private var copilotSummaryModel = "gemini-3.1-pro-high"
     private var copilotFallback = true
+    /// Mirrors the notch's "Answers only" toggle.
+    private var copilotAnswersOnly = false
+    private var retranscribingCallID: String?
     private var copilotResult: String?
     /// `agy --version`, probed once. Cached because it costs a process and the
     /// status poll runs every two seconds.
     private var agyProbe: (available: Bool, version: String?)?
+    private var agyAuthCache: (loggedIn: Bool, account: String?)?
+    /// Existence, size and modification date of the credential file, so a change
+    /// to it invalidates the cached answer.
+    private var agyAuthCacheFingerprint: String?
+    /// The pty master: both where the TUI's screen is read from and where a pasted
+    /// code is written to.
+    private var agyLoginInput: FileHandle?
+    private var agyLoginChoseMethod = false
+    private var agyLoginStage: String?
+    /// Set only for a rehearsal, and the thing that keeps it away from the real
+    /// credential.
+    private var agyLoginRehearsalHome: URL?
+    /// Set by `sign_out`, so the auto-repair that protects a failed
+    /// re-authentication does not quietly sign the user back in.
+    private var agyExplicitSignOut = false
+    private var agyLoginLogURL: URL {
+        copilotRoot.appendingPathComponent("agy-login.log")
+    }
+    private var agyLoginProcess: Process?
+    /// Tail of the pty stream, kept so a failure can be explained in the words
+    /// agy used rather than an exit code.
+    private var agyLoginBuffer = ""
+    private var agyLoginURL: String?
+    private var agyLoginAwaitingCode = false
     /// One-shot channel for the prompt profile, held only between building the
     /// process and writing to it.
     private var copilotProfilePipe: Pipe?
@@ -445,28 +511,68 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    /// Everything this service started, brought down.
+    ///
+    /// Called both by `stop()` and when the app's XPC connection drops — a force
+    /// quit or a crash must not leave a call host holding the microphone, or a
+    /// resident `agy` language server holding ~190MB, with nothing driving either.
+    func shutdownEverything() {
+        stopGatewayMonitor()
+        if let runtime { terminateProcessTree(runtime.processIdentifier) }
+        runtime = nil
+        clearOwnedPID(at: runtimePIDURL)
+        if let nodeRuntime { terminateProcessTree(nodeRuntime.processIdentifier) }
+        nodeRuntime = nil
+        clearOwnedPID(at: nodePIDURL)
+        if let copilot = copilotProcess, copilot.isRunning {
+            // SIGINT first: the host drains the trailing utterance on it.
+            kill(copilot.processIdentifier, SIGINT)
+            terminateProcessTree(copilot.processIdentifier)
+        }
+        copilotProcess = nil
+        clearOwnedPID(at: copilotPIDURL)
+        try? fileManager.removeItem(at: copilotStatusURL)
+        if let login = agyLoginProcess, login.isRunning {
+            terminateProcessTree(login.processIdentifier)
+        }
+        agyLoginProcess = nil
+        agyLoginInput = nil
+        terminateStrayAgyHosts()
+        gatewayReachable = false
+        isRunning = false
+        removeSocketIfUnbound()
+    }
+
+    /// Kills `agy` hosts that are ours but no longer anyone's child.
+    ///
+    /// A host orphaned by an earlier crash has been reparented to launchd, so no
+    /// tree walk reaches it. They are identifiable because every host is launched
+    /// with `--log-file` inside this app's runtime directory — the user's own `agy`
+    /// in a terminal has nothing to do with that path and is never matched.
+    private func terminateStrayAgyHosts() {
+        let marker = copilotRoot.appendingPathComponent("agy").path
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "pid=,command="]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n") {
+            guard line.contains(marker), line.contains("agy") else { continue }
+            let fields = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1)
+            guard let first = fields.first, let pid = pid_t(first), pid > 1 else { continue }
+            Darwin.kill(pid, SIGTERM)
+        }
+    }
+
     func stop(with reply: @escaping (Data) -> Void) {
         queue.async {
-            self.stopGatewayMonitor()
-            if let runtime = self.runtime { self.terminateProcessTree(runtime.processIdentifier) }
-            self.runtime = nil
-            self.clearOwnedPID(at: self.runtimePIDURL)
-            if let nodeRuntime = self.nodeRuntime { self.terminateProcessTree(nodeRuntime.processIdentifier) }
-            self.nodeRuntime = nil
-            self.clearOwnedPID(at: self.nodePIDURL)
-            // The call host holds the microphone. Leaving it running after the
-            // engine stops would keep a recording indicator lit with nothing
-            // driving it, so it goes down with everything else.
-            if let copilot = self.copilotProcess, copilot.isRunning {
-                kill(copilot.processIdentifier, SIGINT)
-                self.terminateProcessTree(copilot.processIdentifier)
-            }
-            self.copilotProcess = nil
-            self.clearOwnedPID(at: self.copilotPIDURL)
-            try? self.fileManager.removeItem(at: self.copilotStatusURL)
-            self.gatewayReachable = false
-            self.isRunning = false
-            self.removeSocketIfUnbound()
+            // The call host holds the microphone, so it goes down with everything
+            // else rather than leaving a recording indicator lit.
+            self.shutdownEverything()
             self.lastResult = "Engine stopped"
             reply(self.encodedStatus())
         }
@@ -699,6 +805,22 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 self.copilotResult = self.copilotProcess?.isRunning == true
                     ? "Persona set to \(persona); applies to the next call"
                     : "Persona set to \(persona)"
+            case "login":
+                self.loginAgy(force: command.fallback == true)
+            case "test_login":
+                self.testLoginFlow()
+            case "set_detail":
+                // Written to a file the running host reads per statement, so a
+                // toggle takes effect mid-call instead of at the next one.
+                self.copilotAnswersOnly = command.answersOnly ?? false
+                self.writeCopilotControl()
+                self.copilotResult = self.copilotAnswersOnly
+                    ? "Answering questions only"
+                    : "Answering and summarising"
+            case "sign_out":
+                self.signOutAgy()
+            case "restore_login":
+                self.restoreAgyCredentials()
             default: break
             }
             reply(self.encodedStatus())
@@ -754,6 +876,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
         if !copilotFallback { arguments.append("--no-fallback") }
         process.arguments = arguments
+        writeCopilotControl()
         // The user's prompt text goes in over stdin rather than as arguments.
         // It is the only free-text field this service accepts, and an argument
         // list is exactly where free text stops being only a prompt.
@@ -833,6 +956,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
                 self?.archiveProcess = nil
+                self?.retranscribingCallID = nil
                 self?.copilotResult = child.terminationStatus == 0
                     ? "Re-transcribed \(callID)"
                     : "Re-transcribe failed (status \(child.terminationStatus))"
@@ -841,6 +965,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         do {
             try process.run()
             archiveProcess = process
+            retranscribingCallID = callID
             copilotResult = "Re-transcribing \(callID)…"
         } catch {
             copilotResult = "Could not re-transcribe: \(error.localizedDescription)"
@@ -973,6 +1098,31 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    /// What the copilot returned during a finished call.
+    ///
+    /// The suggestions were already archived line by line; nothing could read them
+    /// back, so a call's advice died with the call.
+    func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let callID = CallaCopilotCommandValidation.callID(callID) else {
+                reply(Data("[]".utf8)); return
+            }
+            let url = self.copilotCallsRoot
+                .appendingPathComponent(callID, isDirectory: true)
+                .appendingPathComponent("suggestions.jsonl")
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+                reply(Data("[]".utf8)); return
+            }
+            let suggestions = text
+                .split(separator: "\n", omittingEmptySubsequences: true)
+                .compactMap { line -> CopilotSuggestionFile? in
+                    guard let data = line.data(using: .utf8) else { return nil }
+                    return try? self.jsonDecoder.decode(CopilotSuggestionFile.self, from: data)
+                }
+            reply((try? JSONEncoder().encode(suggestions)) ?? Data("[]".utf8))
+        }
+    }
+
     func copilotCalls(with reply: @escaping (Data) -> Void) {
         queue.async {
             reply(self.archivedCalls())
@@ -1068,13 +1218,23 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let audio = (try? fileManager.contentsOfDirectory(atPath: directory.path))?
             .contains { $0.hasSuffix(".wav") } ?? false
 
+        let archive = directory.appendingPathComponent("transcript-archive.jsonl")
+        let archivedLines = (try? String(contentsOf: archive, encoding: .utf8))
+            .map { $0.split(separator: "\n", omittingEmptySubsequences: true).count } ?? 0
+        let suggestionLines = (try? String(
+            contentsOf: directory.appendingPathComponent("suggestions.jsonl"), encoding: .utf8))
+            .map { $0.split(separator: "\n", omittingEmptySubsequences: true).count } ?? 0
+
         return CallSummaryFile(
             id: callID,
             startedAt: started,
             endedAt: ended,
             turnCount: turns.count,
             persona: meta?.persona ?? "generic",
-            hasAudio: audio)
+            hasAudio: audio,
+            retranscribed: archivedLines > 0,
+            archivedTurnCount: archivedLines,
+            suggestionCount: suggestionLines)
     }
 
     private func currentCopilotStatus() -> CopilotStatus {
@@ -1088,6 +1248,14 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let agy = agyAvailability()
         status.agyAvailable = agy.available
         status.agyVersion = agy.version
+        let auth = agyAuthStatus()
+        status.agyLoggedIn = auth.loggedIn
+        status.agyLoginURL = agyLoginURL
+        status.agyAwaitingCode = agyLoginAwaitingCode
+        status.agyLoginStage = agyLoginStage
+        status.agyBackupAvailable = fileManager.fileExists(atPath: Self.supersededCredentialURL.path)
+        status.retranscribingCallID = archiveProcess?.isRunning == true ? retranscribingCallID : nil
+        status.agyAccount = auth.account
 
         let permissions = hostPermissions()
         status.hostPermissionsKnown = permissions != nil
@@ -1159,6 +1327,488 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let probe = (available: true, version: version)
         agyProbe = probe
         return probe
+    }
+
+    /// Whether `agy` has OAuth credentials on disk, and which account.
+    ///
+    /// Same cache strategy as `agyAvailability`: looked up once and held for
+    /// the life of the service. Cleared when a login command completes.
+    /// The user's real home, whatever this process's sandbox says.
+    ///
+    /// `NSHomeDirectory()` is redirected to the container in a sandboxed process
+    /// and not in an unsandboxed one, so using it here is how "Settings says
+    /// signed in" could coexist with a call popping a fresh OAuth page: two
+    /// processes were answering the same question from two different homes. The
+    /// passwd database is not redirected, so everything agrees.
+    private static let userHome: String = {
+        if let pw = getpwuid(getuid()), let dir = pw.pointee.pw_dir {
+            let path = String(cString: dir)
+            if !path.isEmpty { return path }
+        }
+        return NSHomeDirectory()
+    }()
+
+    private func agyAuthStatus() -> (loggedIn: Bool, account: String?) {
+        // Keyed on the credential file itself, so the answer cannot go stale.
+        //
+        // This used to cache once per engine instance and only invalidate on
+        // sign-in or sign-out — so an engine that happened to start while the
+        // credential was absent reported "not signed in" forever, and one that
+        // cached "signed in" never noticed it disappearing. Either way the call
+        // path made the wrong decision and said nothing. A `stat` per poll is
+        // cheap; the JSON is only re-read when the file actually changes.
+        let fingerprint = credentialFingerprint()
+        if let agyAuthCache, agyAuthCacheFingerprint == fingerprint { return agyAuthCache }
+        agyAuthCacheFingerprint = fingerprint
+        let home = Self.userHome
+        let credsURL = URL(fileURLWithPath: home).appendingPathComponent(".gemini/oauth_creds.json")
+        let accountsURL = URL(fileURLWithPath: home).appendingPathComponent(".gemini/google_accounts.json")
+
+        var loggedIn = false
+        if let data = try? Data(contentsOf: credsURL),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let token = json["refresh_token"] as? String, !token.isEmpty {
+            loggedIn = true
+        }
+        var account: String?
+        if let data = try? Data(contentsOf: accountsURL),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let active = json["active"] as? String, !active.isEmpty {
+            account = active
+        }
+        let result = (loggedIn: loggedIn, account: account)
+        agyAuthCache = result
+        return result
+    }
+
+    /// Runs `agy`'s own interactive sign-in and surfaces it to the UI.
+    ///
+    /// Driving the **TUI**, not print mode, and the difference is the whole reason
+    /// sign-in used to fail:
+    ///
+    ///  * `agy -p` gives the flow a hard **60 seconds** and then kills it. That is
+    ///    shorter than a human browser round-trip, so the paste field vanished
+    ///    mid-sign-in — and pressing the button again minted a **new PKCE
+    ///    challenge**, which is why a code from the earlier tab came back
+    ///    "expired". The TUI has no such deadline (verified alive past 60s).
+    ///  * The TUI first shows `Select login method` with `1. Google OAuth`
+    ///    preselected, so a bare Return starts the flow.
+    ///  * It then prints the accounts.google.com URL and accepts the pasted code
+    ///    for as long as it is running.
+    ///
+    /// It needs a real terminal: with a pipe on stdin `agy` refuses outright, and
+    /// its TUI opens `/dev/tty`, which needs a controlling terminal and therefore
+    /// `setsid`. `/usr/bin/script` supplies both — and it sizes its inner pty from
+    /// its own stdin, so handing it a **1000-column** pty is what keeps the
+    /// 704-character URL on one line instead of wrapped beyond reassembly.
+    /// A rehearsal of the sign-in against a throwaway `HOME`.
+    ///
+    /// Exists because the only other way to see this flow is to sign out, and
+    /// signing out is what caused the damage this code now guards against. Every
+    /// step is identical — menu, link, browser, code, error handling — but `agy`
+    /// reads and writes credentials in a temporary directory, so the real one is
+    /// untouched whatever happens.
+    private func testLoginFlow() {
+        let scratch = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("calla-signin-rehearsal-\(UUID().uuidString.prefix(8))")
+        try? fileManager.createDirectory(at: scratch, withIntermediateDirectories: true)
+        agyLoginRehearsalHome = scratch
+        loginAgy(force: false, rehearsing: true)
+    }
+
+    private func loginAgy(force: Bool = false, rehearsing: Bool = false) {
+        guard copilotProcess?.isRunning != true else {
+            copilotResult = "Cannot sign in while a call is running"; return
+        }
+        guard agyLoginProcess?.isRunning != true else {
+            copilotResult = "Sign-in already in progress"; return
+        }
+        guard let binary = agyBinaryPath() else {
+            copilotResult = "agy is not installed"; return
+        }
+
+        let auth = agyAuthStatus()
+        if auth.loggedIn, !force, !rehearsing {
+            copilotResult = auth.account.map { "Already signed in as \($0)" } ?? "Already signed in"
+            return
+        }
+        if force, auth.loggedIn, !rehearsing {
+            // `agy` caches credentials, so a forced sign-in on a *working* one is
+            // pure damage — that is how a good token got moved aside, leaving every
+            // call unauthenticated and every retry minting a new PKCE challenge
+            // that rejected the previous tab's code. So check first, but never on
+            // this thread: the check is a full model round trip.
+            agyLoginStage = "checking"
+            copilotResult = "Checking your existing sign-in…"
+            let probeQueue = DispatchQueue.global(qos: .userInitiated)
+            probeQueue.async { [weak self] in
+                guard let self else { return }
+                let works = self.credentialWorks()
+                self.queue.async {
+                    if works {
+                        self.agyLoginStage = nil
+                        self.copilotResult = auth.account.map { "Already signed in as \($0) — nothing to fix" }
+                            ?? "Already signed in and working"
+                        return
+                    }
+                    // Moved aside, not deleted, and put back by
+                    // `restoreSupersededCredentialIfNeeded()` unless a new one arrives.
+                    try? self.fileManager.removeItem(at: Self.supersededCredentialURL)
+                    try? self.fileManager.moveItem(at: Self.credentialURL, to: Self.supersededCredentialURL)
+                    self.agyAuthCache = nil
+                    self.startAgySignIn(binary: binary, rehearsing: false)
+                }
+            }
+            return
+        }
+
+        startAgySignIn(binary: binary, rehearsing: rehearsing)
+    }
+
+    /// Spawns the TUI and starts watching it. Split out so the immediate path and
+    /// the post-probe path cannot drift apart.
+    private func startAgySignIn(binary: String, rehearsing: Bool) {
+        agyAuthCache = nil
+        agyProbe = nil
+        agyLoginURL = nil
+        agyLoginAwaitingCode = false
+        agyLoginBuffer = ""
+        agyLoginChoseMethod = false
+        agyLoginStage = "starting"
+
+        // A pty of our own, wide enough that the sign-in URL is never wrapped.
+        var master: Int32 = 0
+        var slave: Int32 = 0
+        var window = winsize(ws_row: 50, ws_col: 1000, ws_xpixel: 0, ws_ypixel: 0)
+        guard openpty(&master, &slave, nil, nil, &window) == 0 else {
+            copilotResult = "Could not allocate a terminal for sign-in"; return
+        }
+        let masterHandle = FileHandle(fileDescriptor: master, closeOnDealloc: true)
+        let slaveHandle = FileHandle(fileDescriptor: slave, closeOnDealloc: true)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+        process.arguments = [
+            "-q", "/dev/null", binary,
+            "--log-file", agyLoginLogURL.path,
+        ]
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = rehearsing ? (agyLoginRehearsalHome?.path ?? Self.userHome) : Self.userHome
+        environment["TERM"] = "xterm-256color"
+        process.environment = environment
+        process.standardInput = slaveHandle
+        process.standardOutput = slaveHandle
+        process.standardError = slaveHandle
+
+        masterHandle.readabilityHandler = { [weak self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            let chunk = String(decoding: data, as: UTF8.self)
+            self?.queue.async { self?.consumeLoginOutput(chunk) }
+        }
+
+        process.terminationHandler = { [weak self] child in
+            masterHandle.readabilityHandler = nil
+            self?.queue.async {
+                guard let self else { return }
+                self.agyLoginProcess = nil
+                self.agyLoginInput = nil
+                self.agyLoginAwaitingCode = false
+                self.agyLoginURL = nil
+                self.agyAuthCache = nil
+                self.agyProbe = nil
+                self.restoreSupersededCredentialIfNeeded()
+                if let rehearsal = self.agyLoginRehearsalHome {
+                    try? self.fileManager.removeItem(at: rehearsal)
+                    self.agyLoginRehearsalHome = nil
+                    self.agyLoginStage = "signed_in"
+                    self.copilotResult = "Sign-in rehearsal finished — your real sign-in was untouched"
+                    self.agyLoginBuffer = ""
+                    return
+                }
+                if self.agyAuthStatus().loggedIn {
+                    let account = self.agyAuthStatus().account
+                    self.agyExplicitSignOut = false
+                    self.agyLoginStage = "signed_in"
+                    self.copilotResult = account.map { "Signed in as \($0)" } ?? "Signed in"
+                } else {
+                    self.agyLoginStage = "failed"
+                    self.copilotResult = CallaAgyLoginParsing.failureMessage(
+                        from: self.agyLoginBuffer,
+                        status: child.terminationStatus)
+                }
+                self.agyLoginBuffer = ""
+            }
+        }
+
+        do {
+            try process.run()
+            // The parent's copy must go, or reads never see EOF when agy exits.
+            try? slaveHandle.close()
+            agyLoginProcess = process
+            agyLoginInput = masterHandle
+            agyLoginStage = "starting"
+            copilotResult = "Starting sign-in…"
+            watchLoginForCompletion()
+        } catch {
+            try? slaveHandle.close()
+            copilotResult = "Could not start sign-in: \(error.localizedDescription)"
+        }
+    }
+
+    /// Reacts to the TUI: answer its menu, publish the URL, open the browser.
+    private func consumeLoginOutput(_ chunk: String) {
+        agyLoginBuffer = String((agyLoginBuffer + chunk).suffix(16_000))
+
+        if !agyLoginChoseMethod, CallaAgyLoginParsing.isAtLoginMethodMenu(agyLoginBuffer) {
+            agyLoginChoseMethod = true
+            // `1. Google OAuth` is already selected; Return accepts it.
+            agyLoginInput?.write(Data("\r".utf8))
+            agyLoginStage = "opening_browser"
+            copilotResult = "Opening Google sign-in…"
+        }
+
+        if agyLoginURL == nil, let url = CallaAgyLoginParsing.signInURL(in: agyLoginBuffer) {
+            agyLoginURL = url
+            // The TUI accepts the pasted code from the moment the link is shown,
+            // so this is the honest point to offer the field.
+            agyLoginAwaitingCode = true
+            agyLoginStage = "awaiting_code"
+            let opened = openInBrowser(url)
+            copilotResult = opened
+                ? "Approve in your browser, then paste the code"
+                : "Use the Open button — the browser could not be launched from here"
+        }
+
+        if CallaAgyLoginParsing.hasError(agyLoginBuffer) {
+            agyLoginStage = "failed"
+            copilotResult = CallaAgyLoginParsing.failureMessage(from: agyLoginBuffer, status: 0)
+            // The screen sits on "Press any key to go back", so the flow is over
+            // whatever the process does next.
+            agyLoginAwaitingCode = false
+        }
+    }
+
+    /// Credentials on disk are the authority on success, not the screen.
+    ///
+    /// Polls until they appear, then shuts the TUI down. Also the long stop: a
+    /// sign-in nobody finishes must not leave a terminal running forever.
+    private func watchLoginForCompletion(deadline: Date = Date().addingTimeInterval(600)) {
+        queue.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, let process = self.agyLoginProcess, process.isRunning else { return }
+            self.agyAuthCache = nil
+            if self.agyAuthStatus().loggedIn {
+                self.stopAgyLogin(reason: nil)
+                return
+            }
+            if Date() >= deadline {
+                self.stopAgyLogin(reason: "Sign-in timed out — start it again")
+                return
+            }
+            self.watchLoginForCompletion(deadline: deadline)
+        }
+    }
+
+    /// Ends a sign-in, killing the whole tree.
+    ///
+    /// `terminate()` reaches `script`; the `agy` underneath it is a separate
+    /// process and would otherwise be left holding a terminal.
+    private func stopAgyLogin(reason: String?) {
+        if let process = agyLoginProcess, process.isRunning {
+            for child in Self.childPIDs(of: process.processIdentifier) {
+                kill(child, SIGTERM)
+            }
+            process.terminate()
+        }
+        if let reason { copilotResult = reason }
+    }
+
+    static func childPIDs(of pid: Int32) -> [Int32] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-P", String(pid)]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: { $0.isWhitespace })
+            .compactMap { Int32($0) }
+    }
+
+    /// Best-effort only, and it says so.
+    ///
+    /// An XPC service is not guaranteed a GUI session, so `open` can fail here for
+    /// reasons no amount of retrying fixes. The app opens the same URL from its own
+    /// process — it is the GUI one — and this is the belt to that braces. Returns
+    /// whether it worked so a failure is visible rather than a browser that never
+    /// appears.
+    @discardableResult
+    private func openInBrowser(_ url: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = [url]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
+    }
+
+    func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            let code = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !code.isEmpty else {
+                self.copilotResult = "Paste the code from the browser first"
+                reply(self.encodedStatus()); return
+            }
+            guard let input = self.agyLoginInput, self.agyLoginProcess?.isRunning == true else {
+                self.copilotResult = "No sign-in is waiting for a code — press Sign in again"
+                reply(self.encodedStatus()); return
+            }
+            // Return, because the TUI is reading a line.
+            input.write(Data((code + "\r").utf8))
+            self.agyLoginStage = "exchanging"
+            self.copilotResult = "Exchanging the code…"
+            reply(self.encodedStatus())
+        }
+    }
+
+    /// Clears the stored Google credential so the next sign-in starts fresh.
+    ///
+    /// Kept as a backup rather than deleted, and *not* auto-restored the way a
+    /// failed re-authentication is — signing out is a decision, so undoing it is
+    /// the user's call too (`restore_login`).
+    private func signOutAgy() {
+        guard copilotProcess?.isRunning != true else {
+            copilotResult = "Cannot sign out while a call is running"; return
+        }
+        if let login = agyLoginProcess, login.isRunning {
+            terminateProcessTree(login.processIdentifier)
+            agyLoginProcess = nil
+            agyLoginInput = nil
+        }
+        guard fileManager.fileExists(atPath: Self.credentialURL.path) else {
+            copilotResult = "Not signed in"; return
+        }
+        try? fileManager.removeItem(at: Self.supersededCredentialURL)
+        try? fileManager.moveItem(at: Self.credentialURL, to: Self.supersededCredentialURL)
+        // The account file only records which account was active; a fresh sign-in
+        // rewrites it, and leaving it behind makes the UI claim an account that no
+        // longer has a credential.
+        try? fileManager.removeItem(at: Self.accountsBackupURL)
+        try? fileManager.moveItem(at: Self.accountsURL, to: Self.accountsBackupURL)
+        // Resident hosts hold a language server authenticated as the old account.
+        terminateStrayAgyHosts()
+        agyExplicitSignOut = true
+        agyAuthCache = nil
+        agyProbe = nil
+        agyLoginStage = nil
+        agyLoginURL = nil
+        agyLoginAwaitingCode = false
+        copilotResult = "Signed out — press Sign in to authenticate again"
+    }
+
+    /// Puts back what `sign_out` set aside.
+    private func restoreAgyCredentials() {
+        guard fileManager.fileExists(atPath: Self.supersededCredentialURL.path) else {
+            copilotResult = "No previous sign-in to restore"; return
+        }
+        try? fileManager.removeItem(at: Self.credentialURL)
+        try? fileManager.moveItem(at: Self.supersededCredentialURL, to: Self.credentialURL)
+        if fileManager.fileExists(atPath: Self.accountsBackupURL.path) {
+            try? fileManager.removeItem(at: Self.accountsURL)
+            try? fileManager.moveItem(at: Self.accountsBackupURL, to: Self.accountsURL)
+        }
+        agyExplicitSignOut = false
+        agyAuthCache = nil
+        agyProbe = nil
+        let auth = agyAuthStatus()
+        copilotResult = auth.account.map { "Restored sign-in for \($0)" } ?? "Restored the previous sign-in"
+    }
+
+    static var accountsURL: URL {
+        URL(fileURLWithPath: userHome).appendingPathComponent(".gemini/google_accounts.json")
+    }
+
+    static var accountsBackupURL: URL {
+        accountsURL.appendingPathExtension("superseded")
+    }
+
+    private func credentialFingerprint() -> String {
+        let path = Self.credentialURL.path
+        guard let attributes = try? fileManager.attributesOfItem(atPath: path) else { return "absent" }
+        let size = (attributes[.size] as? NSNumber)?.intValue ?? -1
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? -1
+        return "\(size)-\(modified)"
+    }
+
+    static var credentialURL: URL {
+        URL(fileURLWithPath: userHome).appendingPathComponent(".gemini/oauth_creds.json")
+    }
+
+    static var supersededCredentialURL: URL {
+        credentialURL.appendingPathExtension("superseded")
+    }
+
+    /// Whether the stored credential can actually reach the model.
+    ///
+    /// The file existing only proves a sign-in happened once; it can be revoked or
+    /// expired. This is the difference between "signed in" and "working", and it is
+    /// the question a re-authentication actually turns on. Costs one tiny model
+    /// call, which is the right price for not destroying a good credential.
+    private func credentialWorks() -> Bool {
+        guard let binary = agyBinaryPath() else { return false }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["-p", "ok", "--output-format", "json", "--print-timeout", "25s"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = Self.userHome
+        process.environment = environment
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return false }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        let output = String(decoding: data, as: UTF8.self)
+        return process.terminationStatus == 0 && output.contains("\"status\":\"SUCCESS\"")
+    }
+
+    /// Puts a superseded credential back when a sign-in did not replace it.
+    ///
+    /// Without this, an abandoned or failed re-authentication leaves the user with
+    /// no credential at all — worse off than before they pressed the button.
+    private func restoreSupersededCredentialIfNeeded() {
+        // A deliberate sign-out is not an accident to be repaired.
+        guard !agyExplicitSignOut else { return }
+        guard fileManager.fileExists(atPath: Self.supersededCredentialURL.path) else { return }
+        if fileManager.fileExists(atPath: Self.credentialURL.path) {
+            // A new credential arrived; the old one is genuinely superseded.
+            try? fileManager.removeItem(at: Self.supersededCredentialURL)
+            return
+        }
+        try? fileManager.moveItem(at: Self.supersededCredentialURL, to: Self.credentialURL)
+        agyAuthCache = nil
+    }
+
+    /// Live copilot settings, for a host that is already running.
+    private func writeCopilotControl() {
+        let payload: [String: Any] = ["answers_only": copilotAnswersOnly]
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        else { return }
+        try? fileManager.createDirectory(at: copilotRoot, withIntermediateDirectories: true)
+        try? data.write(to: copilotRoot.appendingPathComponent("control.json"), options: .atomic)
+    }
+
+    private func agyBinaryPath() -> String? {
+        ["~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]
+            .map { ($0 as NSString).expandingTildeInPath }
+            .first { fileManager.isExecutableFile(atPath: $0) }
     }
 
     private func runCourseScript(_ action: String, payload: [String: Any]) {

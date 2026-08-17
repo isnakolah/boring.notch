@@ -11,12 +11,20 @@ import SwiftUI
 struct CopilotIntelligencePane: View {
     @ObservedObject private var engine = CallaEngineClient.shared
 
+    @State private var authToken: String = ""
     @Default(.callaIntelligenceProvider) private var provider
     @Default(.callaIntelligenceLiveTier) private var liveTier
     @Default(.callaIntelligenceSummaryModel) private var summaryModel
     @Default(.callaIntelligenceFallback) private var fallback
 
     private var copilot: CallaCopilotStatus { engine.status.copilot }
+
+    private func submitCode() {
+        let code = authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else { return }
+        engine.submitAgyToken(code)
+        authToken = ""
+    }
 
     var body: some View {
         SettingsPane(
@@ -63,6 +71,102 @@ struct CopilotIntelligencePane: View {
                         copilot.agyAvailable ? "Ready" : "Missing",
                         tint: copilot.agyAvailable ? NotchTint.healthy : NotchTint.attention
                     )
+                }
+
+                if copilot.agyAvailable {
+                    SettingRow(
+                        "Google account",
+                        detail: copilot.agyLoggedIn
+                            ? (copilot.agyAccount ?? "Authenticated")
+                            : "Not signed in — sign in so agy can reach Gemini."
+                    ) {
+                        if copilot.agyLoggedIn {
+                            // Forces a fresh sign-in. Without `force` this does
+                            // nothing when credentials exist, which is useless in
+                            // exactly the case people press it: signed in on
+                            // paper, failing in practice.
+                            HStack(spacing: 8) {
+                                Button("Sign in again") { engine.loginAgy(force: true) }
+                                    .controlSize(.small)
+                                Button("Sign out") { engine.signOutAgy() }
+                                    .controlSize(.small)
+                            }
+                        } else {
+                            Button("Sign in") { engine.loginAgy() }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                        }
+                    }
+
+                    // Only offered when there is something to undo: a sign-out
+                    // keeps the old credential rather than destroying it, so a
+                    // sign-out pressed by mistake is not a dead end.
+                    if copilot.agyBackupAvailable, !copilot.agyLoggedIn {
+                        SettingRow(
+                            "Previous sign-in",
+                            detail: "Kept aside when you signed out. Put it back without going through Google again."
+                        ) {
+                            Button("Restore") { engine.restoreSignIn() }
+                                .controlSize(.small)
+                        }
+                    }
+
+                    SettingRow(
+                        "Rehearse the sign-in",
+                        detail: "Runs the whole flow against a throwaway home directory, so the steps can be watched without signing out."
+                    ) {
+                        Button("Test") { engine.testSignInFlow() }
+                            .controlSize(.small)
+                    }
+
+                    // Shown from the sign-in URL agy printed, not from a guess
+                    // about whether a browser opened. If it did not, this is the
+                    // way in.
+                    if let url = copilot.agyLoginURL {
+                        SettingRow(
+                            "Sign-in link",
+                            detail: "Open this if your browser did not."
+                        ) {
+                            HStack(spacing: 8) {
+                                Button("Open") {
+                                    if let target = URL(string: url) {
+                                        NSWorkspace.shared.open(target)
+                                    }
+                                }
+                                .controlSize(.small)
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(url, forType: .string)
+                                }
+                                .controlSize(.small)
+                            }
+                        }
+                    }
+
+                    // Driven by agy actually sitting at its paste prompt, rather
+                    // than by matching words in the last status message — which
+                    // any other action could overwrite mid-sign-in.
+                    if copilot.canAcceptCode {
+                        SettingRow(
+                            "Authorization code",
+                            detail: "Paste the code the sign-in page gave you. It expires quickly."
+                        ) {
+                            HStack(spacing: 8) {
+                                TextField("Code", text: $authToken)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(minWidth: 160)
+                                    .onSubmit { submitCode() }
+                                Button("Submit", action: submitCode)
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(authToken.trimmingCharacters(in: .whitespaces).isEmpty)
+                            }
+                        }
+                    }
+
+                    if let result = copilot.lastResult, !result.isEmpty {
+                        SettingRow("Last sign-in step", detail: result) { EmptyView() }
+                    }
                 }
 
                 // Which brain is *actually* answering, which is not always the one

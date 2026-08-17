@@ -80,6 +80,36 @@ public actor CopilotAdvisor {
     public private(set) var turnsSeen = 0
     public private(set) var activeProvider: Provider
     public private(set) var providerDetail: String?
+    /// Why the local brain last failed, whether or not that changed who answers.
+    /// Without this a run with fallback disabled fails completely silently, which
+    /// is the one situation where the reason matters most.
+    public private(set) var lastFailure: String?
+
+    /// Append-only diagnostics, next to the other host logs.
+    ///
+    /// `os_log` yields nothing from this executable — it is ad-hoc signed and the
+    /// system drops it — so without this a call that produced no suggestions leaves
+    /// nothing to explain why. Same idea as the tutor/node host logs.
+    private var diagnosticsURL: URL {
+        config.runtimeRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("logs/intelligence.log")
+    }
+
+    private func trace(_ message: String) {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(stamp) [\(config.callID)] \(message)\n"
+        let url = diagnosticsURL
+        try? FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
 
     public init(config: Configuration) {
         self.config = config
@@ -105,8 +135,14 @@ public actor CopilotAdvisor {
     /// bootstrap prompt, which are charged on the first submit. With it, the
     /// opening suggestion is a plain append at ~2.5s.
     public func prepare() async {
-        guard config.preferred == .local else { return }
-        guard await provider.availability().isReady else {
+        trace("prepare: preferred=\(config.preferred.rawValue) tier=\(config.liveTier.rawValue) fallback=\(config.fallbackToGateway)")
+        guard config.preferred == .local else {
+            trace("prepare: local brain not selected, nothing to warm up")
+            return
+        }
+        let availability = await provider.availability()
+        guard availability.isReady else {
+            trace("prepare: agy unavailable (\(availability))")
             note(failure: .providerMissing("agy is not installed"))
             return
         }
@@ -116,9 +152,7 @@ public actor CopilotAdvisor {
             sessionKey: config.callID,
             system: blocks
         )
-        if !opened {
-            advisorLog.notice("local session did not open up front; first suggestion will be slower")
-        }
+        trace("prepare: session opened=\(opened)")
     }
 
     // MARK: - Transcript in
@@ -131,6 +165,10 @@ public actor CopilotAdvisor {
         guard config.preferred == .local, !localGaveUp else { return }
 
         let elapsed = Date().timeIntervalSince(startedAt)
+        // Logged at ingest, because "transcription works but nothing comes back"
+        // needs to distinguish a turn never arriving from a statement never
+        // completing from a request that failed.
+        trace("turn seq=\(turn.seq) src=\(turn.source.rawValue) words=\(turn.text.split(separator: " ").count)")
         let statements = segmenter.ingest(
             TranscriptTurn(
                 seq: turn.seq,
@@ -153,6 +191,7 @@ public actor CopilotAdvisor {
 
     private func dispatch(_ statements: [Statement]) {
         guard !statements.isEmpty else { return }
+        trace("statements ready: \(statements.map { "seq \($0.fromSeq)-\($0.toSeq) (\($0.text.split(separator: " ").count)w)" }.joined(separator: ", "))")
         statementsEmitted += statements.count
         queued.append(contentsOf: statements)
         guard !inFlight else { return }
@@ -169,13 +208,74 @@ public actor CopilotAdvisor {
         inFlight = false
     }
 
+    /// Live settings the app can change mid-call.
+    ///
+    /// A small JSON file rather than a new IPC channel, matching how every other
+    /// piece of state crosses this boundary here. Read per batch, so a toggle takes
+    /// effect on the next statement rather than the next call.
+    private var answersOnly: Bool {
+        let url = config.runtimeRoot.appendingPathComponent("control.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return false }
+        return object["answers_only"] as? Bool ?? false
+    }
+
+    /// Sent when the copilot should speak only on being asked.
+    private static let answersOnlyGuidance = [
+        "Answer only what has been asked.",
+        "If the latest input contains no question and no request, return an empty",
+        "`headline` and add nothing — silence is the correct output, not a remark",
+        "about what was said.",
+    ].joined(separator: " ")
+
+    /// The fewest words worth a request on their own.
+    ///
+    /// The transcriber emits whatever the VAD closed — "environment, right?", "yeah
+    /// so", a name — and asking about a fragment costs a full ~15k-token request to
+    /// be told nothing. Below this the text is carried forward instead of dropped,
+    /// so the next real request still has it as context.
+    private static let minWordsWorthAsking = 6
+
+    /// Statements too thin to ask about on their own, waiting for one that is not.
+    private var pendingContext: [Statement] = []
+
     private func ask(_ statements: [Statement]) async {
         guard let afterSeq = statements.last?.toSeq else { return }
+
+        let batch = pendingContext + statements
+        let words = batch.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        let asked = batch.contains { $0.speaker == .remote && $0.invitesAnAnswer }
+
+        // "Answers only": speak when asked, stay quiet otherwise.
+        if answersOnly, !asked {
+            pendingContext = batch
+            trace("held (answers-only, nothing asked): through seq \(afterSeq), \(words)w pending")
+            return
+        }
+        // Otherwise a question always earns a request, and so does enough material.
+        if !asked, words < Self.minWordsWorthAsking {
+            pendingContext = batch
+            trace("held (too thin): through seq \(afterSeq), \(words)w pending")
+            return
+        }
+        pendingContext = []
+
+        // "Answers only" means answer when asked and stay quiet otherwise. Checked
+        // here rather than left to the model: an unwanted request costs ~15k tokens
+        // and puts a suggestion on screen competing with the one that matters.
+        if answersOnly, !statements.contains(where: { $0.speaker == .remote && $0.invitesAnAnswer }) {
+            trace("skipped (answers-only, nothing was asked): through seq \(afterSeq)")
+            return
+        }
+        var system = blocks
+        if answersOnly { system.taskGuidance = Self.answersOnlyGuidance }
+
         let request = IntelligenceRequest(
             task: CopilotTasks.suggest,
             sessionKey: config.callID,
-            system: blocks,
-            input: PromptComposer.render(statements),
+            system: system,
+            input: PromptComposer.render(batch),
             tier: config.liveTier
         )
 
@@ -201,6 +301,7 @@ public actor CopilotAdvisor {
                 providerDetail = response.attribution.model
                 onProviderChange?(.local, providerDetail)
             }
+            trace("suggestion after seq \(afterSeq) in \(Int(response.attribution.latency * 1000))ms via \(response.attribution.model)")
             onSuggestion?(suggestion, .local)
         } catch let failure as IntelligenceFailure {
             note(failure: failure)
@@ -214,12 +315,22 @@ public actor CopilotAdvisor {
     /// costs one suggestion, never the transcript.
     private func note(failure: IntelligenceFailure) {
         advisorLog.error("local intelligence failed: \(String(describing: failure), privacy: .public)")
+        trace("FAILURE \(String(describing: failure))")
+        lastFailure = String(describing: failure)
         guard failure.disablesProvider || !failure.isRetryableInPlace else { return }
-        guard config.fallbackToGateway else { return }
-        localGaveUp = true
-        activeProvider = .gateway
+        // Reported whether or not there is somewhere to fall back to. Without a
+        // gateway this used to return here silently, which is how a call could
+        // transcribe perfectly and never answer, with nothing said about why.
         providerDetail = Self.describe(failure)
-        onProviderChange?(.gateway, providerDetail)
+        if config.fallbackToGateway {
+            localGaveUp = true
+            activeProvider = .gateway
+            trace("giving up on the local brain for this call: \(providerDetail ?? "")")
+            onProviderChange?(.gateway, providerDetail)
+        } else {
+            trace("local brain failed and fallback is off: \(providerDetail ?? "")")
+            onProviderChange?(.local, providerDetail)
+        }
     }
 
     /// Whether a suggestion pushed by the Gateway should be published.
@@ -240,7 +351,7 @@ public actor CopilotAdvisor {
     /// model id instead of the fast path's coarse tier.
     public func summarise() async -> CopilotFrame.Suggestion? {
         guard config.preferred == .local, !localGaveUp else { return nil }
-        let leftovers = segmenter.drain(now: Date().timeIntervalSince(startedAt))
+        let leftovers = pendingContext + segmenter.drain(now: Date().timeIntervalSince(startedAt))
         let tail = leftovers.isEmpty ? "" : "\n\nStill unanswered:\n" + PromptComposer.render(leftovers)
 
         let request = IntelligenceRequest(

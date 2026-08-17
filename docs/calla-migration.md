@@ -22,6 +22,12 @@ Implemented foundation:
   Boring launch requests its private `nomonhomelab` update; same manifest
   returns without a Gateway transaction. Debug keeps its separate staged
   artifact route. No public host picker or repair path exists.
+
+**Superseded for the copilot.** The call copilot now chooses between that Gateway and
+a local provider (Google's Antigravity CLI on this Mac), local by default, with
+automatic fallback to the Gateway and a badge in the notch saying which answered. The
+Gateway's own route is unchanged and is still the only remote one allowed. Tutor
+courses are untouched. See [intelligence.md](intelligence.md).
 - Deployment validation for engine and embedded Tutor resources.
 - Gateway release builder/installer with digest, protocol-range, pack/contract
   verification, configuration backup/rollback, stable `current` adapters,

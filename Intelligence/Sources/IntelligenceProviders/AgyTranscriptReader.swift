@@ -36,9 +36,7 @@ public struct AgyTranscriptReader: Sendable {
     private let pollInterval: UInt64
 
     public init(root: URL? = nil, pollInterval: TimeInterval = 0.05) {
-        self.root = root ?? URL(
-            fileURLWithPath: NSString(string: "~/.gemini/antigravity-cli/brain").expandingTildeInPath
-        )
+        self.root = root ?? AgyEnvironment.brainDirectory
         self.pollInterval = UInt64(max(0.005, pollInterval) * 1_000_000_000)
     }
 

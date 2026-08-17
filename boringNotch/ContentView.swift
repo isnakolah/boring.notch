@@ -67,14 +67,22 @@ struct ContentView: View {
     /// The live copilot panel reads as glass; every other state is the opaque
     /// slab the notch has always been.
     private var isCopilotGlass: Bool {
-        vm.notchState == .open && coordinator.currentView == .copilot && copilotSession.isLive
+        vm.notchState == .open && coordinator.currentView == .copilot
+            // The sign-in panel takes the copilot's place, so it takes its glass
+            // too — otherwise signing in drops back to the opaque slab mid-flow.
+            && (copilotSession.isLive || copilotSession.signInActive)
     }
 
     @ViewBuilder
     private var notchBackground: some View {
         if isCopilotGlass {
             ZStack {
-                Rectangle().fill(.ultraThinMaterial)
+                // `.regularMaterial`, not `.ultraThinMaterial`: the thinnest material
+                // lets whatever is behind the notch — a bright browser, a white
+                // document — sit directly under the text, and no amount of white
+                // text survives that. The frost is what makes the panel a surface
+                // rather than a window.
+                Rectangle().fill(.regularMaterial)
                 Color.black.opacity(1 - Defaults[.callaCopilotGlassLevel])
             }
         } else {
@@ -459,7 +467,12 @@ struct ContentView: View {
                         // The live panel replaces the tab outright for the
                         // length of a call — mid-call there is nothing to
                         // configure, only something to read.
-                        if copilotSession.isLive {
+                        if copilotSession.signInActive {
+                            // Outranks the live panel: a call without credentials
+                            // produces nothing, so the field to fix that is the
+                            // only useful thing to show.
+                            CallaCopilotSignInView()
+                        } else if copilotSession.isLive {
                             CallaCopilotLiveView()
                         } else {
                             CallaCopilotTabView()

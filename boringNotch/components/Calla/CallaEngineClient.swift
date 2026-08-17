@@ -19,7 +19,10 @@ import Defaults
     func copilotTranscript(since seq: Int, with reply: @escaping (Data) -> Void)
     func copilotCalls(with reply: @escaping (Data) -> Void)
     func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
+    /// What the copilot returned during that call.
+    func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void)
     func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
+    func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void)
 }
 
 struct CallaEnginePreferences: Codable, Equatable {
@@ -109,6 +112,21 @@ struct CallaCopilotStatus: Codable, Equatable {
     /// Whether the local Antigravity CLI is installed at all.
     var agyAvailable = false
     var agyVersion: String? = nil
+    /// The call currently being re-transcribed, if any.
+    var retranscribingCallID: String? = nil
+    /// Whether a previous credential is set aside and can be put back.
+    var agyBackupAvailable = false
+    /// Where the sign-in has got to: `starting`, `opening_browser`,
+    /// `awaiting_code`, `exchanging`, `signed_in`, `failed`.
+    var agyLoginStage: String? = nil
+    /// The Google sign-in URL while a sign-in is running.
+    var agyLoginURL: String? = nil
+    /// True exactly while agy is waiting for the authorization code.
+    var agyAwaitingCode = false
+    /// Whether `agy` has valid OAuth credentials on disk.
+    var agyLoggedIn = false
+    /// The Google account `agy` is authenticated as.
+    var agyAccount: String? = nil
     var lastResult: String? = nil
     /// Reported by the capture host about itself. The engine used to preflight
     /// these in its own process, which answered a question nobody asked: TCC
@@ -123,6 +141,29 @@ struct CallaCopilotStatus: Codable, Equatable {
     var hasSuggestion: Bool {
         guard let headline else { return false }
         return !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A sign-in is on screen and waiting for the user.
+    ///
+    /// True from the moment the link exists, because that is the moment `agy`
+    /// starts accepting the code — and the moment the notch should be showing a
+    /// field to paste it into.
+    var isSigningIn: Bool {
+        switch agyLoginStage {
+        case "checking", "starting", "opening_browser", "awaiting_code", "exchanging": true
+        // `failed` stays on screen so the reason can be read and retried.
+        case "failed": true
+        default: agyLoginURL != nil || agyAwaitingCode
+        }
+    }
+
+    /// Whether to offer the code field.
+    ///
+    /// From the moment a link exists, not from a narrower "awaiting" flag: `agy`
+    /// accepts the pasted code as soon as it prints the URL, and a field that is
+    /// missing while the user is holding a code is the whole complaint.
+    var canAcceptCode: Bool {
+        agyLoginURL != nil || agyAwaitingCode || agyLoginStage == "exchanging"
     }
 }
 
@@ -167,6 +208,29 @@ struct CallaCallTurn: Codable, Equatable, Identifiable {
     var isRemote: Bool { source == "them" }
 }
 
+/// One suggestion as it was archived during a call.
+///
+/// Mirrors the engine's `CopilotSuggestionFile`. Kept so a finished call can show
+/// what the copilot actually said, not only what was said to it.
+struct CallaCopilotArchivedSuggestion: Codable, Equatable, Identifiable {
+    let callID: String
+    let afterSeq: Int
+    let headline: String
+    let angles: [String]
+    let confirm: [String]
+    let summary: String?
+    let openQuestions: [String]?
+
+    var id: Int { afterSeq }
+
+    enum CodingKeys: String, CodingKey {
+        case callID = "call_id"
+        case afterSeq = "after_seq"
+        case headline, angles, confirm, summary
+        case openQuestions = "open_questions"
+    }
+}
+
 /// Typed copilot command. Mirrors the engine's own decoder; the engine
 /// re-validates every field before anything is spawned.
 struct CallaCopilotCommand: Codable {
@@ -185,9 +249,12 @@ struct CallaCopilotCommand: Codable {
     let summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     let fallback: Bool?
+    /// Answer only when asked.
+    let answersOnly: Bool?
 
     enum CodingKeys: String, CodingKey {
         case action, persona, model, profile, provider, tier, fallback
+        case answersOnly = "answers_only"
         case summaryModel = "summary_model"
         case callID = "call_id"
     }
@@ -200,7 +267,8 @@ struct CallaCopilotCommand: Codable {
          provider: String? = nil,
          tier: String? = nil,
          summaryModel: String? = nil,
-         fallback: Bool? = nil) {
+         fallback: Bool? = nil,
+         answersOnly: Bool? = nil) {
         self.action = action
         self.persona = persona
         self.model = model
@@ -210,6 +278,7 @@ struct CallaCopilotCommand: Codable {
         self.tier = tier
         self.summaryModel = summaryModel
         self.fallback = fallback
+        self.answersOnly = answersOnly
     }
 }
 
@@ -266,13 +335,22 @@ struct CallaCallSummary: Codable, Equatable, Identifiable {
     let persona: String
     /// Whether raw audio is still on disk, which is what re-transcribing needs.
     let hasAudio: Bool
+    /// Whether the large model has been over this call.
+    var retranscribed: Bool = false
+    /// Turns in that better pass, so the improvement is visible.
+    var archivedTurnCount: Int = 0
+    /// How many suggestions the copilot returned. Zero against a full transcript is
+    /// the case worth noticing.
+    var suggestionCount: Int = 0
 
     enum CodingKeys: String, CodingKey {
-        case id, persona
+        case id, persona, retranscribed
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case turnCount = "turn_count"
         case hasAudio = "has_audio"
+        case archivedTurnCount = "archived_turn_count"
+        case suggestionCount = "suggestion_count"
     }
 
     var duration: TimeInterval? {
@@ -383,9 +461,12 @@ final class CallaEngineClient: ObservableObject {
                 guard let self else { return }
                 self.refresh()
                 let teaching = self.status.activeLesson?.active == true
-                // Idle cadence is what bounds how late the notch can be to a
-                // lesson someone started from Settings or the calendar.
-                try? await Task.sleep(for: .seconds(teaching ? 2 : 4))
+                // A sign-in is a handful of states that each last a second or two.
+                // At the idle cadence the UI looks dead and a step can come and go
+                // between polls, so it is worth the extra chatter while it lasts.
+                let signingIn = self.status.copilot.isSigningIn
+                let interval: Double = signingIn ? 0.5 : (teaching ? 2 : 4)
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }
@@ -402,6 +483,23 @@ final class CallaEngineClient: ObservableObject {
     func applyCurrentPreferences() {
         guard let data = try? JSONEncoder().encode(Preferences.current) else { return }
         invoke { $0.applyPreferences(data, with: $1) }
+    }
+
+    /// Brings the engine and everything it started down, and waits for it.
+    ///
+    /// Called from `applicationWillTerminate`, where async is not good enough: the
+    /// process is about to go away, and a fire-and-forget XPC message loses the race
+    /// often enough to leave a call host holding the microphone. macOS allows a few
+    /// seconds here, so a bounded wait is both safe and the point.
+    func shutdownAndWait(timeout: TimeInterval = 2.5) {
+        let done = DispatchSemaphore(value: 0)
+        invoke { proxy, reply in
+            proxy.stop(with: { data in
+                reply(data)
+                done.signal()
+            })
+        }
+        _ = done.wait(timeout: .now() + timeout)
     }
 
     func refresh() {
@@ -515,6 +613,16 @@ final class CallaEngineClient: ObservableObject {
     // MARK: - Live call copilot
 
     func startCall(persona: String, model: String) {
+        // Starting a call on the local brain without credentials used to mean a
+        // browser popping open mid-meeting with nowhere to put the code. Sign in
+        // first, and let the notch show the field.
+        if Defaults[.callaIntelligenceProvider] == "local",
+           status.copilot.agyAvailable,
+           !status.copilot.agyLoggedIn
+        {
+            loginAgy()
+            return
+        }
         send(CallaCopilotCommand(
             action: "start",
             persona: persona,
@@ -589,6 +697,17 @@ final class CallaEngineClient: ObservableObject {
     }
 
     /// Reads one archived call's transcript in full.
+    /// What the copilot returned during a finished call.
+    func fetchCallSuggestions(_ callID: String, completion: @escaping ([CallaCopilotArchivedSuggestion]) -> Void) {
+        invoke { proxy, reply in
+            proxy.copilotCallSuggestions(callID, with: { data in
+                reply(data)
+                let decoded = (try? JSONDecoder().decode([CallaCopilotArchivedSuggestion].self, from: data)) ?? []
+                DispatchQueue.main.async { completion(decoded) }
+            })
+        }
+    }
+
     func fetchCallTranscript(callID: String, completion: @escaping ([CallaCallTurn]) -> Void) {
         let connection = connection ?? makeConnection()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
@@ -616,6 +735,51 @@ final class CallaEngineClient: ObservableObject {
     /// Downloads a transcription model ahead of a call.
     func prefetchModel(_ model: String) {
         send(CallaCopilotCommand(action: "fetch_model", model: model))
+    }
+
+    /// Triggers the `agy` OAuth login flow through the engine.
+    /// Starts `agy`'s Google sign-in.
+    ///
+    /// `force` replaces a credential that already exists — the case where Settings
+    /// reports "signed in" but a call still cannot reach the model. Without it, a
+    /// sign-in with valid-looking credentials on disk is a no-op, because running
+    /// it anyway would spend a model call to learn what is already known.
+    func loginAgy(force: Bool = false) {
+        send(CallaCopilotCommand(action: "login", fallback: force))
+    }
+
+    /// Rehearses the sign-in against a throwaway `HOME`.
+    ///
+    /// While credentials are valid no real sign-in will start — correctly, since
+    /// `agy` caches them — so this is the only way to watch the flow without
+    /// signing out, and signing out is what broke things once already.
+    func testSignInFlow() {
+        send(CallaCopilotCommand(action: "test_login"))
+    }
+
+    /// Tells a running call whether to answer only when asked.
+    ///
+    /// The panel filters what it shows immediately; this is the half that changes
+    /// what the copilot is *asked*, so an interview stops being narrated.
+    func setAnswersOnly(_ answersOnly: Bool) {
+        send(CallaCopilotCommand(action: "set_detail", answersOnly: answersOnly))
+    }
+
+    /// Clears the stored Google credential so the next sign-in starts fresh.
+    ///
+    /// Kept as a backup, and deliberately not auto-restored — see `restoreSignIn()`.
+    func signOutAgy() {
+        send(CallaCopilotCommand(action: "sign_out"))
+    }
+
+    /// Puts back the credential that `signOutAgy()` set aside.
+    func restoreSignIn() {
+        send(CallaCopilotCommand(action: "restore_login"))
+    }
+
+    /// Submits a token to a running `agy` login flow.
+    func submitAgyToken(_ token: String) {
+        invoke { $0.submitAgyToken(token, with: $1) }
     }
 
     private func makeConnection() -> NSXPCConnection {

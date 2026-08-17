@@ -7,7 +7,8 @@ import XCTest
 /// if it is wrong, so each is pinned.
 final class CallaCopilotCommandValidationTests: XCTestCase {
     func testOnlyTheKnownActionsAreAccepted() {
-        for action in ["start", "stop", "set_persona", "set_provider", "archive", "fetch_model"] {
+        for action in ["start", "stop", "set_persona", "set_provider", "archive", "fetch_model",
+                      "login", "test_login", "sign_out", "restore_login"] {
             XCTAssertEqual(CallaCopilotCommandValidation.action(action), action)
         }
         for action in ["", "  ", "restart", "start;rm -rf /", "START"] {

@@ -32,13 +32,24 @@ final class CopilotLiveSession: ObservableObject {
     /// `dismiss()` without ending the call.
     @Published private(set) var pinned = false
 
+    /// A sign-in is waiting for the user, so the notch shows a field for the code
+    /// instead of a call.
+    ///
+    /// Deliberately separate from `isLive`: this happens *before* a call exists —
+    /// typically because someone started a meeting without being signed in — and it
+    /// must hold the notch open on its own.
+    @Published private(set) var signInActive = false
+
     /// The single question `BoringViewModel.close()` and the panel's sharing
     /// type both ask.
-    var pinsNotchOpen: Bool { isLive && pinned }
+    var pinsNotchOpen: Bool { (isLive || signInActive) && pinned }
 
     /// The size the notch should open to right now.
     var preferredOpenSize: CGSize {
-        isLive && layout == .full ? copilotNotchSize : openNotchSize
+        // A sign-in needs a line of text and a field, so it uses the compact size
+        // whatever the call layout happens to be.
+        if signInActive { return openNotchSize }
+        return isLive && layout == .full ? copilotNotchSize : openNotchSize
     }
 
     private var cancellables: Set<AnyCancellable> = []
@@ -51,6 +62,32 @@ final class CopilotLiveSession: ObservableObject {
                 self?.apply(running: running)
             }
             .store(in: &cancellables)
+
+        CallaEngineClient.shared.$status
+            .map(\.copilot.isSigningIn)
+            .removeDuplicates()
+            .sink { [weak self] signingIn in
+                self?.apply(signingIn: signingIn)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func apply(signingIn: Bool) {
+        guard signingIn != signInActive else { return }
+        signInActive = signingIn
+
+        if signingIn {
+            guard Defaults[.callaCopilotEnabled] else { return }
+            layout = .compact
+            pinned = true
+            reveal()
+        } else {
+            // A finished sign-in hands the notch back to whatever the call is
+            // doing, rather than closing it out from under a call that started.
+            pinned = isLive
+            layout = isLive ? .full : .compact
+            NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
+        }
     }
 
     private func apply(running: Bool) {
@@ -84,7 +121,8 @@ final class CopilotLiveSession: ObservableObject {
     }
 
     func toggleLayout() {
-        guard isLive else { return }
+        // Nothing to toggle while a sign-in owns the panel.
+        guard isLive, !signInActive else { return }
         layout = layout == .full ? .compact : .full
         // A layout change is a size change, so the open notch has to be told.
         NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)

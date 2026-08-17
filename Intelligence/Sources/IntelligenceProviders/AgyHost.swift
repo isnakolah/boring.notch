@@ -64,7 +64,12 @@ public actor AgyHost {
     private var process: Process?
     private var endpoint: Endpoint?
     private var isReady = false
-    private var logURL: URL { configuration.workspace.appendingPathComponent("ls.log") }
+    /// Unique per boot. Two hosts sharing one log file is not a tidiness problem:
+    /// the port is read *from* that log, so another host's line is indistinguishable
+    /// from this one's — and the wrong port means every submit fails and the
+    /// provider silently degrades to the ~8.5s transport.
+    private var runDirectory: URL?
+    private var logURL: URL? { runDirectory?.appendingPathComponent("ls.log") }
 
     /// `Language server listening on random port at 57553 for HTTP` — the HTTP
     /// port, not the HTTPS/gRPC one on the line above it, which agentapi rejects
@@ -148,7 +153,7 @@ public actor AgyHost {
     }
 
     private func hasFetchedModels() -> Bool {
-        guard let log = try? String(contentsOf: logURL, encoding: .utf8) else { return false }
+        guard let logURL, let log = try? String(contentsOf: logURL, encoding: .utf8) else { return false }
         return log.contains(Self.modelsFetchedMarker)
     }
 
@@ -166,15 +171,37 @@ public actor AgyHost {
     private func start() async throws {
         stop()
         let manager = FileManager.default
-        // A fresh workspace each boot: the previous log's port must never be
-        // mistaken for this one's.
-        try? manager.removeItem(at: configuration.workspace)
-        try manager.createDirectory(at: configuration.workspace, withIntermediateDirectories: true)
+        // A directory per run. Wiping one shared workspace instead would pull the
+        // log out from under a host that is still running.
+        let run = configuration.workspace.appendingPathComponent(
+            "run-\(ProcessInfo.processInfo.processIdentifier)-\(UUID().uuidString.prefix(8))")
+        try manager.createDirectory(at: run, withIntermediateDirectories: true)
+        runDirectory = run
+        Self.pruneStaleRuns(in: configuration.workspace, keeping: run, manager: manager)
 
         let process = Process()
+        // Through `/usr/bin/script`, not directly.
+        //
+        // `agy`'s TUI opens `/dev/tty`, which needs a controlling terminal, which
+        // needs `setsid` — and a GUI app has no tty to inherit. Launched directly
+        // the language server starts, writes its port to the log, and then shuts
+        // down a moment later when the TUI fails. The port line outlives the
+        // server just long enough to be read, so every submit afterwards fails and
+        // the provider quietly falls back to one process per request.
         process.executableURL = URL(fileURLWithPath: "/usr/bin/script")
-        process.arguments = ["-q", "/dev/null", configuration.binary, "--log-file", logURL.path]
-        process.currentDirectoryURL = configuration.workspace
+        process.arguments = [
+            "-q", "/dev/null",
+            configuration.binary,
+            "--log-file", run.appendingPathComponent("ls.log").path,
+        ]
+        process.currentDirectoryURL = run
+        
+        var environment = AgyEnvironment.processEnvironment()
+        for key in environment.keys where key.hasPrefix("CLAUDE") || key.hasPrefix("WARP") || key.hasPrefix("AI_AGENT") {
+            environment.removeValue(forKey: key)
+        }
+        process.environment = environment
+
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -207,7 +234,7 @@ public actor AgyHost {
     }
 
     private func readPort() -> String? {
-        guard let log = try? String(contentsOf: logURL, encoding: .utf8) else { return nil }
+        guard let logURL, let log = try? String(contentsOf: logURL, encoding: .utf8) else { return nil }
         let range = NSRange(log.startIndex ..< log.endIndex, in: log)
         // Last match wins: a relaunch appends to the same file.
         let matches = Self.portPattern.matches(in: log, range: range)
@@ -228,10 +255,60 @@ public actor AgyHost {
 
     public func stop() {
         if let process, process.isRunning {
+            // `terminate()` signals `script`, whose own child is the `agy` process
+            // holding the language server. Signalling only the wrapper orphans a
+            // ~190MB resident process per call, and those orphans go on writing
+            // port lines into later hosts' logs.
+            Self.terminateTree(of: process.processIdentifier)
             process.terminate()
         }
         process = nil
         endpoint = nil
         isReady = false
+        if let runDirectory {
+            try? FileManager.default.removeItem(at: runDirectory)
+        }
+        runDirectory = nil
+    }
+
+    /// SIGTERM every descendant, deepest first; the caller signals the parent.
+    static func terminateTree(of pid: Int32) {
+        for child in childPIDs(of: pid) {
+            terminateTree(of: child)
+            kill(child, SIGTERM)
+        }
+    }
+
+    /// Direct children of `pid`, via `pgrep -P`.
+    static func childPIDs(of pid: Int32) -> [Int32] {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        process.arguments = ["-P", String(pid)]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: { $0.isWhitespace })
+            .compactMap { Int32($0) }
+    }
+
+    /// Clears directories left by hosts that are gone — a crash between boot and
+    /// teardown would otherwise grow the workspace by one per call and leave stale
+    /// logs the port reader could pick up.
+    static func pruneStaleRuns(in workspace: URL, keeping current: URL, manager: FileManager) {
+        let entries = (try? manager.contentsOfDirectory(at: workspace, includingPropertiesForKeys: nil)) ?? []
+        // Compared by name, not by URL. `contentsOfDirectory` hands back
+        // standardized paths (`/private/var/…`) which never equal a URL built from
+        // `NSTemporaryDirectory()` (`/var/…`), so URL equality quietly failed to
+        // match the current run and deleted the directory it was told to keep —
+        // taking the host's own working directory with it.
+        let keep = current.lastPathComponent
+        for entry in entries
+        where entry.lastPathComponent != keep && entry.lastPathComponent.hasPrefix("run-") {
+            try? manager.removeItem(at: entry)
+        }
     }
 }

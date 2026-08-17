@@ -106,6 +106,7 @@
 		CA1100010000000000E00401 /* CopilotHistoryPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00402 /* CopilotHistoryPane.swift */; };
 		CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00502 /* CopilotLiveSession.swift */; };
 		CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00602 /* CallaCopilotLiveView.swift */; };
+		CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000800002 /* CallaCopilotSignInView.swift */; };
 		CA1100010000000000E00701 /* MeetingDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00702 /* MeetingDetector.swift */; };
 		CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B002 /* CallaCopilotPresentation.swift */; };
 		CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000008 /* CallaCalendarBindings.swift */; };
@@ -324,6 +325,7 @@
 		CA1100010000000000E00402 /* CopilotHistoryPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotHistoryPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00502 /* CopilotLiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotLiveSession.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00602 /* CallaCopilotLiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotLiveView.swift"; sourceTree = "<group>"; };
+		CA1100010000000000800002 /* CallaCopilotSignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotSignInView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00702 /* MeetingDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/MeetingDetector.swift"; sourceTree = "<group>"; };
 		CA110001000000000000B002 /* CallaCopilotPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotPresentation.swift"; sourceTree = "<group>"; };
 		CA1100010000000000000008 /* CallaCalendarBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCalendarBindings.swift"; sourceTree = "<group>"; };
@@ -737,6 +739,7 @@
 				CA1100010000000000E00402 /* CopilotHistoryPane.swift */,
 				CA1100010000000000E00502 /* CopilotLiveSession.swift */,
 				CA1100010000000000E00602 /* CallaCopilotLiveView.swift */,
+				CA1100010000000000800002 /* CallaCopilotSignInView.swift */,
 				CA1100010000000000E00702 /* MeetingDetector.swift */,
 				CA110001000000000000B002 /* CallaCopilotPresentation.swift */,
 				CA1100010000000000000008 /* CallaCalendarBindings.swift */,
@@ -1300,6 +1303,7 @@
 				CA1100010000000000E00401 /* CopilotHistoryPane.swift in Sources */,
 				CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */,
 				CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */,
+				CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */,
 				CA1100010000000000E00701 /* MeetingDetector.swift in Sources */,
 				CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */,
 				CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */,

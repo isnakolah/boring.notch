@@ -141,6 +141,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cleanupDragDetectors()
         cleanupWindows()
         XPCHelperClient.shared.stopMonitoringAccessibilityAuthorization()
+        // Quitting the notch takes its helpers with it: the capture host holding the
+        // microphone, the Tutor runtime, and any resident `agy` language server.
+        // Otherwise they are reparented to launchd and survive until a restart.
+        CallaEngineClient.shared.shutdownAndWait()
     }
 
     @MainActor

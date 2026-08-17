@@ -33,6 +33,8 @@ import Foundation
     func copilotCalls(with reply: @escaping (Data) -> Void)
     /// One archived call's full transcript. Replies with `[CallTurn]`.
     func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
+    /// What the copilot returned during that call.
+    func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void)
     /// Runs the capture host's `permissions` subcommand so the microphone and
     /// screen-recording prompts are attributed to the host's own signature.
     ///
@@ -40,4 +42,5 @@ import Foundation
     /// engine, which is not the process that captures anything. Same shape as
     /// the fix already applied to the Tutor host.
     func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
+    func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void)
 }

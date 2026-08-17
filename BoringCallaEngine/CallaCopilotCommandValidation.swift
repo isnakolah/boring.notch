@@ -10,7 +10,15 @@ import Foundation
 public enum CallaCopilotCommandValidation {
     /// Commands the notch may send. Anything else is refused outright.
     public static let allowedActions: Set<String> = [
-        "start", "stop", "set_persona", "set_provider", "archive", "fetch_model",
+        "start", "stop", "set_persona", "set_provider", "archive", "fetch_model", "login",
+        // A rehearsal of the sign-in against a throwaway HOME, so the flow can be
+        // watched without signing out.
+        "test_login",
+        // Clearing credentials, and putting them back. Both name a file this
+        // service owns; neither takes a path from the caller.
+        "sign_out", "restore_login",
+        // Live display preferences, which also change what the copilot is asked.
+        "set_detail",
     ]
 
     /// Which brain answers a call.

@@ -325,10 +325,15 @@ public actor CallSession {
                 Task { await self.writeStatus() }
             })
 
-        // Booting the local language server and opening its conversation costs a
-        // few seconds once. Doing it here, before anyone has said anything worth
-        // advising on, is what keeps the *first* suggestion as fast as the rest.
-        await advisor.prepare()
+        // Warmed up *alongside* the call, never in front of it.
+        //
+        // Booting the local language server and opening its conversation measured
+        // 5.91s. Awaiting that here delayed the socket, the microphone and the
+        // screen capture with it — so a call took six seconds to start and the
+        // opening seconds of the meeting went unrecorded. It is only an
+        // optimisation: if a statement completes first, `AgyProvider` opens the
+        // conversation on demand.
+        Task { [advisor] in await advisor.prepare() }
 
         await socket.setHandlers(
             onSuggestion: { [weak self] suggestion in

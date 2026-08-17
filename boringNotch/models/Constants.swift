@@ -213,7 +213,10 @@ extension Defaults.Keys {
     static let callaCopilotAutoStartOnMeeting = Key<Bool>("callaCopilotAutoStartOnMeeting", default: true)
     /// How much of the desktop shows through the live panel. 0 is the opaque
     /// slab every other tab uses.
-    static let callaCopilotGlassLevel = Key<Double>("callaCopilotGlassLevel", default: 0.45)
+    /// Default deliberately low. At 0.45 the desktop behind the notch showed
+    /// through hard enough to compete with the text, and this panel is read at a
+    /// glance mid-sentence — legibility outranks the effect.
+    static let callaCopilotGlassLevel = Key<Double>("callaCopilotGlassLevel", default: 0.12)
     /// Free-text context about the user, injected into every call's prompt.
     static let callaCopilotAboutMe = Key<String>("callaCopilotAboutMe", default: "")
     /// Persona guidance the user has edited, keyed by persona id. Absent keys
@@ -224,6 +227,12 @@ extension Defaults.Keys {
     /// Replacement for the gateway's base guidance block. Empty means "use the
     /// gateway's own", which is what almost everyone should do.
     static let callaCopilotBaseGuidance = Key<String>("callaCopilotBaseGuidance", default: "")
+    /// What the live panel carries. Two independent switches rather than one
+    /// three-way control, because the useful states are not on a line: answers
+    /// alone mid-sentence, summary alone when you are being asked to catch up, and
+    /// both when there is room.
+    static let callaCopilotShowAnswers = Key<Bool>("callaCopilotShowAnswers", default: true)
+    static let callaCopilotShowRollingSummary = Key<Bool>("callaCopilotShowRollingSummary", default: true)
 
     // MARK: Calla Intelligence
     /// Which brain answers: "local" (the Antigravity CLI on this Mac) or
@@ -233,7 +242,11 @@ extension Defaults.Keys {
     /// Model tier for live suggestions: fast | balanced | deep. A tier rather
     /// than a model name because the only transport quick enough for a live call
     /// accepts tiers and nothing finer.
-    static let callaIntelligenceLiveTier = Key<String>("callaIntelligenceLiveTier", default: "balanced")
+    /// Measured: the fast tier answers in ~1.9s against ~5.2s for balanced, on the
+    /// same prompt and the same warm host. On a live call the faster answer is worth
+    /// more than the better one — a pointer that lands after the moment has passed is
+    /// worth nothing. The end-of-call summary still runs on the deep tier.
+    static let callaIntelligenceLiveTier = Key<String>("callaIntelligenceLiveTier", default: "fast")
     /// Exact model for the end-of-call summary, where a slower, better model is
     /// worth the extra seconds.
     static let callaIntelligenceSummaryModel = Key<String>(
