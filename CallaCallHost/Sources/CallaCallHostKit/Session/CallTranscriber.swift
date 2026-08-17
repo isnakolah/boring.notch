@@ -62,7 +62,12 @@ public actor CallTranscriber {
     /// Queues one VAD-bounded utterance for transcription.
     ///
     /// Returns immediately; the turn arrives on `onTurn` once whisper reaches it.
-    public func enqueue(samples: [Float], source: TurnSource, startSeconds: Double) {
+    public func enqueue(
+        samples: [Float],
+        source: TurnSource,
+        startSeconds: Double,
+        endpointedAt: Date = Date()
+    ) {
         guard !stopped else { return }
         guard !samples.isEmpty, !AudioSignal.isSilent(samples) else { return }
 
@@ -76,7 +81,11 @@ public actor CallTranscriber {
         let previous = chain
         chain = Task { [weak self] in
             await previous?.value
-            await self?.process(samples: samples, source: source, startSeconds: startSeconds)
+            await self?.process(
+                samples: samples,
+                source: source,
+                startSeconds: startSeconds,
+                endpointedAt: endpointedAt)
         }
     }
 
@@ -94,9 +103,20 @@ public actor CallTranscriber {
 
     // MARK: - Internal
 
-    private func process(samples: [Float], source: TurnSource, startSeconds: Double) async {
+    private func process(
+        samples: [Float],
+        source: TurnSource,
+        startSeconds: Double,
+        endpointedAt: Date
+    ) async {
         defer { pendingWork -= 1 }
         guard !stopped else { return }
+
+        // Wall clock, not the stream clock in `CallTurn.t0`/`t1`. Those are
+        // offsets from the start of capture and cannot be differenced against
+        // `Date()`, which is why nothing on this path was measurable before.
+        let dequeuedAt = Date()
+        let queuedMs = dequeuedAt.timeIntervalSince(endpointedAt) * 1000
 
         // The neural gate runs before whisper, not after: the point is to spend
         // no inference at all on a keyboard burst or a fan.
@@ -105,6 +125,7 @@ public actor CallTranscriber {
             guard !stopped else { return }
             guard hasSpeech else { return }
         }
+        let gatedAt = Date()
 
         do {
             if !loaded {
@@ -124,6 +145,24 @@ public actor CallTranscriber {
             let segments = try await engine.transcribe(
                 samples: padded, language: language, audioCtx: nil)
             guard !stopped else { return }
+
+            let transcribedAt = Date()
+            let gateMs = gatedAt.timeIntervalSince(dequeuedAt) * 1000
+            let whisperMs = transcribedAt.timeIntervalSince(gatedAt) * 1000
+            let totalMs = transcribedAt.timeIntervalSince(endpointedAt) * 1000
+            // One line per utterance covering the whole on-device leg. `rt` is
+            // the multiple of real time: below 1 the machine is keeping up with
+            // the conversation, above it the backlog only grows.
+            transcriberLog.notice(
+                """
+                timing \(source.rawValue, privacy: .public): \
+                queued \(queuedMs, format: .fixed(precision: 0), privacy: .public)ms, \
+                gate \(gateMs, format: .fixed(precision: 0), privacy: .public)ms, \
+                whisper \(whisperMs, format: .fixed(precision: 0), privacy: .public)ms, \
+                total \(totalMs, format: .fixed(precision: 0), privacy: .public)ms, \
+                audio \(originalDuration, format: .fixed(precision: 2), privacy: .public)s, \
+                rt \(totalMs / max(1, originalDuration * 1000), format: .fixed(precision: 2), privacy: .public)
+                """)
 
             for segment in segments {
                 let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
