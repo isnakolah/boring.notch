@@ -15,6 +15,13 @@ public enum CopilotFrame {
         public var headline: String
         public var angles: [String]
         public var confirm: [String]
+        /// Where the conversation has got to. Sent on every reply, including
+        /// the ones with no headline — between questions it is the only thing
+        /// the panel has to show, and a blank panel is worse than a plain one.
+        public var summary: String = ""
+        /// Raised and not yet resolved, most likely to be turned back on you
+        /// first. Ranks below a live headline, above the summary.
+        public var openQuestions: [String] = []
         public var latencyMs: Int
 
         enum CodingKeys: String, CodingKey {
@@ -23,7 +30,51 @@ public enum CopilotFrame {
             case headline
             case angles
             case confirm
+            case summary
+            case openQuestions = "open_questions"
             case latencyMs = "latency_ms"
+        }
+
+        /// Hand-written because a synthesized one demands every key.
+        ///
+        /// The property defaults above are *not* consulted by the synthesized
+        /// decoder — a missing `summary` makes the whole frame throw, and one
+        /// throw here drops the suggestion entirely. `summary` and
+        /// `open_questions` were added to this struct after the gateway release
+        /// that is deployed, so every suggestion from it failed to decode and
+        /// the copilot returned nothing at all. A newer app has to tolerate an
+        /// older gateway; only the fields a suggestion is meaningless without
+        /// are required.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            callID = try container.decode(String.self, forKey: .callID)
+            afterSeq = try container.decode(Int.self, forKey: .afterSeq)
+            headline = try container.decodeIfPresent(String.self, forKey: .headline) ?? ""
+            angles = try container.decodeIfPresent([String].self, forKey: .angles) ?? []
+            confirm = try container.decodeIfPresent([String].self, forKey: .confirm) ?? []
+            summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+            openQuestions = try container.decodeIfPresent([String].self, forKey: .openQuestions) ?? []
+            latencyMs = try container.decodeIfPresent(Int.self, forKey: .latencyMs) ?? 0
+        }
+
+        public init(
+            callID: String,
+            afterSeq: Int,
+            headline: String,
+            angles: [String] = [],
+            confirm: [String] = [],
+            summary: String = "",
+            openQuestions: [String] = [],
+            latencyMs: Int = 0
+        ) {
+            self.callID = callID
+            self.afterSeq = afterSeq
+            self.headline = headline
+            self.angles = angles
+            self.confirm = confirm
+            self.summary = summary
+            self.openQuestions = openQuestions
+            self.latencyMs = latencyMs
         }
     }
 
@@ -97,14 +148,28 @@ public actor CopilotSocket {
         }
     }
 
-    public func startCall(callID: String, persona: String, startedAt: Date) async throws {
-        try await send([
+    public func startCall(callID: String,
+                          persona: String,
+                          startedAt: Date,
+                          profile: CallProfile? = nil) async throws {
+        var frame: [String: Any] = [
             "v": 1,
             "type": "call_start",
             "call_id": callID,
             "persona": persona,
             "started_at": Int(startedAt.timeIntervalSince1970),
-        ])
+        ]
+        // Sent once, at the top of the call. The gateway keeps it for the life
+        // of the session and puts it in the cached prompt prefix, so carrying
+        // it per turn would only defeat that cache.
+        if let profile {
+            var fields: [String: Any] = [:]
+            if let about = profile.about { fields["about"] = about }
+            if let persona = profile.personaGuidance { fields["persona_guidance"] = persona }
+            if let base = profile.baseGuidance { fields["base_guidance"] = base }
+            if !fields.isEmpty { frame["profile"] = fields }
+        }
+        try await send(frame)
     }
 
     public func send(turn: CallTurn, callID: String) async throws {
@@ -183,11 +248,17 @@ public actor CopilotSocket {
 
         switch type {
         case "suggestion":
-            guard let suggestion = try? JSONDecoder().decode(CopilotFrame.Suggestion.self, from: data) else {
-                socketLog.error("suggestion frame did not decode")
-                return
+            do {
+                onSuggestion?(try JSONDecoder().decode(CopilotFrame.Suggestion.self, from: data))
+            } catch {
+                // The error itself, not just the fact of one. This decode is the
+                // seam between the Swift and Node halves, and a bare "did not
+                // decode" turns a one-line field-name drift into a hunt.
+                socketLog.error("""
+                    suggestion frame did not decode: \(String(describing: error), privacy: .public) \
+                    — keys: \(object.keys.sorted().joined(separator: ","), privacy: .public)
+                    """)
             }
-            onSuggestion?(suggestion)
         case "error":
             let code = object["code"] as? String ?? "error"
             let message = object["message"] as? String ?? ""
