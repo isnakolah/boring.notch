@@ -18,4 +18,7 @@ extension KeyboardShortcuts.Name {
     static let pomodoroStartPause = Self("pomodoroStartPause", default: .init(.t, modifiers: [.command, .shift]))
     static let pomodoroSkipPhase = Self("pomodoroSkipPhase")
     static let pomodoroStopTimer = Self("pomodoroStopTimer")
+    static let copilotToggleCall = Self("copilotToggleCall", default: .init(.c, modifiers: [.option, .command]))
+    static let copilotToggleLayout = Self("copilotToggleLayout", default: .init(.t, modifiers: [.option, .command]))
+    static let copilotDismiss = Self("copilotDismiss", default: .init(.period, modifiers: [.option, .command]))
 }
