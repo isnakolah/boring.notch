@@ -166,17 +166,29 @@ enum VisualLocator {
     }
 
     private static func iconTemplate(named icon: String) -> WeightedTemplate? {
-        let filename = "blender-\(icon)-template-5.2"
-        let candidates = [
-            // `url(forResource:withExtension:)` treats final `.2` as a file
-            // extension. Build the URL directly: Blender's version is part of
-            // this asset's literal name.
-            Bundle.main.resourceURL?.appendingPathComponent("\(filename).png"),
-            // SwiftPM's executable has no resource bundle. This fallback is for
-            // local host builds; installed apps always use Bundle.main above.
-            URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-                .appendingPathComponent("assets/blender/\(icon)-template-5.2.png"),
-        ].compactMap { $0 }
+        // The shipped asset is `wrench-template-5.2.png`. It previously looked
+        // for a `blender-` prefix that no file has ever carried, so this always
+        // returned nil and every caller silently fell back to the outlined
+        // strip instead of the exact icon.
+        let relative = "assets/blender/\(icon)-template-5.2.png"
+        var candidates: [URL] = []
+        // `url(forResource:withExtension:)` treats the final `.2` as a file
+        // extension. Build the URL directly: Blender's version is part of this
+        // asset's literal name.
+        if let resources = Bundle.main.resourceURL {
+            candidates.append(resources.appendingPathComponent(relative))
+        }
+        // SwiftPM's executable has no resource bundle, and the deployed host is
+        // launched with its cwd set to `Contents/MacOS` — three levels below
+        // where the engine stages these assets. Walk up from the executable
+        // instead, the same way LessonRelay and CourseLifecycle already locate
+        // the relay scripts; cwd is not something this process controls.
+        var directory = URL(fileURLWithPath: CommandLine.arguments[0])
+            .resolvingSymlinksInPath().deletingLastPathComponent()
+        for _ in 0..<6 {
+            candidates.append(directory.appendingPathComponent(relative))
+            directory = directory.deletingLastPathComponent()
+        }
         guard let url = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),

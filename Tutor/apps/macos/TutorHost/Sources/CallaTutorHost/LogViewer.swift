@@ -37,11 +37,18 @@ enum CallaLog: String, CaseIterable, Identifiable {
         }
     }
 
-    static var directory: URL {
-        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Logs/Calla")
-    }
+    static var directory: URL { CallaRuntime.logs }
 
-    var url: URL { Self.directory.appendingPathComponent(rawValue) }
+    /// Boring's private log directory is authoritative. The retired shared
+    /// `~/Library/Logs/Calla` is still read when a file only exists there, so
+    /// history from before the migration stays reachable.
+    var url: URL {
+        let runtime = Self.directory.appendingPathComponent(rawValue)
+        if FileManager.default.fileExists(atPath: runtime.path) { return runtime }
+        let legacy = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Logs/Calla").appendingPathComponent(rawValue)
+        return FileManager.default.fileExists(atPath: legacy.path) ? legacy : runtime
+    }
 }
 
 /// One line, with whatever structure could be recovered from it.

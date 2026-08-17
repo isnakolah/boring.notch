@@ -274,7 +274,7 @@ final class TutorHostController: ObservableObject {
         guard request.sessionID.count >= 8 else { return failure(request, "invalid_session", "A valid teaching session is required") }
         // Bookkeeping and the course list are not looking at anything, so a
         // paused capture has no reason to refuse them.
-        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_resume", "course_stop", "course_ask", "request_screen_recording"].contains(request.operation) else {
+        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_start_again", "course_resume", "course_stop", "course_ask", "request_screen_recording", "request_accessibility"].contains(request.operation) else {
             return failure(request, "capture_paused", "Capture is paused locally")
         }
         do {
@@ -405,10 +405,35 @@ final class TutorHostController: ObservableObject {
                       let course = CourseCatalogue.shared.courses.first(where: { $0.id == courseID }) else {
                     return failure(request, "missing_course", "This course is not in the current Gateway catalogue.")
                 }
-                if let reason = await CourseResume.resume(course, allowed: TutorSettings.shared.allowedBundleIDs) {
+                let selectedLesson = request.payload["lesson_id"]?.stringValue.flatMap { requested in
+                    course.lessons.first { $0.id == requested }
+                }
+                if request.payload["lesson_id"] != nil && selectedLesson == nil {
+                    return failure(request, "missing_lesson", "This lesson is not in the selected course.")
+                }
+                let reason: String?
+                if let selectedLesson {
+                    reason = await CourseResume.start(course, lesson: selectedLesson, note: "Lesson started")
+                } else {
+                    reason = await CourseResume.resume(course, allowed: TutorSettings.shared.allowedBundleIDs)
+                }
+                if let reason {
                     return failure(request, "course_start_refused", reason)
                 }
                 payload = ["status": .string("started"), "course_id": .string(courseID)]
+            case "course_start_again":
+                guard let courseID = request.payload["course_id"]?.stringValue,
+                      let course = CourseCatalogue.shared.courses.first(where: { $0.id == courseID }),
+                      let bundleID = CourseCatalogue.shared.bundleID(for: course, allowed: TutorSettings.shared.allowedBundleIDs),
+                      let first = course.lessons.first else {
+                    return failure(request, "missing_course", "This course cannot start again yet.")
+                }
+                LearningStore.shared.clear(lessonIDs: course.lessons.map(\.id), bundleID: bundleID)
+                CourseRunStore.shared.restart(courseID: course.id)
+                if let reason = await CourseResume.start(course, lesson: first, note: "Course restarted") {
+                    return failure(request, "course_restart_refused", reason)
+                }
+                payload = ["status": .string("restarted"), "course_id": .string(courseID)]
             case "course_resume":
                 guard let courseID = CourseRunStore.shared.mostRecentCourseID,
                       let course = CourseCatalogue.shared.courses.first(where: { $0.id == courseID }) else {
@@ -434,6 +459,12 @@ final class TutorHostController: ObservableObject {
                 // direct request gives TCC the exact capture executable.
                 TutorSettings.shared.requestScreenRecordingApproval()
                 payload = ["status": .string("Screen Recording request shown")]
+            case "request_accessibility":
+                // Same reason as above. Asking from the XPC service prompted
+                // for the service's own bundle, but this host is what calls
+                // AXUIElement, so the grant landed on the wrong executable.
+                TutorSettings.shared.requestAccessibilityApproval()
+                payload = ["status": .string("Accessibility request shown")]
             default: return failure(request, "unsupported_operation", "This TutorHost accepts only documented Tutor operations")
             }
             if ["guide", "narrate"].contains(request.operation), let started = feedbackStartedAt {
@@ -670,6 +701,7 @@ final class TutorHostController: ObservableObject {
         if lessonActive { stopLesson() }
         beginLesson()
         self.lessonTitle = lessonTitle
+        CallaRuntime.recordActiveLesson(courseID: courseID, lessonID: lessonID, lessonTitle: lessonTitle)
         let version = subject.bundleURL.flatMap {
             Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         } ?? "unknown"
@@ -694,7 +726,14 @@ final class TutorHostController: ObservableObject {
             } catch {
                 fastRun = nil
                 endLesson()
-                return "Could not resolve this course step locally. Open its declared app window and try again."
+                // Say which check refused. The old single sentence sent every
+                // learner to "open its declared app window" even when the app
+                // was already in front and the real cause was a missing grant
+                // or an unresolved descriptor — advice that could not work.
+                if let failure = error as? TutorHostFailure {
+                    return "\(failure.message) (\(failure.code))"
+                }
+                return "Could not start this course step locally: \(error.localizedDescription)"
             }
         }
         if declaredBundleID != nil {
@@ -827,6 +866,7 @@ final class TutorHostController: ObservableObject {
         currentStep = ""
         currentStepText = ""
         lessonTitle = ""
+        CallaRuntime.clearActiveLesson()
         stepIndex = 0
         stepCount = 0
         inAside = false
@@ -2255,7 +2295,20 @@ struct BlenderBridgeDescriptor: Decodable {
 }
 
 final class BlenderBridgeObserver {
-    private let directory = CallaRuntime.cache("bridge")
+    /// Where a live Blender add-on announces its loopback endpoint.
+    ///
+    /// The add-on lives inside Blender's own scripts directory and knows
+    /// nothing about Boring's runtime root, so it has always written to
+    /// `~/Library/Caches/CallaTutor`. Moving Tutor into Boring moved only this
+    /// reader to the runtime cache, and the two stopped meeting: no descriptor
+    /// meant no layout, every Blender target resolved to nothing, and the
+    /// pointer and tooltip never appeared for any lesson. Both are read, newest
+    /// descriptor wins, so a future add-on may publish under the runtime root
+    /// without breaking the installed one.
+    private let directories = [
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Caches/CallaTutor", isDirectory: true),
+        CallaRuntime.cache("bridge"),
+    ]
 
     func observeState() throws -> JSONValue { try observe("observe_state") }
 
@@ -2304,10 +2357,13 @@ final class BlenderBridgeObserver {
 
     private func latestDescriptor() throws -> BlenderBridgeDescriptor {
         let manager = FileManager.default
-        let files = try manager.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles])
+        let files = directories
+            .flatMap { directory in
+                (try? manager.contentsOfDirectory(
+                    at: directory,
+                    includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+                    options: [.skipsHiddenFiles])) ?? []
+            }
             .filter { $0.lastPathComponent.hasPrefix("blender-") && $0.pathExtension == "json" }
             .sorted {
                 let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast

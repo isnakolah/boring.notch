@@ -15,118 +15,24 @@ import SwiftUI
 import SwiftUIIntrospect
 
 struct SettingsView: View {
-    @State private var selectedTab = "General"
+    @State private var selectedTab: SettingsTab
     @State private var accentColorUpdateTrigger = UUID()
 
     let updaterController: SPUStandardUpdaterController?
 
     init(initialTab: String = "General", updaterController: SPUStandardUpdaterController? = nil) {
-        _selectedTab = State(initialValue: initialTab)
+        _selectedTab = State(initialValue: SettingsTab(legacyIdentifier: initialTab))
         self.updaterController = updaterController
     }
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $selectedTab) {
-                NavigationLink(value: "General") {
-                    Label("General", systemImage: "gear")
-                }
-                NavigationLink(value: "Appearance") {
-                    Label("Appearance", systemImage: "eye")
-                }
-                NavigationLink(value: "Media") {
-                    Label("Media", systemImage: "play.laptopcomputer")
-                }
-                NavigationLink(value: "Calendar") {
-                    Label("Calendar", systemImage: "calendar")
-                }
-                NavigationLink(value: "HUD") {
-                    Label("HUDs", systemImage: "dial.medium.fill")
-                }
-                NavigationLink(value: "Battery") {
-                    Label("Battery", systemImage: "battery.100.bolt")
-                }
-//                NavigationLink(value: "Downloads") {
-//                    Label("Downloads", systemImage: "square.and.arrow.down")
-//                }
-                NavigationLink(value: "Shelf") {
-                    Label("Shelf", systemImage: "books.vertical")
-                }
-                NavigationLink(value: "Tutor") {
-                    Label("Tutor", systemImage: "graduationcap")
-                }
-                NavigationLink(value: "Usage") {
-                    Label("Usage", systemImage: "chart.bar.xaxis")
-                }
-                NavigationLink(value: "Pomodoro") {
-                    Label("Pomodoro", systemImage: "timer.circle.fill")
-                }
-                NavigationLink(value: "Sweep") {
-                    Label("Sweep", systemImage: "externaldrive.badge.checkmark")
-                }
-                NavigationLink(value: "Shortcuts") {
-                    Label("Shortcuts", systemImage: "keyboard")
-                }
-                // NavigationLink(value: "Extensions") {
-                //     Label("Extensions", systemImage: "puzzlepiece.extension")
-                // }
-                NavigationLink(value: "Advanced") {
-                    Label("Advanced", systemImage: "gearshape.2")
-                }
-                NavigationLink(value: "About") {
-                    Label("About", systemImage: "info.circle")
-                }
-            }
-            .listStyle(SidebarListStyle())
-            .tint(.effectiveAccent)
-            .toolbar(removing: .sidebarToggle)
-            .navigationSplitViewColumnWidth(200)
+            SettingsSidebar(selection: $selectedTab)
+                .toolbar(removing: .sidebarToggle)
+                .navigationSplitViewColumnWidth(214)
         } detail: {
-            Group {
-                switch selectedTab {
-                case "General":
-                    GeneralSettings()
-                case "Appearance":
-                    Appearance()
-                case "Media":
-                    Media()
-                case "Calendar":
-                    CalendarSettings()
-                case "HUD":
-                    HUD()
-                case "Battery":
-                    Charge()
-                case "Shelf":
-                    Shelf()
-                case "Tutor":
-                    CallaTutorSettingsView()
-                case "Usage":
-                    UsageMonitorSettings()
-                case "Pomodoro":
-                    PomodoroSettings()
-                case "Sweep":
-                    SweepSettings()
-                case "Shortcuts":
-                    Shortcuts()
-                case "Extensions":
-                    GeneralSettings()
-                case "Advanced":
-                    Advanced()
-                case "About":
-                    if let controller = updaterController {
-                        About(updaterController: controller)
-                    } else {
-                        // Fallback with a default controller
-                        About(
-                            updaterController: SPUStandardUpdaterController(
-                                startingUpdater: false, updaterDelegate: nil,
-                                userDriverDelegate: nil))
-                    }
-                default:
-                    GeneralSettings()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar(removing: .sidebarToggle)
@@ -138,12 +44,42 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 700)
-        .background(Color(NSColor.windowBackgroundColor))
+        // Was a hard `.frame(width: 700)`, which fought the window controller's
+        // own resize and left the Tutor deep link showing a 700pt view inside a
+        // 1080pt window. The window decides its size; this decides its minimum.
+        .frame(minWidth: 860, minHeight: 560)
+        .background(NotchSurface.base)
+        // Injected once here instead of re-applied in eleven panes.
         .tint(.effectiveAccent)
         .id(accentColorUpdateTrigger)
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("AccentColorChanged"))) { _ in
             accentColorUpdateTrigger = UUID()
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch selectedTab {
+        case .general: GeneralSettings()
+        case .appearance: Appearance()
+        case .advanced: Advanced()
+        case .media: Media()
+        case .battery: Charge()
+        case .huds: HUD()
+        case .calendar: CalendarSettings()
+        case .shelf: Shelf()
+        case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine:
+            TutorPane(tab: selectedTab)
+        case .pomodoro: PomodoroSettings()
+        case .sweep: SweepSettings()
+        case .usage: UsageMonitorSettings()
+        case .shortcuts: Shortcuts()
+        case .about:
+            if let controller = updaterController {
+                About(updaterController: controller)
+            } else {
+                About(updaterController: SPUStandardUpdaterController(
+                    startingUpdater: false, updaterDelegate: nil, userDriverDelegate: nil))
+            }
         }
     }
 }

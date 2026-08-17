@@ -16,12 +16,16 @@ class SettingsWindowController: NSWindowController {
     
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 940, height: 660),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        
+        // Wide enough for the sidebar plus a card column without the panes
+        // having to reflow. Set once, here, rather than by whichever deep link
+        // happened to be used last.
+        window.minSize = NSSize(width: 860, height: 560)
+
         super.init(window: window)
         
         setupWindow()
@@ -92,15 +96,20 @@ class SettingsWindowController: NSWindowController {
         }
     }
 
-    func showShelfWindow() {
-        guard let window else { return }
-        window.contentView = NSHostingView(rootView: SettingsView(initialTab: "Shelf", updaterController: updaterController))
-        showWindow()
-    }
+    func showShelfWindow() { show(tab: "Shelf") }
 
-    func showTutorWindow() {
+    func showTutorWindow() { show(tab: "Tutor") }
+
+    /// Open Settings on a given pane.
+    ///
+    /// Each deep link used to rebuild `contentView` from scratch, and the Tutor
+    /// one also resized the window to 1080x720 and left it that way for the rest
+    /// of the session — so opening Tutor once permanently changed the size of
+    /// every other pane. One window, one size the user chose, one content view.
+    private func show(tab: String) {
         guard let window else { return }
-        window.contentView = NSHostingView(rootView: SettingsView(initialTab: "Tutor", updaterController: updaterController))
+        window.contentView = NSHostingView(
+            rootView: SettingsView(initialTab: tab, updaterController: updaterController))
         showWindow()
     }
     

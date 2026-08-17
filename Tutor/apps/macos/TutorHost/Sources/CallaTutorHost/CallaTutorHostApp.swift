@@ -51,7 +51,13 @@ final class CallaAppDelegate: NSObject, NSApplicationDelegate {
             await TutorSettings.shared.refreshPermissionStatus()
         }
         preferenceTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-            Task { @MainActor in TutorSettings.shared.reloadFromEngineSnapshot() }
+            Task { @MainActor in
+                TutorSettings.shared.reloadFromEngineSnapshot()
+                // A grant made in System Settings after launch was otherwise
+                // never noticed: the only refresh ran once, above. The settings
+                // object throttles this itself, on the main actor.
+                await TutorSettings.shared.refreshPermissionStatusIfDue()
+            }
         }
     }
 

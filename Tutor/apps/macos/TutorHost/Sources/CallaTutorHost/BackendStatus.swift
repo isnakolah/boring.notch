@@ -131,8 +131,15 @@ final class BackendStatus: ObservableObject {
         }
     }
 
-    private let logURL = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Logs/Calla/node-host.log")
+    /// Boring's engine redirects the node's stdio here. Fall back to the retired
+    /// shared location only when the private log has never been written, so a
+    /// pre-migration install still reports something rather than nothing.
+    private let logURL: URL = {
+        let runtime = CallaRuntime.log("node-host.log")
+        if FileManager.default.fileExists(atPath: runtime.path) { return runtime }
+        return URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Logs/Calla/node-host.log")
+    }()
     private var timer: Timer?
     /// Somebody is looking: a lesson is running, or a window that shows this is
     /// open. Set by the menu and Settings while they are on screen.

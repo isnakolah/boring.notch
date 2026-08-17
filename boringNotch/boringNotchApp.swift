@@ -342,6 +342,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // reaching Boring-owned engine instead of a visible TutorHost app.
             CallaEngineClient.shared.start()
             CallaEngineClient.shared.applyCurrentPreferences()
+            // Watch for lessons started outside the notch so the notch can
+            // raise itself onto the Tutor tab when teaching begins.
+            CallaEngineClient.shared.startMonitoring()
         }
 
         NotificationCenter.default.addObserver(

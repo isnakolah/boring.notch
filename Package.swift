@@ -1,0 +1,25 @@
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "BoringCallaEngineValidation",
+    platforms: [.macOS(.v14)],
+    targets: [
+        .target(
+            name: "CallaEngineValidation",
+            path: "BoringCallaEngine",
+            exclude: ["BoringCallaEngine.swift", "BoringCallaEngineProtocol.swift", "BoringCallaEngine.entitlements", "Info.plist", "main.swift"],
+            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift"]
+        ),
+        .target(
+            name: "CallaNotchPresentation",
+            path: "boringNotch/components/Calla",
+            sources: ["CallaNotchPresentation.swift"]
+        ),
+        .testTarget(
+            name: "CallaEngineValidationTests",
+            dependencies: ["CallaEngineValidation", "CallaNotchPresentation"],
+            path: "BoringCallaEngineTests/Tests"
+        )
+    ]
+)

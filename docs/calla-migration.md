@@ -46,9 +46,14 @@ Local proof, 2026-08-13:
 Not cut over:
 
 - Existing macOS `CallaTutor` data and app remain untouched.
-- Existing Calla launch agents are only unloaded by explicit
+- Existing Calla launch agents are disabled and unloaded by explicit
   `scripts/calla/runtime-install.sh`; their plists, logs, app, and data are
-  never deleted.
+  never deleted. `launchctl disable` is used rather than `bootout` alone
+  because bootout does not survive login: both installs would start a node
+  named `Calla Mac`, the Gateway evicts the duplicate, `KeepAlive` respawns it,
+  and the pair flap indefinitely. Reverse with
+  `launchctl enable gui/$UID/com.calla.tutor-host` and the same for
+  `com.calla.openclaw-node-host`.
 - Real Gateway promotion, installed production Boring deployment, Screen
   Recording approval, automatic re-pair proof, and real focused Blender lesson
   remain acceptance gates. Do not remove `apps/tutor` from Calla repository

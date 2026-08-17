@@ -72,17 +72,33 @@ cat >"$AGENT_DIRECTORY/$RUNTIME_LABEL.plist" <<EOF
 EOF
 chmod 600 "$AGENT_DIRECTORY/$RUNTIME_LABEL.plist"
 
-launchctl bootout "gui/$(id -u)/$NODE_LABEL" 2>/dev/null || true
-launchctl bootout "gui/$(id -u)/$RUNTIME_LABEL" 2>/dev/null || true
+GUI_DOMAIN="gui/$(id -u)"
 
-# Cutover intentionally unloads old agents before Boring starts its engine, so
-# only one process can present itself as Calla Mac. Plists, app, logs, and
-# ~/Library/Application Support/CallaTutor data are deliberately retained.
-launchctl bootout "gui/$(id -u)/com.calla.tutor-host" 2>/dev/null || true
-launchctl bootout "gui/$(id -u)/com.calla.openclaw-node-host" 2>/dev/null || true
+# Cutover keeps old agents down so only one process can present itself as Calla
+# Mac. `bootout` alone does not survive login, which is why two Calla Mac nodes
+# kept reappearing and fighting the Gateway for one identity — it evicts the
+# duplicate, KeepAlive respawns it, and the pair flap forever. `disable` writes
+# to the per-user disabled database and does persist.
+#
+# Disable BEFORE bootout: com.calla.openclaw-node-host sets KeepAlive, so
+# launchd can respawn it in the window between the two commands.
+#
+# Nothing is deleted. Plists, the app, logs, and
+# ~/Library/Application Support/CallaTutor data are all retained, and
+# `launchctl enable "$GUI_DOMAIN/<label>"` reverses this exactly.
+for label in com.calla.tutor-host com.calla.openclaw-node-host "$NODE_LABEL"; do
+  launchctl disable "$GUI_DOMAIN/$label" 2>/dev/null || true
+  launchctl bootout "$GUI_DOMAIN/$label" 2>/dev/null || true
+done
+
+# Boring's own restore label must be explicitly enabled first: `bootstrap`
+# against a label sitting in the disabled database succeeds and loads nothing,
+# which would leave Boring not restoring after login with no error to show.
+launchctl enable "$GUI_DOMAIN/$RUNTIME_LABEL" 2>/dev/null || true
+launchctl bootout "$GUI_DOMAIN/$RUNTIME_LABEL" 2>/dev/null || true
 
 if [[ "$LAUNCH_RUNTIME" == 1 ]]; then
-  launchctl bootstrap "gui/$(id -u)" "$AGENT_DIRECTORY/$RUNTIME_LABEL.plist"
+  launchctl bootstrap "$GUI_DOMAIN" "$AGENT_DIRECTORY/$RUNTIME_LABEL.plist"
 fi
 
 echo "Boring Calla runtime installed: $APP_SUPPORT (node owned by embedded engine)"

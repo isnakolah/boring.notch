@@ -34,7 +34,7 @@ tar -C "$ARTIFACT_DIRECTORY" -czf "$ARTIFACT" release
 DIGEST="$(shasum -a 256 "$ARTIFACT" | awk '{print $1}')"
 echo "Tutor Gateway artifact: $ARTIFACT"
 echo "sha256: $DIGEST"
-"$ROOT/scripts/calla/gateway-update.sh" --staged "$ARTIFACT"
+bash "$ROOT/scripts/calla/gateway-update.sh" --staged "$ARTIFACT"
 mkdir -p "$CACHE_DIRECTORY"
 chmod 700 "$CACHE_DIRECTORY"
 printf '%s\n' "$SOURCE_DIGEST" >"$CACHE_FILE"

@@ -13,8 +13,11 @@ import Foundation
 /// succeeded. No payload, no region, no capture bytes, no window title, no
 /// document name. The file is safe to read out loud.
 enum StepTiming {
-    private static let logURL = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Logs/Calla/step-timing.log")
+    /// Boring's private runtime root, which is 0700. This log is the one
+    /// diagnostic that carries a rectangle, so the shared
+    /// `~/Library/Logs/Calla` the retired install also writes to is the wrong
+    /// home for it.
+    private static let logURL = CallaRuntime.log("step-timing.log")
     /// Rotated rather than grown: this is a diagnostic, and an unbounded log on
     /// the hot path is a slow leak nobody notices.
     private static let maxBytes = 512 * 1024

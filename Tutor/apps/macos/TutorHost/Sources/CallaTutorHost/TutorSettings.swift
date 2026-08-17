@@ -57,6 +57,18 @@ final class TutorSettings: ObservableObject {
     /// Calla does, noise once that is obvious.
     @Published var showStatusHUD: Bool
 
+    /// Whether Calla may look at the screen at all. Boring's "Watch screen"
+    /// switch writes this; until it was read here the switch decoded and then
+    /// discarded, and `TutorHostController.captureActive` stayed hardcoded on,
+    /// so turning it off changed nothing.
+    ///
+    /// The refusal path it drives already existed: `route` answers
+    /// `capture_paused` for everything outside the bookkeeping allowlist, and
+    /// `checkStep` guards on the same flag.
+    @Published var captureEnabled: Bool {
+        didSet { TutorHostController.shared.captureActive = captureEnabled }
+    }
+
     // Two preferences used to live here and have been removed rather than
     // implemented: `overlayFollowsFocus` and `hideTooltipWhenIdle`. Both were
     // read by nothing. The first was answered for good by confining the overlay
@@ -140,6 +152,10 @@ final class TutorSettings: ObservableObject {
         let opacity = snapshot?.tooltipOpacity ?? Self.defaultTooltipOpacity
         tooltipOpacity = Self.tooltipOpacityChoices.contains(opacity) ? opacity : Self.defaultTooltipOpacity
         showStatusHUD = snapshot?.showStatusHUD ?? true
+        // Defaults to true when there is no snapshot yet. A false default would
+        // leave a fresh install silently unable to teach, with the refusal
+        // pointing at a switch the learner never touched.
+        captureEnabled = snapshot?.captureEnabled ?? true
         learnerID = snapshot?.learnerID.range(of: "^[A-Za-z0-9-]+$", options: .regularExpression) != nil
             ? snapshot!.learnerID : Self.mintIdentifier(prefix: "learner")
     }
@@ -172,6 +188,7 @@ final class TutorSettings: ObservableObject {
         if Self.tooltipOpacityChoices.contains(snapshot.tooltipOpacity) { tooltipOpacity = snapshot.tooltipOpacity }
         hideTooltipOnHover = snapshot.hideTooltipOnHover
         showStatusHUD = snapshot.showStatusHUD
+        captureEnabled = snapshot.captureEnabled
         CourseCatalogue.shared.applyHiddenCourseIDs(snapshot.hiddenCourseIDs)
     }
 
@@ -235,12 +252,32 @@ final class TutorSettings: ObservableObject {
         return name
     }
 
+    /// When the last permission check ran. Held here rather than at the call
+    /// site so the throttle stays on the main actor with the state it guards.
+    private var lastPermissionCheck: Date?
+
+    /// Called on the half-second preference tick. The ScreenCaptureKit check is
+    /// an async query rather than a preflight, so it runs every five seconds
+    /// instead of every tick.
+    func refreshPermissionStatusIfDue(interval: TimeInterval = 5) async {
+        if let last = lastPermissionCheck, Date().timeIntervalSince(last) < interval { return }
+        lastPermissionCheck = Date()
+        await refreshPermissionStatus()
+    }
+
     func refreshPermissionStatus() async {
         // Preflight is cheap and never shows a privacy prompt. The
         // ScreenCaptureKit check confirms the exact API the host will use.
         let preflightGranted = CGPreflightScreenCaptureAccess()
         screenRecordingGranted = preflightGranted ? await WindowCapture.isPermitted() : false
         accessibilityGranted = AXIsProcessTrusted()
+        // The engine cannot answer this for itself. TCC grants are per
+        // executable, and this host — not the XPC service — is what captures,
+        // so the service's own preflight reported the wrong process and Boring
+        // showed "Required" against a host holding both grants.
+        CallaRuntime.recordHostStatus(screenRecordingGranted: screenRecordingGranted,
+                                      accessibilityGranted: accessibilityGranted,
+                                      captureActive: captureEnabled)
     }
 
     /// Start the standard macOS Screen Recording consent flow at app launch.

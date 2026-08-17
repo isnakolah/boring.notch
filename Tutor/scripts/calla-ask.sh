@@ -55,7 +55,11 @@ done
 #
 # Skipped when the tooltip's own buttons sent us: it has already said something
 # more specific than "Thinking…", and this would only overwrite it.
-SOCKET="$HOME/Library/Application Support/CallaTutor/tutor-host.sock"
+# CALLA_RUNTIME_ROOT is exported by BoringCallaEngine before it launches the
+# host, and LessonRelay passes the environment through, so it is already set on
+# every real invocation. The default keeps a bare shell or Raycast call working.
+CALLA_ROOT="${CALLA_RUNTIME_ROOT:-$HOME/Library/Application Support/boringNotch/Calla}"
+SOCKET="$CALLA_ROOT/tutor-host.sock"
 if [[ -S "$SOCKET" && "${CALLA_QUIET:-0}" != "1" ]]; then
   /usr/bin/python3 - "$SOCKET" <<'THINKING' >/dev/null 2>&1 || true
 import json, socket, sys, uuid
@@ -115,5 +119,5 @@ fi
 
 printf '%s send %s %sms ok\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SESSION" \
   "$(( $(date +%s%N) / 1000000 - STARTED ))" \
-  >> "$HOME/Library/Logs/Calla/step-timing.log" 2>/dev/null || true
+  >> "$CALLA_ROOT/logs/step-timing.log" 2>/dev/null || true
 exit 0
