@@ -14,7 +14,24 @@ let batterySneakSize: CGSize = .init(width: 160, height: 1)
 
 let shadowPadding: CGFloat = 20
 let openNotchSize: CGSize = .init(width: 512, height: 168)
-let windowSize: CGSize = .init(width: openNotchSize.width, height: openNotchSize.height + shadowPadding)
+
+/// The notch while a call copilot session is live.
+///
+/// Wider and much taller than a normal tab: it carries a running transcript
+/// beside the pointer, and a transcript that only shows two turns is not one.
+let copilotNotchSize: CGSize = .init(width: 600, height: 340)
+
+/// The largest the open notch can ever be.
+///
+/// The panel is created once at this size and never resized — the notch shape
+/// is clipped to `vm.notchSize` and pinned to the top, so anything the current
+/// mode does not use stays transparent. That is already how the 185pt closed
+/// notch lives inside a 512pt window; growing the ceiling just extends it.
+let maxOpenNotchSize: CGSize = .init(
+    width: max(openNotchSize.width, copilotNotchSize.width),
+    height: max(openNotchSize.height, copilotNotchSize.height))
+
+let windowSize: CGSize = .init(width: maxOpenNotchSize.width, height: maxOpenNotchSize.height + shadowPadding)
 let cornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 19, bottom: 24), closed: (top: 6, bottom: 14))
 
 enum MusicPlayerImageSizes {

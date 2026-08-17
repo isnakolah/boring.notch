@@ -190,9 +190,18 @@ class BoringViewModel: NSObject, ObservableObject {
     }
 
     func open() {
-        self.notchSize = openNotchSize
+        open(size: CopilotLiveSession.shared.preferredOpenSize)
+    }
+
+    /// Opens at an explicit size.
+    ///
+    /// The panel itself is fixed at `maxOpenNotchSize`; this only decides how
+    /// much of it the notch shape paints, so a caller can grow or shrink an
+    /// already-open notch inside an animation.
+    func open(size: CGSize) {
+        self.notchSize = size
         self.notchState = .open
-        
+
         // Force music information update when notch is opened
         MusicManager.shared.forceUpdate()
     }
@@ -200,6 +209,11 @@ class BoringViewModel: NSObject, ObservableObject {
     func close() {
         // Do not close while a share picker or sharing service is active
         if SharingStateManager.shared.preventNotchClose {
+            return
+        }
+        // A live call holds the notch open for its whole duration. ⌥⌘. drops the
+        // pin without ending the call.
+        if CopilotLiveSession.shared.pinsNotchOpen {
             return
         }
         self.notchSize = getClosedNotchSize(screenUUID: self.screenUUID)
