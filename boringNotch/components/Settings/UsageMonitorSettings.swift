@@ -21,39 +21,39 @@ struct UsageMonitorSettings: View {
         ("30 minutes", 1800),
     ]
 
+    @Default(.showUsageBesideNotch) private var showUsageBesideNotch
+
     var body: some View {
-        Form {
-            Section {
-                Defaults.Toggle(key: .usageMonitorTab) {
-                    Text("Enable usage tab")
-                }
-                .onChange(of: usageMonitorTab) {
-                    // Leaving the tab selected after disabling would strand the notch
-                    // on an empty view — fall back to Home.
-                    if !usageMonitorTab && coordinator.currentView == .usage {
-                        coordinator.currentView = .home
+        SettingsPane(eyebrow: "Tools", title: "Usage",
+                     detail: "Session and weekly quotas, read from the claude and codex CLIs on this Mac.") {
+            SettingCard("Usage monitor") {
+                VStack(spacing: 12) {
+                    SettingRow("Enable usage tab",
+                               detail: "Adds a Usage tab to the notch.") {
+                        Toggle("", isOn: $usageMonitorTab).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Show beside the notch",
+                               detail: "Keeps a compact quota readout next to the notch.") {
+                        Toggle("", isOn: $showUsageBesideNotch).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Refresh interval",
+                               detail: "How often the CLIs are asked again.") {
+                        Picker("", selection: $usageMonitorRefreshInterval) {
+                            ForEach(intervalOptions, id: \.seconds) { option in
+                                Text(option.label).tag(option.seconds)
+                            }
+                        }
+                        .labelsHidden().frame(width: 140)
                     }
                 }
-
-                Picker("Refresh interval", selection: $usageMonitorRefreshInterval) {
-                    ForEach(intervalOptions, id: \.seconds) { option in
-                        Text(option.label).tag(option.seconds)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Defaults.Toggle(key: .showUsageBesideNotch) {
-                    Text("Show usage beside notch")
-                }
-            } header: {
-                Text("Usage Monitor")
-            } footer: {
-                Text("Usage data comes from your local claude and codex CLIs. Session (5h) and weekly (7d) quotas are shown for each.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
-        .accentColor(.effectiveAccent)
-        .navigationTitle("Usage")
+        .onChange(of: usageMonitorTab) {
+            // Leaving the tab selected after disabling would strand the notch
+            // on an empty view — fall back to Home.
+            if !usageMonitorTab && coordinator.currentView == .usage {
+                coordinator.currentView = .home
+            }
+        }
     }
 }

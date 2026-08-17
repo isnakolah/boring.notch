@@ -149,8 +149,15 @@ struct TutorCoursesPane: View {
                                                  : lesson.completed ? NotchTint.healthy : .secondary)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(lesson.title).font(NotchType.rowTitle)
-                                Text(lessonDetail(lesson))
-                                    .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                                // Two separate Text values rather than one
+                                // interpolated string: a hand-built
+                                // "1 step"/"n steps" cannot be translated,
+                                // and `inflect:` needs the count in the key.
+                                HStack(spacing: 4) {
+                                    Text("^[\(lesson.stepCount) step](inflect: true)")
+                                    if lesson.dueForReview { Text("· review due") }
+                                }
+                                .font(NotchType.rowDetail).foregroundStyle(.secondary)
                             }
                             Spacer(minLength: 8)
                             Button(lesson.completed ? "Again" : "Start") {
@@ -164,10 +171,6 @@ struct TutorCoursesPane: View {
         }
     }
 
-    private func lessonDetail(_ lesson: CallaLessonSnapshot) -> String {
-        let steps = lesson.stepCount == 1 ? "1 step" : "\(lesson.stepCount) steps"
-        return lesson.dueForReview ? "\(steps) · review due" : steps
-    }
 }
 
 // MARK: - Create

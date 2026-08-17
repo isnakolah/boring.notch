@@ -25,177 +25,187 @@ struct PomodoroSettings: View {
     /// with the app and the user picks something they already recognise.
     private let soundOptions = ["Glass", "Ping", "Hero", "Submarine", "Blow", "Funk", "Purr"]
 
+    @Default(.pomodoroShowInMenuBar) private var showInMenuBar
+    @Default(.pomodoroCalendarIcon) private var calendarIcon
+    @Default(.pomodoroAutoStartBreaks) private var autoStartBreaks
+    @Default(.pomodoroAutoStartWork) private var autoStartWork
+    @Default(.pomodoroOpenNotchOnPhaseEnd) private var openNotchOnPhaseEnd
+    @Default(.pomodoroAutoResumeAfterWake) private var autoResumeAfterWake
+    @Default(.pomodoroPlaySound) private var playSound
+    @Default(.pomodoroPostNotification) private var postNotification
+
     var body: some View {
-        Form {
-            Section {
-                Defaults.Toggle(key: .pomodoroTab) {
-                    Text("Enable Pomodoro tab")
-                }
-                .onChange(of: pomodoroTab) {
-                    // Leaving the tab selected after disabling would strand the
-                    // notch on a hidden view — fall back to Home.
-                    if !pomodoroTab && coordinator.currentView == .pomodoro {
-                        coordinator.currentView = .home
+        SettingsPane(eyebrow: "Tools", title: "Pomodoro",
+                     detail: "Focus blocks and breaks, counted in the notch.") {
+            SettingCard("Pomodoro") {
+                VStack(spacing: 12) {
+                    SettingRow("Enable Pomodoro tab") {
+                        Toggle("", isOn: $pomodoroTab).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Countdown in the menu bar",
+                               detail: "Needs the boring.notch menu bar icon turned on in General.") {
+                        Toggle("", isOn: $showInMenuBar).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Timer button on calendar events",
+                               detail: "Starts a session that fills the event and ends exactly when it does.") {
+                        Toggle("", isOn: $calendarIcon).labelsHidden().toggleStyle(.switch)
                     }
                 }
-
-                Defaults.Toggle(key: .pomodoroShowInMenuBar) {
-                    Text("Show countdown in the menu bar")
-                }
-
-                Defaults.Toggle(key: .pomodoroCalendarIcon) {
-                    Text("Show a timer button on calendar events")
-                }
-            } header: {
-                Text("Pomodoro")
-            } footer: {
-                Text("The menu bar countdown needs the boring.notch menu bar icon turned on in General. The calendar button starts a session that fills the event's time window and ends exactly when the event does.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
-            ForEach($presets) { $preset in
-                Section {
-                    TextField("Preset name", text: $preset.name)
-                    Stepper("Focus: \(preset.workMinutes)m", value: $preset.workMinutes, in: 1...240)
-                    Stepper("Short break: \(preset.shortBreakMinutes)m", value: $preset.shortBreakMinutes, in: 0...120)
-                    Stepper("Long break: \(preset.longBreakMinutes)m", value: $preset.longBreakMinutes, in: 0...120)
-                    Stepper("Long break every \(preset.cyclesBeforeLongBreak) blocks", value: $preset.cyclesBeforeLongBreak, in: 1...12)
-                    if presets.count > 1 {
-                        Button("Delete preset", role: .destructive) {
-                            deletePreset(id: preset.id)
+            SettingCard("Presets",
+                        detail: "A long break replaces the short one after the given number of focus blocks.") {
+                VStack(spacing: 14) {
+                    ForEach($presets) { $preset in
+                        presetEditor($preset)
+                    }
+                    HStack {
+                        Button("New preset") { addPreset() }
+                        Button("Restore defaults") {
+                            presets = PomodoroPreset.seeded
+                            selectedPresetID = PomodoroPreset.classic.id
+                        }
+                        Spacer()
+                    }
+                    .controlSize(.small)
+                    SettingRow("Default preset") {
+                        Picker("", selection: $selectedPresetID) {
+                            ForEach(presets) { Text($0.name).tag($0.id) }
+                        }
+                        .labelsHidden().frame(width: 160)
+                    }
+                }
+            }
+
+            SettingCard("Cycle",
+                        detail: "The timer always pauses when the Mac sleeps, so a block is never spent while you are away.") {
+                VStack(spacing: 12) {
+                    SettingRow("Start breaks automatically") {
+                        Toggle("", isOn: $autoStartBreaks).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Start the next block automatically") {
+                        Toggle("", isOn: $autoStartWork).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Open the notch when a block ends") {
+                        Toggle("", isOn: $openNotchOnPhaseEnd).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Resume after the Mac wakes") {
+                        Toggle("", isOn: $autoResumeAfterWake).labelsHidden().toggleStyle(.switch)
+                    }
+                }
+            }
+
+            SettingCard("Alerts") {
+                VStack(spacing: 12) {
+                    SettingRow("Play a sound") {
+                        Toggle("", isOn: $playSound).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Sound", detail: "Plays as you choose it.") {
+                        Picker("", selection: $soundName) {
+                            ForEach(soundOptions, id: \.self) { Text($0).tag($0) }
+                        }
+                        .labelsHidden().frame(width: 140)
+                    }
+                    SettingRow("Post a notification") {
+                        Toggle("", isOn: $postNotification).labelsHidden().toggleStyle(.switch)
+                    }
+                }
+            }
+
+            SettingCard("Focus",
+                        detail: "macOS gives an app no way to switch Do Not Disturb directly. Make two shortcuts in the Shortcuts app — one turning a Focus on, one off — and name them here. Leave blank to skip.") {
+                VStack(spacing: 12) {
+                    SettingRow("Run at focus start") {
+                        TextField("Shortcut name", text: $focusShortcutStart).frame(width: 180)
+                    }
+                    SettingRow("Run at focus end") {
+                        TextField("Shortcut name", text: $focusShortcutEnd).frame(width: 180)
+                    }
+                }
+            }
+
+            SettingCard("Keyboard") {
+                VStack(spacing: 12) {
+                    SettingRow("Start / pause") {
+                        KeyboardShortcuts.Recorder("", name: .pomodoroStartPause)
+                    }
+                    SettingRow("Skip to next block") {
+                        KeyboardShortcuts.Recorder("", name: .pomodoroSkipPhase)
+                    }
+                    SettingRow("Stop") {
+                        KeyboardShortcuts.Recorder("", name: .pomodoroStopTimer)
+                    }
+                }
+            }
+
+            SettingCard("History", detail: "Focus blocks are kept on this Mac for 90 days.") {
+                VStack(spacing: 10) {
+                    SettingFact(title: "Today",
+                                value: "\(pomodoro.todayCompletedWorkBlocks) blocks · \(focusTotalString(pomodoro.todayFocusTime))")
+                    if recentSessions.isEmpty {
+                        Text("No sessions recorded yet.")
+                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(recentSessions) { record in
+                            historyRow(record)
+                        }
+                        HStack {
+                            Button("Clear history", role: .destructive) { pomodoro.clearHistory() }
+                                .controlSize(.small)
+                            Spacer()
                         }
                     }
-                } header: {
-                    Text(preset.name)
                 }
-            }
-
-            Section {
-                Button {
-                    addPreset()
-                } label: {
-                    Label("New preset", systemImage: "plus")
-                }
-            } footer: {
-                Text("New presets copy current default, then can be renamed and edited.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section {
-                Picker("Default preset", selection: $selectedPresetID) {
-                    ForEach(presets) { preset in
-                        Text(preset.name).tag(preset.id)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Button("Restore seeded presets") {
-                    presets = PomodoroPreset.seeded
-                    selectedPresetID = PomodoroPreset.classic.id
-                }
-            } header: {
-                Text("Default duration")
-            } footer: {
-                Text("A long break replaces the short one after the given number of focus blocks.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section {
-                Defaults.Toggle(key: .pomodoroAutoStartBreaks) {
-                    Text("Start breaks automatically")
-                }
-                Defaults.Toggle(key: .pomodoroAutoStartWork) {
-                    Text("Start the next focus block automatically")
-                }
-                Defaults.Toggle(key: .pomodoroOpenNotchOnPhaseEnd) {
-                    Text("Open the notch when a block ends")
-                }
-                Defaults.Toggle(key: .pomodoroAutoResumeAfterWake) {
-                    Text("Resume automatically after the Mac wakes")
-                }
-            } header: {
-                Text("Cycle")
-            } footer: {
-                Text("The timer always pauses when the Mac sleeps, so a block is never spent while you are away.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section {
-                Defaults.Toggle(key: .pomodoroPlaySound) {
-                    Text("Play a sound when a block ends")
-                }
-
-                Picker("Sound", selection: $soundName) {
-                    ForEach(soundOptions, id: \.self) { name in
-                        Text(name).tag(name)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: soundName) {
-                    NSSound(named: soundName)?.play()
-                }
-
-                Defaults.Toggle(key: .pomodoroPostNotification) {
-                    Text("Post a notification when a block ends")
-                }
-            } header: {
-                Text("Alerts")
-            }
-
-            Section {
-                TextField("Shortcut to run at focus start", text: $focusShortcutStart)
-                TextField("Shortcut to run at focus end", text: $focusShortcutEnd)
-            } header: {
-                Text("Focus")
-            } footer: {
-                Text("macOS provides no way for an app to switch Do Not Disturb directly. Create two shortcuts in the Shortcuts app — one turning a Focus on, one turning it off — and enter their names here. Leave blank to skip.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section {
-                KeyboardShortcuts.Recorder("Start / pause timer", name: .pomodoroStartPause)
-                KeyboardShortcuts.Recorder("Skip to next block", name: .pomodoroSkipPhase)
-                KeyboardShortcuts.Recorder("Stop timer", name: .pomodoroStopTimer)
-            } header: {
-                Text("Keyboard shortcuts")
-            }
-
-            Section {
-                HStack {
-                    Text("Today")
-                    Spacer()
-                    Text("\(pomodoro.todayCompletedWorkBlocks) blocks · \(focusTotalString(pomodoro.todayFocusTime))")
-                        .foregroundColor(.secondary)
-                        .monospacedDigit()
-                }
-
-                if recentSessions.isEmpty {
-                    Text("No sessions recorded yet.")
-                        .foregroundColor(.secondary)
-                } else {
-                    ForEach(recentSessions) { record in
-                        historyRow(record)
-                    }
-
-                    Button("Clear history", role: .destructive) {
-                        pomodoro.clearHistory()
-                    }
-                }
-            } header: {
-                Text("History")
-            } footer: {
-                Text("Focus blocks are kept locally for 90 days.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
-        .accentColor(.effectiveAccent)
-        .navigationTitle("Pomodoro")
+        .onChange(of: pomodoroTab) {
+            // Leaving the tab selected after disabling would strand the notch on
+            // a hidden view — fall back to Home.
+            if !pomodoroTab && coordinator.currentView == .pomodoro {
+                coordinator.currentView = .home
+            }
+        }
+        .onChange(of: soundName) { NSSound(named: soundName)?.play() }
+    }
+
+    /// One preset, as a bordered block rather than its own `Section`. Five
+    /// steppers per preset in a flat list made every preset look like a new
+    /// pane; the border is what says where one ends.
+    private func presetEditor(_ preset: Binding<PomodoroPreset>) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                TextField("Preset name", text: preset.name).frame(width: 180)
+                Spacer()
+                if presets.count > 1 {
+                    Button("Delete", role: .destructive) { deletePreset(id: preset.wrappedValue.id) }
+                        .controlSize(.small)
+                }
+            }
+            minuteRow("Focus", value: preset.workMinutes, range: 1...240)
+            minuteRow("Short break", value: preset.shortBreakMinutes, range: 0...120)
+            minuteRow("Long break", value: preset.longBreakMinutes, range: 0...120)
+            HStack {
+                Text("Long break every").font(NotchType.rowTitle)
+                Spacer()
+                Text("\(preset.wrappedValue.cyclesBeforeLongBreak) blocks")
+                    .font(NotchType.figure).foregroundStyle(.secondary)
+                Stepper("", value: preset.cyclesBeforeLongBreak, in: 1...12).labelsHidden()
+            }
+        }
+        .padding(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous)
+                .strokeBorder(NotchSurface.hairline, lineWidth: 1))
+    }
+
+    private func minuteRow(_ title: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        HStack {
+            Text(title).font(NotchType.rowTitle)
+            Spacer()
+            Text("\(value.wrappedValue)m").font(NotchType.figure).foregroundStyle(.secondary)
+            Stepper("", value: value, in: range).labelsHidden()
+        }
     }
 
     private func addPreset() {
