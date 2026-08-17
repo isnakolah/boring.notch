@@ -12,4 +12,18 @@ import Foundation
     func resumeCourse(with reply: @escaping (Data) -> Void)
     func stopLesson(with reply: @escaping (Data) -> Void)
     func ask(_ text: String, with reply: @escaping (Data) -> Void)
+    /// Owner UI sends a typed, bounded course-control command. The engine
+    /// validates it before it can reach Boring's bundled private script.
+    func courseControl(_ command: Data, with reply: @escaping (Data) -> Void)
+    /// Owner UI starts, stops, or re-targets the live call copilot. The engine
+    /// validates the command, then drives the unsandboxed capture host that
+    /// owns the microphone and screen-recording grants.
+    func copilotControl(_ command: Data, with reply: @escaping (Data) -> Void)
+    /// Recent turns of the current call.
+    ///
+    /// The only method here that does not reply with `Status`. A transcript is
+    /// far too large to ride the two-second status poll, and the notch app is
+    /// sandboxed, so it cannot read the capture host's files itself — this is
+    /// the only way that text reaches the UI.
+    func copilotTranscript(with reply: @escaping (Data) -> Void)
 }

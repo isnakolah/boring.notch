@@ -9,12 +9,12 @@ let package = Package(
             name: "CallaEngineValidation",
             path: "BoringCallaEngine",
             exclude: ["BoringCallaEngine.swift", "BoringCallaEngineProtocol.swift", "BoringCallaEngine.entitlements", "Info.plist", "main.swift"],
-            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift"]
+            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift", "CallaCopilotCommandValidation.swift"]
         ),
         .target(
             name: "CallaNotchPresentation",
             path: "boringNotch/components/Calla",
-            sources: ["CallaNotchPresentation.swift"]
+            sources: ["CallaNotchPresentation.swift", "CallaCopilotPresentation.swift"]
         ),
         .testTarget(
             name: "CallaEngineValidationTests",

@@ -91,7 +91,15 @@
 		DDDD000100000000000000D2 /* PomodoroSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDDD000100000000000000D1 /* PomodoroSettings.swift */; };
 		CA1100010000000000000001 /* CallaEngineClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000002 /* CallaEngineClient.swift */; };
 		CA1100010000000000000003 /* CallaTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000004 /* CallaTabView.swift */; };
-		CA1100010000000000000005 /* CallaTutorSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000006 /* CallaTutorSettingsView.swift */; };
+		CA110001000000000000A001 /* CallaNotchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000A002 /* CallaNotchPresentation.swift */; };
+		CA1100010000000000D00501 /* TutorPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00502 /* TutorPane.swift */; };
+		CA1100010000000000D00401 /* SettingsNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00402 /* SettingsNavigation.swift */; };
+		CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00302 /* NotchPreviewWell.swift */; };
+		CA1100010000000000D00201 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00202 /* SettingsComponents.swift */; };
+		CA1100010000000000D00101 /* NotchDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00102 /* NotchDesignSystem.swift */; };
+		CA110001000000000000B201 /* CopilotWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B202 /* CopilotWindowController.swift */; };
+		CA110001000000000000B101 /* CallaCopilotTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B102 /* CallaCopilotTabView.swift */; };
+		CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B002 /* CallaCopilotPresentation.swift */; };
 		CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000008 /* CallaCalendarBindings.swift */; };
 		11F748732EC9DA9300F841DB /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 11F748722EC9DA9300F841DB /* Lottie */; };
 		11F748822ECB07A400F841DB /* MusicControlButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748812ECB07A400F841DB /* MusicControlButton.swift */; };
@@ -292,7 +300,15 @@
 		DDDD000100000000000000D1 /* PomodoroSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroSettings.swift; sourceTree = "<group>"; };
 		CA1100010000000000000002 /* CallaEngineClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaEngineClient.swift"; sourceTree = "<group>"; };
 		CA1100010000000000000004 /* CallaTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaTabView.swift"; sourceTree = "<group>"; };
-		CA1100010000000000000006 /* CallaTutorSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaTutorSettingsView.swift"; sourceTree = "<group>"; };
+		CA110001000000000000A002 /* CallaNotchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaNotchPresentation.swift"; sourceTree = "<group>"; };
+		CA1100010000000000D00502 /* TutorPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/TutorPane.swift"; sourceTree = "<group>"; };
+		CA1100010000000000D00402 /* SettingsNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/SettingsNavigation.swift"; sourceTree = "<group>"; };
+		CA1100010000000000D00302 /* NotchPreviewWell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchPreviewWell.swift"; sourceTree = "<group>"; };
+		CA1100010000000000D00202 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsComponents.swift"; sourceTree = "<group>"; };
+		CA1100010000000000D00102 /* NotchDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchDesignSystem.swift"; sourceTree = "<group>"; };
+		CA110001000000000000B202 /* CopilotWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotWindowController.swift"; sourceTree = "<group>"; };
+		CA110001000000000000B102 /* CallaCopilotTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotTabView.swift"; sourceTree = "<group>"; };
+		CA110001000000000000B002 /* CallaCopilotPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotPresentation.swift"; sourceTree = "<group>"; };
 		CA1100010000000000000008 /* CallaCalendarBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCalendarBindings.swift"; sourceTree = "<group>"; };
 		11F748812ECB07A400F841DB /* MusicControlButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicControlButton.swift; sourceTree = "<group>"; };
 		11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSlotConfigurationView.swift; sourceTree = "<group>"; };
@@ -688,7 +704,15 @@
 				11CC44A12CEE614100C7244B /* BoringViewCoordinator.swift */,
 				CA1100010000000000000002 /* CallaEngineClient.swift */,
 				CA1100010000000000000004 /* CallaTabView.swift */,
-				CA1100010000000000000006 /* CallaTutorSettingsView.swift */,
+				CA110001000000000000A002 /* CallaNotchPresentation.swift */,
+				CA1100010000000000D00502 /* TutorPane.swift */,
+				CA1100010000000000D00402 /* SettingsNavigation.swift */,
+				CA1100010000000000D00302 /* NotchPreviewWell.swift */,
+				CA1100010000000000D00202 /* SettingsComponents.swift */,
+				CA1100010000000000D00102 /* NotchDesignSystem.swift */,
+				CA110001000000000000B202 /* CopilotWindowController.swift */,
+				CA110001000000000000B102 /* CallaCopilotTabView.swift */,
+				CA110001000000000000B002 /* CallaCopilotPresentation.swift */,
 				CA1100010000000000000008 /* CallaCalendarBindings.swift */,
 			);
 			path = boringNotch;
@@ -1056,7 +1080,7 @@
 			files = ();
 			inputPaths = ("$(SRCROOT)/scripts/calla/build-runtime.sh", "$(SRCROOT)/Tutor/apps/macos/TutorHost", "$(SRCROOT)/Tutor/scripts");
 			name = "Build Calla Runtime";
-			outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CallaRuntime/CallaTutorHost", "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CallaRuntime/CallaOverlayHelper");
+			outputPaths = ("$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CallaRuntime/CallaTutorHost.app/Contents/MacOS/CallaTutorHost", "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/CallaRuntime/CallaTutorHost.app/Contents/Helpers/CallaOverlayHelper.app/Contents/MacOS/CallaOverlayHelper");
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
 			shellScript = "set -euo pipefail\n\"$SRCROOT/scripts/calla/build-runtime.sh\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/CallaRuntime\"\n";
@@ -1083,7 +1107,7 @@
 			outputPaths = ();
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/zsh;
-			shellScript = "set -euo pipefail\nif [[ \"$CONFIGURATION\" == \"Debug\" ]]; then\n  \"$SRCROOT/scripts/calla/dev-deploy.sh\"\nfi\n";
+			shellScript = "set -euo pipefail\nif [[ \"$CONFIGURATION\" == \"Debug\" ]]; then\n  bash \"$SRCROOT/scripts/calla/dev-deploy.sh\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -1233,7 +1257,15 @@
 				B1F0A0022E60000100000001 /* BrightnessManager.swift in Sources */,
 				CA1100010000000000000001 /* CallaEngineClient.swift in Sources */,
 				CA1100010000000000000003 /* CallaTabView.swift in Sources */,
-				CA1100010000000000000005 /* CallaTutorSettingsView.swift in Sources */,
+				CA110001000000000000A001 /* CallaNotchPresentation.swift in Sources */,
+				CA1100010000000000D00501 /* TutorPane.swift in Sources */,
+				CA1100010000000000D00401 /* SettingsNavigation.swift in Sources */,
+				CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */,
+				CA1100010000000000D00201 /* SettingsComponents.swift in Sources */,
+				CA1100010000000000D00101 /* NotchDesignSystem.swift in Sources */,
+				CA110001000000000000B201 /* CopilotWindowController.swift in Sources */,
+				CA110001000000000000B101 /* CallaCopilotTabView.swift in Sources */,
+				CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */,
 				CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

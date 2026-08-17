@@ -12,6 +12,9 @@ struct BoringHeader: View {
     @EnvironmentObject var vm: BoringViewModel
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var coordinator = BoringViewCoordinator.shared
+    /// Drives the copilot button's live tint; without observing it the icon
+    /// would stay white through an entire call.
+    @ObservedObject var callaEngine = CallaEngineClient.shared
     @StateObject var tvm = ShelfStateViewModel.shared
     var body: some View {
         HStack(spacing: 0) {
@@ -68,6 +71,19 @@ struct BoringHeader: View {
                                     .fill(coordinator.currentView == .tutor ? Color(nsColor: .secondarySystemFill) : .clear)
                             }
                         }
+                        if Defaults[.callaCopilotEnabled] {
+                            TabButton(label: "Call", icon: "waveform.badge.mic", selected: coordinator.currentView == .copilot) {
+                                withAnimation(.smooth) {
+                                    coordinator.currentView = .copilot
+                                }
+                            }
+                            .frame(height: 26)
+                            .foregroundStyle(coordinator.currentView == .copilot ? .white : .gray)
+                            .background {
+                                Capsule()
+                                    .fill(coordinator.currentView == .copilot ? Color(nsColor: .secondarySystemFill) : .clear)
+                            }
+                        }
                         if Defaults[.showMirror] {
                             Button(action: {
                                 vm.toggleCameraPreview()
@@ -85,23 +101,28 @@ struct BoringHeader: View {
                             .buttonStyle(PlainButtonStyle())
                         }
                         if Defaults[.settingsIconInNotch] {
+                            // Opens the call copilot rather than Settings. Same
+                            // slot, same visibility toggle, but during a call
+                            // this is the thing worth one tap — Settings is
+                            // still on the menu bar item and ⌘,.
                             Button(action: {
                                 DispatchQueue.main.async {
-                                    SettingsWindowController.shared.showWindow()
+                                    CopilotWindowController.shared.show()
                                 }
-                                
                             }) {
                                 Capsule()
                                     .fill(.black)
                                     .frame(width: 30, height: 30)
                                     .overlay {
-                                        Image(systemName: "gear")
-                                            .foregroundColor(.white)
+                                        Image(systemName: "waveform.badge.mic")
+                                            .foregroundColor(
+                                                callaEngine.status.copilot.running ? .green : .white)
                                             .padding()
                                             .imageScale(.medium)
                                     }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .help("Call copilot")
                         }
                         if Defaults[.showBatteryIndicator] {
                             BoringBatteryView(

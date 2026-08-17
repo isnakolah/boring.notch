@@ -105,19 +105,29 @@ if [[ "$BUILD" == 1 ]]; then
   BUILD_LOG="$(mktemp -t boringNotch-build.XXXXXX)"
   if ! xcodebuild -project boringNotch.xcodeproj -scheme "$SCHEME" \
     -configuration "$CONFIG" build >"$BUILD_LOG" 2>&1; then
-    rg -n "error:|BUILD FAILED" "$BUILD_LOG" >&2 || tail -80 "$BUILD_LOG" >&2
+    grep -nE "error:|BUILD FAILED" "$BUILD_LOG" >&2 || tail -80 "$BUILD_LOG" >&2
     rm -f "$BUILD_LOG"
     exit 1
   fi
-  rg "BUILD SUCCEEDED" "$BUILD_LOG" || true
+  grep -m1 "BUILD SUCCEEDED" "$BUILD_LOG" || true
   rm -f "$BUILD_LOG"
 fi
 
-# Locate newest built .app in DerivedData. Multiple DerivedData directories can
-# coexist after project changes; deploying the first `find` result is not safe.
-SRC="$(find "$HOME/Library/Developer/Xcode/DerivedData"/boringNotch-*/Build/Products/"$CONFIG" \
-  -maxdepth 1 -type d -name "$APP_NAME" -print0 2>/dev/null | \
-  xargs -0 stat -f '%m %N' 2>/dev/null | sort -rn | head -1 | cut -d ' ' -f 2-)"
+# Locate the built .app in DerivedData. Multiple DerivedData directories can
+# coexist — including ones belonging to *other checkouts* of this project, whose
+# products may be newer but unsigned. Match on the recorded WorkspacePath so we
+# only ever deploy a product built from this working copy.
+SRC=""
+for derived_dir in "$HOME/Library/Developer/Xcode/DerivedData"/boringNotch-*; do
+  [[ -d "$derived_dir" ]] || continue
+  workspace_path="$(plutil -extract WorkspacePath raw -o - "$derived_dir/info.plist" 2>/dev/null || true)"
+  [[ "$workspace_path" == "$PROJECT_DIR/boringNotch.xcodeproj" ]] || continue
+  candidate="$derived_dir/Build/Products/$CONFIG/$APP_NAME"
+  [[ -d "$candidate" ]] || continue
+  if [[ -z "$SRC" || "$candidate" -nt "$SRC" ]]; then
+    SRC="$candidate"
+  fi
+done
 if [[ -z "$SRC" || ! -d "$SRC" ]]; then
   echo "✗ Could not find built $APP_NAME for $CONFIG" >&2
   exit 1
@@ -133,17 +143,27 @@ for required_resource in Calla/openclaw Calla/packs Calla/agent-workspace Calla/
 done
 for required_file in \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/MacOS/CallaTutorHost \
-  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaOverlayHelper \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/Helpers/CallaOverlayHelper.app/Contents/MacOS/CallaOverlayHelper \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-ask.sh \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-course.sh \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-gateway-check.sh \
   Contents/Resources/Calla/openclaw/openclaw.plugin.json \
   Contents/Resources/Calla/scripts/calla-node-host.sh \
   Contents/Resources/Calla/scripts/gateway-update.sh \
-  Contents/Resources/Calla/Gateway/calla-gateway.tar.gz; do
+  Contents/Resources/Calla/Gateway/calla-gateway.tar.gz \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaCallHost.app/Contents/MacOS/CallaCallHost \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaCallHost.app/Contents/Info.plist \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/Resources/assets/blender/wrench-template-5.2.png; do
   [[ -x "$SRC/$required_file" || -f "$SRC/$required_file" ]] || { echo "✗ Missing embedded Tutor file: $required_file" >&2; exit 1; }
 done
-tar -tzf "$SRC/Contents/Resources/Calla/Gateway/calla-gateway.tar.gz" | rg -qx 'release/manifest.json' \
+# The staging layout the loose-binary build produced. If these exist the build
+# merged old and new staging, and the .app bundles above may be stale.
+for stale_file in \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaOverlayHelper; do
+  [[ ! -f "$SRC/$stale_file" ]] || { echo "✗ Stale loose Tutor binary alongside its .app: $stale_file" >&2; exit 1; }
+done
+tar -tzf "$SRC/Contents/Resources/Calla/Gateway/calla-gateway.tar.gz" | grep -qx 'release/manifest.json' \
   || { echo "✗ Embedded Calla Gateway archive lacks release manifest" >&2; exit 1; }
 for forbidden_file in \
   Contents/Resources/Calla/scripts/bootstrap-calla-mac.sh \

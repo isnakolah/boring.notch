@@ -18,6 +18,9 @@ private struct Preferences: Codable, Equatable {
 
 private struct Status: Codable {
     var running = false
+    /// Whether the Tutor host is answering its socket, as opposed to whether
+    /// the engine believes it started it.
+    var hostReady = false
     var socketPath = ""
     var screenRecordingGranted = false
     var accessibilityGranted = false
@@ -29,26 +32,168 @@ private struct Status: Codable {
     var lastGatewayUpdateAt: Date? = nil
     var engineBuild: String? = nil
     var lastResult = "Engine not started"
-    var courses: [CourseSummary] = []
+    var diagnostics: [String] = []
+    var activeLesson: ActiveLesson? = nil
+    var courses: [CourseSnapshot] = []
+    var copilot: CopilotStatus = CopilotStatus()
 }
 
-private struct CourseSummary: Codable {
+/// Live-call state, folded into the same `Status` the notch already polls every
+/// two seconds. A second polling loop for the copilot would double the XPC
+/// traffic to report a feature that is idle most of the time.
+private struct CopilotStatus: Codable {
+    var available = false
+    var running = false
+    var callID: String? = nil
+    var persona = "generic"
+    var startedAt: Date? = nil
+    var turnCount = 0
+    var gatewayConnected = false
+    var micActive = false
+    var systemAudioActive = false
+    var headline: String? = nil
+    var angles: [String] = []
+    var confirm: [String] = []
+    var suggestionAfterSeq: Int? = nil
+    var lastResult: String? = nil
+}
+
+/// Mirrors `ActiveCallStatus` written by CallaCallHost.
+private struct CopilotHostStatus: Codable {
+    var callID: String
+    var persona: String
+    var startedAt: Date
+    var turnCount: Int
+    var gatewayConnected: Bool
+    var micActive: Bool
+    var systemAudioActive: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case callID = "call_id"
+        case persona
+        case startedAt = "started_at"
+        case turnCount = "turn_count"
+        case gatewayConnected = "gateway_connected"
+        case micActive = "mic_active"
+        case systemAudioActive = "system_audio_active"
+    }
+}
+
+/// Mirrors the gateway's `suggestion` frame as persisted by the host.
+private struct CopilotSuggestionFile: Codable {
+    var callID: String
+    var afterSeq: Int
+    var headline: String
+    var angles: [String]
+    var confirm: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case callID = "call_id"
+        case afterSeq = "after_seq"
+        case headline
+        case angles
+        case confirm
+    }
+}
+
+/// Typed copilot command from the owner UI.
+private struct CopilotCommand: Codable {
+    var action: String
+    var persona: String?
+    var model: String?
+}
+
+private struct ActiveLesson: Codable {
+    let courseID: String
+    let lessonID: String
+    let lessonTitle: String
+    let active: Bool
+    enum CodingKeys: String, CodingKey { case courseID = "course_id", lessonID = "lesson_id", lessonTitle = "lesson_title", active }
+}
+
+private struct LessonSnapshot: Codable {
+    let id: String
+    let title: String
+    let stepCount: Int
+    let completed: Bool
+    let dueForReview: Bool
+    enum CodingKeys: String, CodingKey { case id, title, completed; case stepCount = "step_count", dueForReview = "due_for_review" }
+}
+
+private struct CourseSnapshot: Codable {
     let id: String
     let title: String
     let summary: String
-    let lessonCount: Int
+    let icon: String
+    let targetApp: String?
+    let hidden: Bool
+    let completedCount: Int
+    let dueForReview: Bool
+    let checkpointLessonID: String?
+    let recentThread: [String]
+    let lifecyclePhase: String?
+    let lifecycleNote: String?
+    let runtimeVersion: String?
+    let runtimeBlocked: Bool
+    let lessons: [LessonSnapshot]
 
-    enum CodingKeys: String, CodingKey { case id, title, summary; case lessonCount = "lesson_count" }
+    enum CodingKeys: String, CodingKey {
+        case id, title, summary, icon, hidden, lessons
+        case targetApp = "target_app", completedCount = "completed_count", dueForReview = "due_for_review"
+        case checkpointLessonID = "checkpoint_lesson_id", recentThread = "recent_thread"
+        case lifecyclePhase = "lifecycle_phase", lifecycleNote = "lifecycle_note"
+        case runtimeVersion = "runtime_version", runtimeBlocked = "runtime_blocked"
+    }
 }
 
 private struct CatalogueCourse: Decodable {
     let id: String
     let title: String
     let summary: String
+    let icon: String?
+    let bundleIDs: [String]?
     let lessons: [CatalogueLesson]
+
+    enum CodingKeys: String, CodingKey { case id, title, summary, icon, lessons; case bundleIDs = "bundle_ids" }
 }
 
-private struct CatalogueLesson: Decodable { let id: String }
+private struct CatalogueLesson: Decodable { let id: String; let title: String }
+
+private struct LifecycleCourse: Decodable {
+    let id: String; let phase: String; let error: String?; let nextAction: String?
+    enum CodingKeys: String, CodingKey { case id, phase, error; case nextAction = "next_action" }
+}
+
+private struct CourseRunFile: Decodable {
+    let checkpointLessonID: String?
+    let entries: [CourseRunEntry]
+    enum CodingKeys: String, CodingKey { case entries; case checkpointLessonID = "checkpointLessonID" }
+}
+private struct CourseRunEntry: Decodable { let text: String }
+
+private struct RuntimeManifest: Decodable { let courses: [RuntimeCourse] }
+private struct RuntimeCourse: Decodable {
+    let courseID: String; let appBundleID: String; let appVersion: String; let lessons: [RuntimeLesson]
+    enum CodingKeys: String, CodingKey { case lessons; case courseID = "course_id", appBundleID = "app_bundle_id", appVersion = "app_version" }
+}
+private struct RuntimeLesson: Decodable {
+    let id: String; let steps: [RuntimeStep]
+}
+private struct RuntimeStep: Decodable { let id: String }
+private struct LearningRecord: Decodable {
+    let lessonID: String; let bundleID: String; let successes: Int; let nextDueAt: Double?
+    enum CodingKeys: String, CodingKey { case successes; case lessonID = "lesson_id", bundleID = "bundle_id", nextDueAt = "next_due_at" }
+}
+
+private struct CourseCommand: Decodable {
+    let action: String; let courseID: String?; let lessonID: String?; let outline: String?
+    let assetBundlePath: String?; let targetApp: String?; let targetVersion: String?
+    enum CodingKeys: String, CodingKey {
+        case action, outline
+        case courseID = "course_id", lessonID = "lesson_id", assetBundlePath = "asset_bundle_path"
+        case targetApp = "target_app", targetVersion = "target_version"
+    }
+}
 
 private struct CapabilityHandshake: Decodable {
     let engineBuild: String
@@ -59,6 +204,22 @@ private struct CapabilityHandshake: Decodable {
         case engineBuild = "engine_build"
         case nodeContractHash = "node_contract_hash"
         case receivedAt = "received_at"
+    }
+}
+
+/// Permission state as observed by CallaTutorHost, which is the executable TCC
+/// actually grants. Mirrors `CallaRuntime.HostStatus` on the host side.
+private struct HostStatus: Decodable {
+    let screenRecordingGranted: Bool
+    let accessibilityGranted: Bool
+    let captureActive: Bool
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case screenRecordingGranted = "screen_recording_granted"
+        case accessibilityGranted = "accessibility_granted"
+        case captureActive = "capture_active"
+        case updatedAt = "updated_at"
     }
 }
 
@@ -89,9 +250,21 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var lastResult = "Engine not started"
     private var runtime: Process?
     private var nodeRuntime: Process?
+    private var copilotProcess: Process?
+    private var copilotPersona = "generic"
+    private var copilotModel = "whisper-small-en"
+    private var copilotResult: String?
+    /// The host writes ISO-8601 dates; the default decoder would reject them.
+    private lazy var jsonDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
     private var gatewayUpdate: Process?
+    private var courseControlProcess: Process?
     private var gatewayReachable = false
     private var gatewayMonitor: DispatchSourceTimer?
+    private var diagnostics: [String] = []
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -106,18 +279,25 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         queue.async {
             NSLog("[CallaEngine] start requested")
             do {
-                let wasRunning = self.isRunning
                 try self.prepareRuntimeDirectories()
                 self.restorePreferences()
                 self.reclaimStaleOwnedChildren()
+                self.detectConflicts()
+                // Teaching depends on the host, so a failure here is fatal.
                 try self.startRuntime()
-                try self.startNodeRuntime()
-                self.startGatewayMonitor()
                 self.isRunning = true
-                self.lastResult = "Engine ready; Tutor runtime and Calla Mac node starting"
-                if self.isInstalledBoringApp, !wasRunning {
-                    self.requestGatewayUpdate(trigger: "launch")
+                // The node only carries Gateway traffic. It used to be started
+                // before `isRunning` was set, so a missing plugin file left the
+                // engine permanently "still starting" with a healthy host
+                // already running — every command refused, notch stuck offline.
+                do {
+                    try self.startNodeRuntime()
+                    self.lastResult = "Engine ready; Tutor runtime and Calla Mac node starting"
+                } catch {
+                    self.appendDiagnostic("Calla Mac node did not start: \(error.localizedDescription)")
+                    self.lastResult = "Tutor runtime ready; Calla Mac node unavailable"
                 }
+                self.startGatewayMonitor()
                 NSLog("[CallaEngine] runtime launched")
             } catch {
                 self.isRunning = false
@@ -137,8 +317,19 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             if let nodeRuntime = self.nodeRuntime { self.terminateProcessTree(nodeRuntime.processIdentifier) }
             self.nodeRuntime = nil
             self.clearOwnedPID(at: self.nodePIDURL)
+            // The call host holds the microphone. Leaving it running after the
+            // engine stops would keep a recording indicator lit with nothing
+            // driving it, so it goes down with everything else.
+            if let copilot = self.copilotProcess, copilot.isRunning {
+                kill(copilot.processIdentifier, SIGINT)
+                self.terminateProcessTree(copilot.processIdentifier)
+            }
+            self.copilotProcess = nil
+            self.clearOwnedPID(at: self.copilotPIDURL)
+            try? self.fileManager.removeItem(at: self.copilotStatusURL)
             self.gatewayReachable = false
             self.isRunning = false
+            self.removeSocketIfUnbound()
             self.lastResult = "Engine stopped"
             reply(self.encodedStatus())
         }
@@ -203,9 +394,11 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
 
     func requestAccessibility(with reply: @escaping (Data) -> Void) {
         queue.async {
-            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
-            self.lastResult = "Accessibility request shown for approved action"
+            // Same reason as requestScreenRecording above: prompting from here
+            // asked TCC about this XPC bundle, but CallaTutorHost is what calls
+            // AXUIElement, so approval landed on an executable that never uses
+            // it and the host stayed untrusted.
+            self.invokeRuntime(operation: "request_accessibility", payload: [:])
             reply(self.encodedStatus())
         }
     }
@@ -249,11 +442,291 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    func courseControl(_ data: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let command = try? JSONDecoder().decode(CourseCommand.self, from: data) else {
+                self.lastResult = "Rejected invalid course command"; reply(self.encodedStatus()); return
+            }
+            self.performCourseCommand(command)
+            reply(self.encodedStatus())
+        }
+    }
+
+    private func performCourseCommand(_ command: CourseCommand) {
+        let allowedActions: Set<String> = ["start_lesson", "start_again", "import", "cancel", "retry", "archive", "restore", "revise", "refresh_runtime"]
+        guard allowedActions.contains(command.action) else { lastResult = "Rejected unknown course command"; return }
+        let courseID = CallaCourseCommandValidation.identifier(command.courseID)
+        if command.action != "import" && command.action != "refresh_runtime" {
+            guard let courseID else { lastResult = "Rejected invalid course identifier"; return }
+            guard currentCourses().contains(where: { $0.id == courseID }) || currentLifecycleIDs().contains(courseID) else {
+                lastResult = "Course is not in Boring library"; return
+            }
+        }
+        switch command.action {
+        case "start_lesson":
+            guard let courseID, let lessonID = CallaCourseCommandValidation.identifier(command.lessonID),
+                  currentCourses().first(where: { $0.id == courseID })?.lessons.contains(where: { $0.id == lessonID }) == true else {
+                lastResult = "Lesson is not in selected course"; return
+            }
+            invokeRuntime(operation: "course_start", payload: ["course_id": courseID, "lesson_id": lessonID])
+        case "start_again":
+            guard let courseID else { lastResult = "Rejected invalid course identifier"; return }
+            invokeRuntime(operation: "course_start_again", payload: ["course_id": courseID])
+        case "import", "revise":
+            guard let outline = CallaCourseCommandValidation.outline(command.outline),
+                  let target = CallaCourseCommandValidation.bundleID(command.targetApp),
+                  preferences?.allowedBundleIDs.contains(target) == true,
+                  let version = CallaCourseCommandValidation.version(command.targetVersion),
+                  let zip = validatedZip(command.assetBundlePath) else {
+                lastResult = "Course needs allowed app, short outline, version, and local scene ZIP"; return
+            }
+            var payload: [String: Any] = ["outline": outline, "target_app": target, "target_version": version,
+                                          "target_frontmost": true, "target_allowlisted": true, "asset_bundle_local": zip.path]
+            if let courseID { payload["course_id"] = courseID }
+            runCourseScript(command.action == "revise" ? "edit-as-new-revision" : "import", payload: payload)
+        case "cancel", "retry", "archive", "restore":
+            guard let courseID else { lastResult = "Rejected invalid course identifier"; return }
+            runCourseScript(command.action, payload: ["course_id": courseID])
+        case "refresh_runtime":
+            runCourseScript("refresh-runtime", payload: [:])
+        default: break
+        }
+    }
+
+    private func validatedZip(_ value: String?) -> URL? {
+        CallaCourseCommandValidation.zipURL(value, fileManager: fileManager)
+    }
+
+    // MARK: - Live call copilot
+
+    /// The capture host's own directory, written by CallaCallHost and read here.
+    private var copilotRoot: URL { root.appendingPathComponent("copilot", isDirectory: true) }
+    private var copilotStatusURL: URL { copilotRoot.appendingPathComponent("active-call.json") }
+    private var copilotSuggestionURL: URL { copilotRoot.appendingPathComponent("latest-suggestion.json") }
+    private var copilotPIDURL: URL { root.appendingPathComponent("callhost.pid") }
+
+    /// The gateway route the copilot streams to. Fixed, like `probeGateway`'s
+    /// URL — a transcript must not be steerable to another host.
+    private static let copilotGateway = "wss://nomonhomelab.tailec0dca.ts.net/call-copilot/stream"
+
+    private var copilotExecutable: URL? {
+        let embedded = Bundle.main.resourceURL?
+            .appendingPathComponent("CallaRuntime/CallaCallHost.app/Contents/MacOS/CallaCallHost")
+        if let embedded, fileManager.isExecutableFile(atPath: embedded.path) { return embedded }
+        // Development fallback: the standalone bundle installed by
+        // scripts/calla/build-callhost.sh, so the feature is testable before a
+        // full app deployment.
+        let standalone = URL(fileURLWithPath: "/Applications/CallaCallHost.app/Contents/MacOS/CallaCallHost")
+        return fileManager.isExecutableFile(atPath: standalone.path) ? standalone : nil
+    }
+
+    func copilotControl(_ data: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let command = try? JSONDecoder().decode(CopilotCommand.self, from: data),
+                  let action = CallaCopilotCommandValidation.action(command.action) else {
+                self.lastResult = "Rejected invalid copilot command"
+                self.copilotResult = "Rejected invalid copilot command"
+                reply(self.encodedStatus()); return
+            }
+            switch action {
+            case "start": self.startCopilot(command)
+            case "stop": self.stopCopilot()
+            case "set_persona":
+                guard let persona = CallaCopilotCommandValidation.persona(command.persona) else {
+                    self.copilotResult = "Rejected unknown persona"; break
+                }
+                self.copilotPersona = persona
+                // Persona is fixed for the life of a call; the gateway binds it
+                // at call_start. Changing it takes effect on the next call.
+                self.copilotResult = self.copilotProcess?.isRunning == true
+                    ? "Persona set to \(persona); applies to the next call"
+                    : "Persona set to \(persona)"
+            default: break
+            }
+            reply(self.encodedStatus())
+        }
+    }
+
+    private func startCopilot(_ command: CopilotCommand) {
+        guard copilotProcess?.isRunning != true else { copilotResult = "Call already running"; return }
+        guard let executable = copilotExecutable else {
+            copilotResult = "Call host is not installed"; return
+        }
+        if let persona = CallaCopilotCommandValidation.persona(command.persona) { copilotPersona = persona }
+        if let model = CallaCopilotCommandValidation.liveModel(command.model) { copilotModel = model }
+        guard let gateway = CallaCopilotCommandValidation.gatewayURL(Self.copilotGateway) else {
+            copilotResult = "Copilot gateway route is not valid"; return
+        }
+
+        // Screen Recording is what captures the other party. Without it the
+        // call still runs, but only our own side is transcribed — which makes
+        // the suggestions close to useless, so say so rather than fail quietly.
+        if !CGPreflightScreenCaptureAccess() {
+            copilotResult = "Grant Screen Recording to capture the other party"
+        }
+
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = executable.deletingLastPathComponent()
+        process.arguments = [
+            "serve",
+            "--gateway", gateway.absoluteString,
+            "--persona", copilotPersona,
+            "--model", copilotModel,
+        ]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CALLA_RUNTIME_ROOT"] = root.path
+        process.environment = environment
+        let pidFile = copilotPIDURL
+        process.terminationHandler = { [weak self] child in
+            self?.queue.async {
+                self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
+                self?.copilotProcess = nil
+                if child.terminationStatus != 0 {
+                    self?.copilotResult = "Call host stopped (status \(child.terminationStatus))"
+                }
+                // The host removes its own status file on a clean exit; clear it
+                // here too so a crash cannot leave the notch showing a live call.
+                try? FileManager.default.removeItem(at: self?.copilotStatusURL ?? pidFile)
+            }
+        }
+        do {
+            try fileManager.createDirectory(at: copilotRoot, withIntermediateDirectories: true,
+                                            attributes: [.posixPermissions: 0o700])
+            try process.run()
+            copilotProcess = process
+            try? writeOwnedPID(process.processIdentifier, to: copilotPIDURL)
+            if copilotResult == nil { copilotResult = "Call started" }
+        } catch {
+            copilotResult = "Could not start call host: \(error.localizedDescription)"
+        }
+    }
+
+    private func stopCopilot() {
+        guard let process = copilotProcess, process.isRunning else {
+            copilotResult = "No call running"
+            try? fileManager.removeItem(at: copilotStatusURL)
+            return
+        }
+        // SIGINT rather than terminate(): the host flushes its endpointers,
+        // drains the transcription queue and closes the WAVs on it, so a
+        // trailing sentence is not lost.
+        kill(process.processIdentifier, SIGINT)
+        copilotResult = "Ending call…"
+    }
+
+    func copilotTranscript(with reply: @escaping (Data) -> Void) {
+        queue.async {
+            reply(self.currentCopilotTranscript())
+        }
+    }
+
+    /// Reads the live call's `transcript.jsonl`, newest turns last.
+    ///
+    /// Bounded on purpose: an hour-long call is thousands of turns, and the
+    /// window only ever shows the tail. Reading the whole file into an XPC
+    /// reply would stall the engine queue that also serves the status poll.
+    private func currentCopilotTranscript(limit: Int = 400) -> Data {
+        guard let callID = (try? Data(contentsOf: copilotStatusURL))
+            .flatMap({ try? jsonDecoder.decode(CopilotHostStatus.self, from: $0) })?.callID,
+            let validID = CallaCopilotCommandValidation.callID(callID) else {
+            return Data("[]".utf8)
+        }
+        let file = copilotRoot
+            .appendingPathComponent("calls", isDirectory: true)
+            .appendingPathComponent(validID, isDirectory: true)
+            .appendingPathComponent("transcript.jsonl")
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return Data("[]".utf8) }
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .suffix(limit)
+        return Data(("[" + lines.joined(separator: ",") + "]").utf8)
+    }
+
+    private func currentCopilotStatus() -> CopilotStatus {
+        var status = CopilotStatus()
+        status.available = copilotExecutable != nil
+        status.persona = copilotPersona
+        status.lastResult = copilotResult
+
+        if let data = try? Data(contentsOf: copilotStatusURL),
+           let host = try? jsonDecoder.decode(CopilotHostStatus.self, from: data) {
+            status.running = copilotProcess?.isRunning == true
+            status.callID = host.callID
+            status.persona = host.persona
+            status.startedAt = host.startedAt
+            status.turnCount = host.turnCount
+            status.gatewayConnected = host.gatewayConnected
+            status.micActive = host.micActive
+            status.systemAudioActive = host.systemAudioActive
+
+            if let suggestionData = try? Data(contentsOf: copilotSuggestionURL),
+               let suggestion = try? jsonDecoder.decode(CopilotSuggestionFile.self, from: suggestionData),
+               // A suggestion left over from an earlier call must never be
+               // shown against the current one.
+               suggestion.callID == host.callID {
+                status.headline = suggestion.headline
+                status.angles = suggestion.angles
+                status.confirm = suggestion.confirm
+                status.suggestionAfterSeq = suggestion.afterSeq
+            }
+        }
+        return status
+    }
+
+    private func runCourseScript(_ action: String, payload: [String: Any]) {
+        guard courseControlProcess?.isRunning != true else { lastResult = "Course command already running"; return }
+        guard let resource = Bundle.main.resourceURL?
+            .appendingPathComponent("CallaRuntime/scripts/calla-course.sh"),
+              fileManager.isExecutableFile(atPath: resource.path),
+              JSONSerialization.isValidJSONObject(payload),
+              let input = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else {
+            lastResult = "Course control script unavailable"; return
+        }
+        let process = Process(); process.executableURL = resource; process.arguments = [action]
+        let stdin = Pipe(); process.standardInput = stdin
+        process.standardOutput = Pipe(); process.standardError = Pipe()
+        process.terminationHandler = { [weak self] process in
+            self?.queue.async {
+                self?.courseControlProcess = nil
+                self?.lastResult = process.terminationStatus == 0 ? "Course command accepted" : "Course command did not complete"
+                self?.appendDiagnostic("course control \(action): \(process.terminationStatus == 0 ? "accepted" : "failed")")
+            }
+        }
+        do {
+            try process.run(); stdin.fileHandleForWriting.write(input); stdin.fileHandleForWriting.closeFile()
+            courseControlProcess = process; lastResult = "Course command sent"; appendDiagnostic("course control \(action): sent")
+        } catch { lastResult = "Course command could not start" }
+    }
+
+    private func appendDiagnostic(_ line: String) {
+        diagnostics.append(String(line.prefix(160)))
+        diagnostics = Array(diagnostics.suffix(12))
+    }
+
     private func prepareRuntimeDirectories() throws {
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         for name in ["catalogue", "courses", "learning", "overlay", "logs", "cache"] {
             try fileManager.createDirectory(at: root.appendingPathComponent(name, isDirectory: true), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         }
+    }
+
+    /// Both children inherit the XPC service's stdio, which goes nowhere. Until
+    /// this existed the only node log on disk was the one the retired
+    /// `com.calla.openclaw-node-host` LaunchAgent wrote via `StandardOutPath`,
+    /// so disabling that agent also blinded `BackendStatus`. Give each child its
+    /// own owner-only file under the private runtime root instead of sharing
+    /// `~/Library/Logs/Calla`, where two hosts' lines were indistinguishable.
+    private func childLogHandle(_ name: String) -> FileHandle? {
+        let file = root.appendingPathComponent("logs/\(name).log")
+        if !fileManager.fileExists(atPath: file.path) {
+            fileManager.createFile(atPath: file.path, contents: nil,
+                                   attributes: [.posixPermissions: 0o600])
+        }
+        guard let handle = try? FileHandle(forWritingTo: file) else { return nil }
+        // Append: a restart must not truncate the evidence of why the last run died.
+        _ = try? handle.seekToEnd()
+        return handle
     }
 
     private func writePreferences(_ preferences: Preferences) throws {
@@ -292,12 +765,27 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_RUNTIME_ROOT"] = root.path
         environment["CALLA_RUNTIME_MODE"] = "boring"
         process.environment = environment
+        if let log = childLogHandle("tutor-host") {
+            process.standardOutput = log
+            process.standardError = log
+        }
         let pidFile = runtimePIDURL
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
-                self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
-                self?.isRunning = false
-                self?.lastResult = "Tutor runtime stopped (status \(child.terminationStatus))"
+                guard let self else { return }
+                self.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
+                self.isRunning = false
+                // The host calls NSApp.terminate(nil) — a clean exit 0 — when it
+                // finds another host already holding the socket. Reporting that
+                // as a plain stop hid the one failure with an obvious cause, so
+                // ask who is still answering before naming it.
+                if RuntimeSocketClient.answers(path: self.socketURL.path) {
+                    let message = "Another Tutor host already holds the runtime socket; Boring stood down"
+                    self.lastResult = message
+                    self.appendDiagnostic(message)
+                } else {
+                    self.lastResult = "Tutor runtime stopped (status \(child.terminationStatus))"
+                }
             }
         }
         try process.run()
@@ -311,6 +799,14 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private func startNodeRuntime() throws {
         guard ProcessInfo.processInfo.environment["CALLA_DISABLE_NODE"] != "1" else { return }
         guard nodeRuntime?.isRunning != true else { return }
+        // Refuse to be the second node. Starting one anyway is what produced the
+        // flap: the Gateway accepts one `Calla Mac`, evicts the duplicate, and
+        // the survivor's KeepAlive brings it straight back. This holds even if
+        // somebody re-enables the retired LaunchAgent.
+        if let pid = foreignNodeProcess() {
+            appendDiagnostic("Not starting a node: another Calla Mac node is running (pid \(pid))")
+            return
+        }
         guard let appResources = appCallaResources(),
               fileManager.fileExists(atPath: appResources.appendingPathComponent("openclaw/openclaw.plugin.json").path),
               fileManager.isExecutableFile(atPath: appResources.appendingPathComponent("scripts/calla-node-host.sh").path) else {
@@ -329,6 +825,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_NODE_DISPLAY_NAME"] = "Calla Mac"
         environment["CALLA_RUNTIME_ROOT"] = root.path
         process.environment = environment
+        if let log = childLogHandle("node-host") {
+            process.standardOutput = log
+            process.standardError = log
+        }
         let pidFile = nodePIDURL
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
@@ -340,6 +840,73 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         try process.run()
         nodeRuntime = process
         try writeOwnedPID(process.processIdentifier, to: nodePIDURL)
+    }
+
+    /// Drop the socket file once nothing is bound to it, so the next `start`
+    /// does not meet a leftover from the last one.
+    ///
+    /// Only ever when the probe says dead. Unlinking a live socket is exactly
+    /// how two hosts end up believing they each own the runtime.
+    private func removeSocketIfUnbound(waitingUpTo seconds: TimeInterval = 2) {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if !RuntimeSocketClient.answers(path: socketURL.path) {
+                try? fileManager.removeItem(at: socketURL)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    /// The retired standalone install listens here. Boring moved its own socket
+    /// under the private runtime root, so the two hosts never see each other:
+    /// each one's stand-down check probes only its own path, and both then run,
+    /// both claim the same global and lesson hotkeys, and both draw an overlay.
+    private var legacyHostSocketPath: String {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent("Library/Application Support/CallaTutor/tutor-host.sock").path
+    }
+
+    /// Report a competing install. Detection only — never kill and never
+    /// delete, by the same rule that governs `reclaimStaleOwnedChildren`.
+    /// Boring owns its own children and nothing else.
+    private func detectConflicts() {
+        if RuntimeSocketClient.answers(path: legacyHostSocketPath) {
+            appendDiagnostic("A legacy Calla TutorHost is running and will fight for lesson shortcuts")
+        }
+        if let pid = foreignNodeProcess() {
+            appendDiagnostic("Another Calla Mac node is already running (pid \(pid))")
+        }
+    }
+
+    /// A node process that is not ours. Two nodes registering the same
+    /// `Calla Mac` identity make the Gateway evict one, and whichever agent
+    /// holds KeepAlive respawns it, so the pair flap indefinitely.
+    private func foreignNodeProcess() -> pid_t? {
+        let ours = nodeRuntime?.processIdentifier
+        let ourDescendants = ours.map { Set(childProcesses(of: $0) + [$0]) } ?? []
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-axo", "pid=,command="]
+        process.standardOutput = output
+        guard (try? process.run()) != nil else { return nil }
+        // Drain before waiting. Full command lines run to tens of kilobytes, and
+        // a pipe holds 64K: waiting first deadlocks the engine's serial queue
+        // against a `ps` that is blocked writing into a buffer nobody is reading.
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let separator = trimmed.firstIndex(of: " "),
+                  let pid = pid_t(trimmed[trimmed.startIndex..<separator]) else { continue }
+            let command = trimmed[separator...]
+            guard command.contains("openclaw-node") else { continue }
+            if ourDescendants.contains(pid) { continue }
+            return pid
+        }
+        return nil
     }
 
     private func appCallaResources() -> URL? {
@@ -357,10 +924,20 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         if runtime?.isRunning != true {
             reclaimOwnedProcess(at: runtimePIDURL)
             runtime = nil
+            // A reclaimed host leaves its socket file behind the same way a
+            // stopped one does.
+            removeSocketIfUnbound(waitingUpTo: 0.5)
         }
         if nodeRuntime?.isRunning != true {
             reclaimOwnedProcess(at: nodePIDURL)
             nodeRuntime = nil
+        }
+        if copilotProcess?.isRunning != true {
+            reclaimOwnedProcess(at: copilotPIDURL)
+            copilotProcess = nil
+            // A reclaimed host is a dead call. Clear the status file so the
+            // notch cannot keep showing a call that ended with the process.
+            try? fileManager.removeItem(at: copilotStatusURL)
         }
     }
 
@@ -407,9 +984,12 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         process.arguments = ["-axo", "pid=,ppid="]
         process.standardOutput = output
         guard (try? process.run()) != nil else { return [] }
+        // Drain before waiting, for the same reason as `foreignNodeProcess`.
+        // This output is small enough to have got away with it so far.
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         guard process.terminationStatus == 0,
-              let text = String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else { return [] }
+              let text = String(data: data, encoding: .utf8) else { return [] }
         let parents = text.split(separator: "\n").reduce(into: [pid_t: [pid_t]]()) { result, line in
             let fields = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
             guard fields.count == 2, let pid = Int32(fields[0]), let parent = Int32(fields[1]) else { return }
@@ -501,8 +1081,13 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func invokeRuntime(operation: String, payload: [String: Any]) {
-        guard isRunning, fileManager.fileExists(atPath: socketURL.path) else {
-            lastResult = "Tutor runtime is still starting"
+        // Probe rather than stat. `stop()` used to leave the socket file behind,
+        // so `fileExists` passed against a host that was gone and every command
+        // then failed at connect with a generic transport error.
+        guard RuntimeSocketClient.answers(path: socketURL.path) else {
+            lastResult = fileManager.fileExists(atPath: socketURL.path)
+                ? "Tutor runtime is not listening"
+                : "Tutor runtime is still starting"
             return
         }
         let request: [String: Any] = [
@@ -537,10 +1122,6 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let outcome = fields.count > 1 ? String(fields[1]) : ""
         let current = fields.count > 2 && !fields[2].isEmpty ? String(fields[2]) : previous?.currentRelease
         let prior = fields.count > 3 && !fields[3].isEmpty ? String(fields[3]) : previous?.previousRelease
-        let cleanOutput = output.split(separator: "\n")
-            .filter { !$0.hasPrefix("CALLA_GATEWAY_RESULT\t") }
-            .suffix(8)
-            .joined(separator: "\n")
         let fallback: String
         if succeeded, outcome == "unchanged" {
             fallback = "Gateway release unchanged"
@@ -549,7 +1130,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         } else {
             fallback = "Gateway update failed: exit \(terminationStatus)"
         }
-        let summary = cleanOutput.isEmpty ? fallback : cleanOutput
+        // Gateway stdout can include transport and tool detail. Boring keeps a
+        // receipt state only, never raw Gateway output.
+        let summary = fallback
         let record = GatewayUpdateRecord(currentRelease: current, previousRelease: prior,
                                          summary: summary, completedAt: Date())
         do {
@@ -583,11 +1166,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let handshake = currentCapabilityHandshake()
         let gatewayUpdate = currentGatewayUpdate()
         let hasVerifiedHandshake = handshake != nil
+        // Read from the host's receipt, not from this process. TCC grants are
+        // per executable and CallaTutorHost is what captures, so preflighting
+        // here reported the XPC service's own grant — which is why Settings
+        // said "Required" against a host holding both.
+        let hostStatus = currentHostStatus()
         let status = Status(
             running: isRunning,
+            hostReady: RuntimeSocketClient.answers(path: socketURL.path),
             socketPath: socketURL.path,
-            screenRecordingGranted: CGPreflightScreenCaptureAccess(),
-            accessibilityGranted: AXIsProcessTrusted(),
+            screenRecordingGranted: hostStatus?.screenRecordingGranted ?? false,
+            accessibilityGranted: hostStatus?.accessibilityGranted ?? false,
             gatewayReachable: gatewayReachable,
             nodeConnected: gatewayReachable && hasVerifiedHandshake && nodeRuntime?.isRunning == true,
             releaseVersion: gatewayUpdate?.currentRelease,
@@ -596,19 +1185,103 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             lastGatewayUpdateAt: gatewayUpdate?.completedAt,
             engineBuild: handshake?.engineBuild,
             lastResult: lastResult,
-            courses: currentCourses()
+            diagnostics: diagnostics,
+            activeLesson: currentActiveLesson(),
+            courses: currentCourses(),
+            copilot: currentCopilotStatus()
         )
-        return (try? JSONEncoder().encode(status)) ?? Data()
+        do {
+            return try JSONEncoder().encode(status)
+        } catch {
+            // Empty Data decodes to nothing on the far side, which looked
+            // exactly like a dropped reply. The client logs its half; this is
+            // the other one.
+            NSLog("[CallaEngine] could not encode status: %@", String(describing: error))
+            return Data()
+        }
     }
 
-    private func currentCourses() -> [CourseSummary] {
+    private func currentCourses() -> [CourseSnapshot] {
         let file = root.appendingPathComponent("catalogue.json")
         guard let data = try? Data(contentsOf: file),
               let courses = try? JSONDecoder().decode([CatalogueCourse].self, from: data) else { return [] }
         let hidden = Set(preferences?.hiddenCourseIDs ?? [])
-        return courses.filter { !hidden.contains($0.id) }.prefix(100).map {
-            CourseSummary(id: $0.id, title: $0.title, summary: $0.summary, lessonCount: $0.lessons.count)
+        let lifecycle = currentLifecycle().reduce(into: [String: LifecycleCourse]()) { $0[$1.id] = $1 }
+        let runs = currentCourseRuns()
+        let runtime = currentRuntime().reduce(into: [String: RuntimeCourse]()) { $0[$1.courseID] = $1 }
+        let learning = currentLearning()
+        return courses.prefix(100).map { course in
+            let target = course.bundleIDs?.first
+            let run = runs[course.id]
+            let runtimeCourse = runtime[course.id]
+            let lessons = course.lessons.prefix(100).map { lesson -> LessonSnapshot in
+                let record = target.flatMap { learning["\($0)|\(lesson.id)"] }
+                return LessonSnapshot(id: lesson.id, title: String(lesson.title.prefix(160)),
+                                      stepCount: runtimeCourse?.lessons.first(where: { $0.id == lesson.id })?.steps.count ?? 0,
+                                      completed: (record?.successes ?? 0) > 0,
+                                      dueForReview: (record?.successes ?? 0) > 0 && (record?.nextDueAt ?? .greatestFiniteMagnitude) <= Date().timeIntervalSince1970)
+            }
+            let life = lifecycle[course.id]
+            let progress = CallaCoursePresentation.progress(lessons.map { (completed: $0.completed, due: $0.dueForReview) })
+            return CourseSnapshot(
+                id: course.id, title: String(course.title.prefix(160)), summary: String(course.summary.prefix(360)),
+                icon: String((course.icon ?? "books.vertical.fill").prefix(80)), targetApp: target,
+                hidden: CallaCoursePresentation.isHidden(courseID: course.id, hiddenIDs: hidden), completedCount: progress.completed,
+                dueForReview: progress.due, checkpointLessonID: run?.checkpointLessonID,
+                recentThread: Array((run?.entries ?? []).suffix(8).map { safeThread($0.text) }),
+                lifecyclePhase: CallaCoursePresentation.lifecyclePhase(life?.phase), lifecycleNote: safeLifecycle(life?.nextAction ?? life?.error),
+                runtimeVersion: runtimeCourse?.appVersion,
+                runtimeBlocked: runtimeCourse != nil && target != runtimeCourse?.appBundleID,
+                lessons: lessons)
         }
+    }
+
+    private func currentLifecycle() -> [LifecycleCourse] {
+        decodeFile("course-status.json", as: [LifecycleCourse].self) ?? []
+    }
+
+    private func currentLifecycleIDs() -> Set<String> { Set(currentLifecycle().map(\.id)) }
+
+    private func currentCourseRuns() -> [String: CourseRunFile] {
+        decodeFile("course-runs.json", as: [String: CourseRunFile].self) ?? [:]
+    }
+
+    private func currentRuntime() -> [RuntimeCourse] {
+        (decodeFile("course-runtime.json", as: RuntimeManifest.self)?.courses ?? []).prefix(200).map { $0 }
+    }
+
+    private func currentLearning() -> [String: LearningRecord] {
+        let directory = root.appendingPathComponent("learning", isDirectory: true)
+        let files = (try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        return files.prefix(300).reduce(into: [String: LearningRecord]()) { result, file in
+            guard let record = try? JSONDecoder().decode(LearningRecord.self, from: Data(contentsOf: file)),
+                  CallaCourseCommandValidation.bundleID(record.bundleID) != nil,
+                  CallaCourseCommandValidation.identifier(record.lessonID) != nil else { return }
+            result["\(record.bundleID)|\(record.lessonID)"] = record
+        }
+    }
+
+    private func currentActiveLesson() -> ActiveLesson? {
+        guard let lesson = decodeFile("active-lesson.json", as: ActiveLesson.self), lesson.active,
+              currentCourses().contains(where: { $0.id == lesson.courseID && $0.lessons.contains(where: { $0.id == lesson.lessonID }) }) else { return nil }
+        return lesson
+    }
+
+    private func decodeFile<T: Decodable>(_ name: String, as type: T.Type) -> T? {
+        let file = root.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func safeThread(_ value: String) -> String {
+        let clean = value.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\t", with: " ")
+        return String(clean.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(240))
+    }
+
+    private func safeLifecycle(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let clean = value.replacingOccurrences(of: #"https?://\S+|(?:~|/)[^\s]+"#, with: "[redacted]", options: .regularExpression)
+        return String(clean.replacingOccurrences(of: "\n", with: " ").prefix(240))
     }
 
     private func currentCapabilityHandshake() -> CapabilityHandshake? {
@@ -619,6 +1292,15 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
               value.nodeContractHash.range(of: "^[A-Fa-f0-9]{16,128}$", options: .regularExpression) != nil else {
             return nil
         }
+        return value
+    }
+
+    /// The host refreshes this every five seconds while it is alive. A stale
+    /// receipt means the host is gone or wedged, and reporting its last known
+    /// grants as current would show "Allowed" for a process that is not there.
+    private func currentHostStatus(maximumAge: TimeInterval = 60) -> HostStatus? {
+        guard let value = decodeFile("host-status.json", as: HostStatus.self),
+              Date().timeIntervalSince(value.updatedAt) <= maximumAge else { return nil }
         return value
     }
 }
@@ -679,5 +1361,33 @@ private enum RuntimeSocketClient {
         }
         guard let newline = response.firstIndex(of: 0x0A) else { throw TutorRuntimeError.invalidResponse }
         return response.prefix(upTo: newline)
+    }
+
+    /// Whether anything is listening. `FileManager.fileExists` cannot answer
+    /// this: a socket file outlives the process that bound it, so a stale one
+    /// reads as present and every command then fails at connect instead.
+    ///
+    /// Connect-only, no write — this must never disturb a host mid-lesson, and
+    /// it is also how a foreign host on the retired path is detected.
+    static func answers(path: String, timeoutSeconds: Int32 = 1) -> Bool {
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        var timeout = timeval(tv_sec: Int(timeoutSeconds), tv_usec: 0)
+        _ = setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        _ = setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        let byteCount = path.utf8.count + 1
+        guard byteCount <= MemoryLayout.size(ofValue: address.sun_path) else { return false }
+        _ = path.withCString { source in
+            withUnsafeMutablePointer(to: &address.sun_path.0) { strncpy($0, source, byteCount) }
+        }
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(descriptor, $0, socklen_t(MemoryLayout<sa_family_t>.size + byteCount))
+            }
+        }
+        return connected == 0
     }
 }

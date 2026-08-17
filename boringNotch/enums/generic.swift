@@ -28,6 +28,7 @@ public enum NotchViews {
     case home
     case shelf
     case tutor
+    case copilot
     case usage
     case pomodoro
 }

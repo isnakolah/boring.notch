@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>CallaCallHost</string>
+	<key>CFBundleIdentifier</key>
+	<string>theboringteam.boringnotch.CallaCallHost</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>CallaCallHost</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<!-- Never shows in the Dock or the switcher; it is driven by the engine. -->
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Calla transcribes your side of a call on this Mac to suggest how to answer. Audio is never uploaded.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Calla captures system audio to transcribe the other party on a call. Only audio is used; no screen contents are recorded or uploaded.</string>
+</dict>
+</plist>

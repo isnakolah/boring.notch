@@ -27,6 +27,8 @@ struct ContentView: View {
     @ObservedObject var pomodoro = PomodoroManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var pomodoroAutoCloseTask: Task<Void, Never>?
+    @State private var lessonAutoCloseTask: Task<Void, Never>?
+    @State private var copilotAutoCloseTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
 
@@ -390,6 +392,8 @@ struct ContentView: View {
                         ShelfView()
                     case .tutor:
                         CallaTabView()
+                    case .copilot:
+                        CallaCopilotTabView()
                     case .usage:
                         UsageMonitorView()
                     case .pomodoro:
@@ -421,6 +425,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .pomodoroPhaseEnded)) { _ in
             showPomodoroPhaseChange()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .callaLessonDidStart)) { _ in
+            showLessonStart()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .callaCopilotSuggestion)) { _ in
+            showCopilotSuggestion()
+        }
         .onChange(of: vm.notchState) { _, state in
             // Only an open notch may host a caret. Closing hands the keyboard
             // back to whatever the user was actually working in.
@@ -442,6 +452,50 @@ struct ContentView: View {
 
         pomodoroAutoCloseTask?.cancel()
         pomodoroAutoCloseTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled, !isHovering, vm.notchState == .open else { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
+                vm.close()
+            }
+        }
+    }
+
+    /// A new pointer peeks the notch just long enough to read it.
+    ///
+    /// Shorter than a lesson start, because this fires mid-conversation: the
+    /// user is about to speak, and a panel parked over the call is worse than
+    /// no panel. Hovering holds it open for a longer read.
+    private func showCopilotSuggestion() {
+        guard Defaults[.callaCopilotEnabled], Defaults[.callaCopilotAutoReveal] else { return }
+        // Never steal the notch from a live lesson.
+        guard coordinator.currentView != .tutor || CallaEngineClient.shared.status.activeLesson?.active != true else { return }
+
+        coordinator.currentView = .copilot
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) {
+            vm.open()
+        }
+
+        copilotAutoCloseTask?.cancel()
+        copilotAutoCloseTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, !isHovering, vm.notchState == .open else { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
+                vm.close()
+            }
+        }
+    }
+
+    /// A lesson start pins the notch to Tutor and shows the live lesson, then
+    /// steps aside: the learner needs the app being taught, not a panel parked
+    /// over it. The tab stays selected, so reopening lands back on the lesson.
+    private func showLessonStart() {
+        coordinator.currentView = .tutor
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) {
+            vm.open()
+        }
+
+        lessonAutoCloseTask?.cancel()
+        lessonAutoCloseTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, !isHovering, vm.notchState == .open else { return }
             withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {

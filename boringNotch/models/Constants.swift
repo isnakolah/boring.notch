@@ -194,6 +194,19 @@ extension Defaults.Keys {
     static let callaCalendarEnabled = Key<Bool>("callaCalendarEnabled", default: true)
     static let callaCalendarBindings = Key<Data?>("callaCalendarBindings", default: nil)
 
+    // MARK: Calla Call Copilot
+    static let callaCopilotEnabled = Key<Bool>("callaCopilotEnabled", default: true)
+    /// Which conversation the pointers are tuned for. Bound at call start; the
+    /// gateway validates it against the same allowlist.
+    static let callaCopilotPersona = Key<String>("callaCopilotPersona", default: "generic")
+    /// Live transcription model. The archive model is deliberately not offered:
+    /// its CoreML encoder forces whisper's full 30s context per utterance.
+    static let callaCopilotLiveModel = Key<String>("callaCopilotLiveModel", default: "whisper-small-en")
+    /// Peek the newest pointer in the notch as it arrives.
+    static let callaCopilotAutoReveal = Key<Bool>("callaCopilotAutoReveal", default: true)
+    /// Re-transcribe the saved audio with the large model after the call ends.
+    static let callaCopilotArchiveRetranscribe = Key<Bool>("callaCopilotArchiveRetranscribe", default: false)
+
     // MARK: Usage Monitor
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
     static let usageMonitorRefreshInterval = Key<Double>("usageMonitorRefreshInterval", default: 300)
