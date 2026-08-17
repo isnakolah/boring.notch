@@ -62,14 +62,14 @@ struct CallaCopilotTabView: View {
                     .foregroundStyle(.secondary)
             }
             Button {
-                CopilotWindowController.shared.show()
+                SettingsWindowController.shared.showCopilotWindow(tab: "CopilotHistory")
             } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                Image(systemName: "clock.arrow.circlepath")
                     .font(.system(size: 10, weight: .semibold))
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
-            .help("Open the full transcript")
+            .help("Past calls and their transcripts")
         }
     }
 
@@ -189,14 +189,36 @@ struct CallaCopilotTabView: View {
 
 /// The personas the gateway flow ships, and their display names.
 enum CallaCopilotPersona {
-    static let all = ["generic", "interview", "sales", "support"]
+    /// Seeded by the gateway. Their guidance text can be edited in settings;
+    /// their ids cannot, because the gateway's own allowlist knows them.
+    static let builtIn = ["generic", "interview", "sales", "support"]
+
+    static let all = builtIn
+
+    /// The built-ins plus whatever the user added, in a stable order.
+    static func all(including custom: [String]) -> [String] {
+        builtIn + custom.filter { !builtIn.contains($0) }.sorted()
+    }
 
     static func title(_ value: String) -> String {
         switch value {
+        case "generic": return "General"
         case "interview": return "Interview"
         case "sales": return "Sales"
         case "support": return "Support"
-        default: return "General"
+        default:
+            // A user-defined id like `board-review` reads as "Board review".
+            return value
+                .replacingOccurrences(of: "-", with: " ")
+                .prefix(1).uppercased()
+                + value.replacingOccurrences(of: "-", with: " ").dropFirst()
         }
+    }
+
+    /// Ids the user may create. Kept allowlist-shaped even though the guidance
+    /// body is free text: an id can end up naming things, a paragraph cannot.
+    static func isValidCustomID(_ value: String) -> Bool {
+        !builtIn.contains(value)
+            && value.range(of: "^[a-z0-9-]{1,24}$", options: .regularExpression) != nil
     }
 }

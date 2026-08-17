@@ -56,6 +56,23 @@ enum CallaCopilotPresentation {
         }
     }
 
+    /// A short label for which brain answered, or nil when there is nothing worth
+    /// saying.
+    ///
+    /// Shown only when the copilot is *not* on the brain the user chose — that is
+    /// the case worth two characters of the slab. Announcing "This Mac" during a
+    /// perfectly ordinary local call would spend the space on nothing, but a
+    /// silent handover to the gateway looks exactly like a copilot that has gone
+    /// vague, and the user would have no way to tell the difference.
+    static func providerBadge(active: String?, preferred: String, running: Bool) -> Pill? {
+        guard running, let active, active != preferred else { return nil }
+        switch active {
+        case "gateway": return Pill(text: "Gateway", tone: .warning)
+        case "local": return Pill(text: "This Mac", tone: .active)
+        default: return nil
+        }
+    }
+
     static func primaryActionTitle(running: Bool) -> String {
         running ? "End call" : "Start call"
     }
