@@ -13,6 +13,18 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>boringNotch discovers paired LocalSend and KDE Connect devices on your local network to send Shelf items.</string>
+	<!--
+	  The call copilot captures through CallaCallHost, which carries its own
+	  copies of these strings. They are needed here as well: TCC attributes a
+	  request to the *responsible* process, and for a helper spawned by our XPC
+	  service that is boringNotch. Without them the host is killed outright —
+	  "This app has crashed because it attempted to access privacy-sensitive
+	  data without a usage description" — the moment it asks for a microphone.
+	-->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The call copilot transcribes your side of a call on this Mac to suggest how to answer. Audio never leaves your Mac.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>The call copilot captures system audio to transcribe the other party on a call. Only audio is used; no screen contents are recorded or uploaded.</string>
 	<key>SUEnableDownloaderService</key>
 	<true/>
 	<key>SUEnableInstallerLauncherService</key>
