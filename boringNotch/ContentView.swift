@@ -25,6 +25,7 @@ struct ContentView: View {
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var pomodoro = PomodoroManager.shared
+    @ObservedObject var copilotSession = CopilotLiveSession.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var pomodoroAutoCloseTask: Task<Void, Never>?
     @State private var lessonAutoCloseTask: Task<Void, Never>?
@@ -61,6 +62,24 @@ struct ContentView: View {
                 ? cornerRadiusInsets.opened.bottom
                 : cornerRadiusInsets.closed.bottom
         )
+    }
+
+    /// The live copilot panel reads as glass; every other state is the opaque
+    /// slab the notch has always been.
+    private var isCopilotGlass: Bool {
+        vm.notchState == .open && coordinator.currentView == .copilot && copilotSession.isLive
+    }
+
+    @ViewBuilder
+    private var notchBackground: some View {
+        if isCopilotGlass {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Color.black.opacity(1 - Defaults[.callaCopilotGlassLevel])
+            }
+        } else {
+            Color.black
+        }
     }
 
     private var computedChinWidth: CGFloat {
@@ -118,9 +137,20 @@ struct ContentView: View {
                         : cornerRadiusInsets.closed.bottom
                     )
                     .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
-                    .background(.black)
+                    .background(notchBackground)
                     .clipShape(currentNotchShape)
+                    .overlay {
+                        // Only the glass panel needs an edge; the opaque slab
+                        // reads as one piece with the display bezel already.
+                        if isCopilotGlass {
+                            currentNotchShape
+                                .stroke(.white.opacity(0.08), lineWidth: 0.5)
+                        }
+                    }
                     .overlay(alignment: .top) {
+                        // Stays opaque even behind glass: this hairline is what
+                        // fuses the panel with the physical notch, and a
+                        // translucent version of it reads as a seam.
                         Rectangle()
                             .fill(.black)
                             .frame(height: 1)
@@ -136,7 +166,15 @@ struct ContentView: View {
                     )
                 
                 mainLayout
-                    .frame(height: vm.notchState == .open ? vm.notchSize.height : nil, alignment: .top)
+                    // Width is pinned as tightly as height. The panel is built
+                    // at the widest any mode needs, so without this every tab
+                    // would stretch to the copilot's width — the notch is only
+                    // allowed to grow for a live call, and goes straight back
+                    // afterwards.
+                    .frame(
+                        width: vm.notchState == .open ? vm.notchSize.width : nil,
+                        height: vm.notchState == .open ? vm.notchSize.height : nil,
+                        alignment: .top)
                     .conditionalModifier(true) { view in
                         let openAnimation = Animation.spring(response: 0.42, dampingFraction: 0.8, blendDuration: 0)
                         let closeAnimation = Animation.spring(response: 0.45, dampingFraction: 1.0, blendDuration: 0)
@@ -145,7 +183,15 @@ struct ContentView: View {
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
                     }
-                    .contentShape(Rectangle())
+                    // A live call parks a panel over the meeting for its whole
+                    // duration, so it has to know when it is not the thing
+                    // being looked at. Moving away to click something below
+                    // fades it back to a glance-able trace; coming back to it
+                    // restores it. Only the copilot does this — every other
+                    // tab is open because it was just asked for.
+                    .opacity(isCopilotGlass && !isHovering ? 0.4 : 1)
+                    .animation(.easeOut(duration: 0.22), value: isHovering)
+                    .contentShape(currentNotchShape)
                     .onHover { hovering in
                         handleHover(hovering)
                     }
@@ -219,6 +265,11 @@ struct ContentView: View {
                         .frame(width: computedChinWidth, height: vm.chinHeight)
                 }
             }
+            // This stack is the whole of what the panel paints — the notch plus
+            // its chin — so its frame is exactly the region that should take
+            // clicks. Everything else in the window is transparent and must
+            // fall through.
+            .background(InteractiveRegionReporter())
         }
         .padding(.bottom, 8)
         .frame(maxWidth: windowSize.width, maxHeight: windowSize.height, alignment: .top)
@@ -229,7 +280,8 @@ struct ContentView: View {
             anchor: .top
         )
         .animation(.smooth, value: gestureProgress)
-        .background(dragDetector)
+        // Move dragDetector here, but we will fix dragDetector definition instead.
+        .background(dragDetector, alignment: .top)
         .preferredColorScheme(.dark)
         .environmentObject(vm)
         .onChange(of: vm.anyDropZoneTargeting) { _, isTargeted in
@@ -333,8 +385,19 @@ struct ContentView: View {
                               .frame(alignment: .center)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
-                       } else if vm.notchState == .open {
+                       } else if vm.notchState == .open && !isCopilotGlass {
+                           // A live call takes the whole slab, tab row included.
+                           // Mid-call there is nothing to switch to — the panel
+                           // is the only thing worth the space, and its own
+                           // header already carries the state and the controls.
                            BoringHeader()
+                               .frame(height: max(24, vm.effectiveClosedNotchHeight))
+                               .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
+                       } else if vm.notchState == .open {
+                           // The live call's status and controls occupy the band
+                           // either side of the camera housing, which is dead
+                           // space now that the tab row is gone.
+                           CallaCopilotLiveHeader()
                                .frame(height: max(24, vm.effectiveClosedNotchHeight))
                                .opacity(gestureProgress != 0 ? 1.0 - min(abs(gestureProgress) * 0.1, 0.3) : 1.0)
                        } else {
@@ -393,7 +456,14 @@ struct ContentView: View {
                     case .tutor:
                         CallaTabView()
                     case .copilot:
-                        CallaCopilotTabView()
+                        // The live panel replaces the tab outright for the
+                        // length of a call — mid-call there is nothing to
+                        // configure, only something to read.
+                        if copilotSession.isLive {
+                            CallaCopilotLiveView()
+                        } else {
+                            CallaCopilotTabView()
+                        }
                     case .usage:
                         UsageMonitorView()
                     case .pomodoro:
@@ -430,6 +500,9 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .callaCopilotSuggestion)) { _ in
             showCopilotSuggestion()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .copilotLiveDidChange)) { _ in
+            syncCopilotLiveNotch()
         }
         .onChange(of: vm.notchState) { _, state in
             // Only an open notch may host a caret. Closing hands the keyboard
@@ -470,9 +543,20 @@ struct ContentView: View {
         // Never steal the notch from a live lesson.
         guard coordinator.currentView != .tutor || CallaEngineClient.shared.status.activeLesson?.active != true else { return }
 
+        // A dismissed panel comes back for a fresh pointer — dismissing means
+        // "not now", not "not for this call".
+        copilotSession.repin()
+
         coordinator.currentView = .copilot
         withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) {
             vm.open()
+        }
+
+        // A live call holds the notch itself; only the peek that fires outside
+        // one gets taken away again.
+        guard !copilotSession.pinsNotchOpen else {
+            copilotAutoCloseTask?.cancel()
+            return
         }
 
         copilotAutoCloseTask?.cancel()
@@ -482,6 +566,39 @@ struct ContentView: View {
             withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
                 vm.close()
             }
+        }
+    }
+
+    /// Opens, resizes, or releases the notch when the live session changes.
+    ///
+    /// Both a call starting and a full/compact toggle land here, so the size
+    /// change is animated the same way in either direction.
+    private func syncCopilotLiveNotch() {
+        copilotAutoCloseTask?.cancel()
+
+        guard copilotSession.pinsNotchOpen else {
+            // The call ended: hand the notch back rather than leaving a dead
+            // panel parked over whatever comes next.
+            guard !copilotSession.isLive, vm.notchState == .open,
+                  coordinator.currentView == .copilot else { return }
+            withAnimation(.spring(response: 0.45, dampingFraction: 1.0)) {
+                if isHovering {
+                    // The pointer is still on it — ending a call usually means
+                    // having just clicked End call — so shrink back to the
+                    // ordinary open size instead of closing under the cursor.
+                    // Leaving it at the copilot's size would strand a notch
+                    // twice as tall as anything that belongs in it.
+                    coordinator.currentView = .home
+                    vm.open(size: openNotchSize)
+                } else {
+                    vm.close()
+                }
+            }
+            return
+        }
+        coordinator.currentView = .copilot
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+            vm.open(size: copilotSession.preferredOpenSize)
         }
     }
 
@@ -645,11 +762,41 @@ struct ContentView: View {
         )
     }
 
+    /// Tells the panel which of its points are real.
+    ///
+    /// Sits as a background, so it is laid out at exactly the size of the view
+    /// it is measuring and re-reports on every frame of the open/close spring.
+    /// AppKit rather than a `GeometryReader` because the answer has to be in
+    /// window coordinates and the window is the thing that needs telling.
+    private struct InteractiveRegionReporter: NSViewRepresentable {
+        func makeNSView(context: Context) -> NSView { ReporterView() }
+        func updateNSView(_ nsView: NSView, context: Context) {
+            (nsView as? ReporterView)?.report()
+        }
+
+        final class ReporterView: NSView {
+            override func layout() {
+                super.layout()
+                report()
+            }
+
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                report()
+            }
+
+            func report() {
+                guard let panel = window as? BoringNotchSkyLightWindow else { return }
+                panel.setInteractiveRect(convert(bounds, to: nil))
+            }
+        }
+    }
+
     @ViewBuilder
     var dragDetector: some View {
         if Defaults[.boringShelf] && vm.notchState == .closed {
             Color.clear
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(width: vm.closedNotchSize.width, height: vm.closedNotchSize.height)
                 .contentShape(Rectangle())
         .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], isTargeted: $vm.dragDetectorTargeting) { providers in
             // A completed drop is authoritative. Open Shelf here rather than
