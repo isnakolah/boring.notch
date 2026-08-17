@@ -99,7 +99,10 @@ extension Defaults.Keys {
     //static let alwaysShowTabs = Key<Bool>("alwaysShowTabs", default: true)
     static let showMirror = Key<Bool>("showMirror", default: false)
     static let mirrorShape = Key<MirrorShapeEnum>("mirrorShape", default: MirrorShapeEnum.rectangle)
-    static let settingsIconInNotch = Key<Bool>("settingsIconInNotch", default: true)
+    // Header placement now lives in `notchHeaderLeading` / `notchHeaderTrailing`
+    // (see NotchHeaderItem.swift). `settingsIconInNotch` and
+    // `showBatteryIndicator` were per-item presence flags for the same header
+    // and are retired: the gear and the battery are placeable items.
     static let lightingEffect = Key<Bool>("lightingEffect", default: true)
     static let enableShadow = Key<Bool>("enableShadow", default: true)
     static let cornerRadiusScaling = Key<Bool>("cornerRadiusScaling", default: true)
@@ -140,7 +143,6 @@ extension Defaults.Keys {
     
     // MARK: Battery
     static let showPowerStatusNotifications = Key<Bool>("showPowerStatusNotifications", default: true)
-    static let showBatteryIndicator = Key<Bool>("showBatteryIndicator", default: true)
     static let showBatteryPercentage = Key<Bool>("showBatteryPercentage", default: true)
     static let showPowerStatusIcons = Key<Bool>("showPowerStatusIcons", default: true)
     
@@ -206,6 +208,38 @@ extension Defaults.Keys {
     static let callaCopilotAutoReveal = Key<Bool>("callaCopilotAutoReveal", default: true)
     /// Re-transcribe the saved audio with the large model after the call ends.
     static let callaCopilotArchiveRetranscribe = Key<Bool>("callaCopilotArchiveRetranscribe", default: false)
+    /// Start the copilot on its own when a meeting starts, and stop it when the
+    /// meeting does.
+    static let callaCopilotAutoStartOnMeeting = Key<Bool>("callaCopilotAutoStartOnMeeting", default: true)
+    /// How much of the desktop shows through the live panel. 0 is the opaque
+    /// slab every other tab uses.
+    static let callaCopilotGlassLevel = Key<Double>("callaCopilotGlassLevel", default: 0.45)
+    /// Free-text context about the user, injected into every call's prompt.
+    static let callaCopilotAboutMe = Key<String>("callaCopilotAboutMe", default: "")
+    /// Persona guidance the user has edited, keyed by persona id. Absent keys
+    /// fall back to the gateway's own defaults.
+    static let callaCopilotPersonaOverrides = Key<[String: String]>("callaCopilotPersonaOverrides", default: [:])
+    /// User-defined personas beyond the four the gateway seeds.
+    static let callaCopilotCustomPersonas = Key<[String: String]>("callaCopilotCustomPersonas", default: [:])
+    /// Replacement for the gateway's base guidance block. Empty means "use the
+    /// gateway's own", which is what almost everyone should do.
+    static let callaCopilotBaseGuidance = Key<String>("callaCopilotBaseGuidance", default: "")
+
+    // MARK: Calla Intelligence
+    /// Which brain answers: "local" (the Antigravity CLI on this Mac) or
+    /// "gateway". Local by default — it needs no remote host to be reachable, and
+    /// with a resident language server it answers in about the same time.
+    static let callaIntelligenceProvider = Key<String>("callaIntelligenceProvider", default: "local")
+    /// Model tier for live suggestions: fast | balanced | deep. A tier rather
+    /// than a model name because the only transport quick enough for a live call
+    /// accepts tiers and nothing finer.
+    static let callaIntelligenceLiveTier = Key<String>("callaIntelligenceLiveTier", default: "balanced")
+    /// Exact model for the end-of-call summary, where a slower, better model is
+    /// worth the extra seconds.
+    static let callaIntelligenceSummaryModel = Key<String>(
+        "callaIntelligenceSummaryModel", default: "gemini-3.1-pro-high")
+    /// Let the gateway answer when the local brain cannot.
+    static let callaIntelligenceFallback = Key<Bool>("callaIntelligenceFallback", default: true)
 
     // MARK: Usage Monitor
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
