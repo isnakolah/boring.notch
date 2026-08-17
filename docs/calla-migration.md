@@ -31,6 +31,34 @@ Implemented foundation:
   course-control socket, and paired-node `session_start`; first-release and
   existing-release failures restore config/packs/current state.
 
+Runtime corrections, 2026-08-17:
+
+- Both children's stdio is redirected to `<root>/logs/{tutor-host,node-host}.log`.
+  Before this the only node log on disk was the one the retired
+  `com.calla.openclaw-node-host` agent wrote, so disabling that agent also
+  blinded `BackendStatus`. `StepTiming` moved to the same 0700 root; it is the
+  one diagnostic that records a rectangle.
+- Permission state is a receipt, `<root>/host-status.json`, written by
+  `TutorSettings.refreshPermissionStatus` and read by the engine. TCC grants are
+  per executable and CallaTutorHost is what captures, so the engine's own
+  `CGPreflightScreenCaptureAccess` was reporting the XPC service. Deliberately a
+  file and not a socket call: the UI polls status every 2-4s and a socket round
+  trip would block on the host's main actor, which a lesson turn holds for tens
+  of seconds. `request_accessibility` now routes to the host for the same reason.
+- `isRunning` is set once the host is up, before the node is started. A missing
+  plugin file used to leave the engine permanently "still starting" with a
+  healthy host, refusing every command.
+- `hostReady` (a socket connect probe) is separate from `gatewayReachable`. The
+  notch reports `.degraded` when the host is up and the Gateway is not, because
+  cached courses and the fast lesson path need no Gateway.
+- `foreignNodeProcess` refuses to start a second node, and `detectConflicts`
+  reports a legacy host or node as a diagnostic. Detection only; nothing is
+  killed.
+- `CallaTutorHost` is named "Boring Notch Tutor" in the Screen Recording pane.
+  It previously shared "Boring Calla Engine" with the XPC service, so the two
+  rows were indistinguishable. `CFBundleIdentifier` is unchanged, so existing
+  grants survive.
+
 Local proof, 2026-08-13:
 
 - `PYTHON=.venv/bin/python make -C Tutor test`: pack, Blender bridge,
