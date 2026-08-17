@@ -6,8 +6,8 @@ import XCTest
 /// transcript to. Every rule here fails open into something worse than a crash
 /// if it is wrong, so each is pinned.
 final class CallaCopilotCommandValidationTests: XCTestCase {
-    func testOnlyTheThreeKnownActionsAreAccepted() {
-        for action in ["start", "stop", "set_persona"] {
+    func testOnlyTheKnownActionsAreAccepted() {
+        for action in ["start", "stop", "set_persona", "set_provider", "archive", "fetch_model"] {
             XCTAssertEqual(CallaCopilotCommandValidation.action(action), action)
         }
         for action in ["", "  ", "restart", "start;rm -rf /", "START"] {
@@ -16,15 +16,133 @@ final class CallaCopilotCommandValidationTests: XCTestCase {
         XCTAssertNil(CallaCopilotCommandValidation.action(nil))
     }
 
-    func testPersonasMatchTheGatewayAllowlist() {
-        // Must stay in lockstep with PERSONAS in the gateway's protocol.mjs; a
-        // value the gateway rejects should never leave this machine.
+    // MARK: - Intelligence provider
+
+    func testOnlyTheTwoProvidersAreAccepted() {
+        XCTAssertEqual(CallaCopilotCommandValidation.provider("local"), "local")
+        XCTAssertEqual(CallaCopilotCommandValidation.provider("gateway"), "gateway")
+        XCTAssertEqual(CallaCopilotCommandValidation.provider(" LOCAL "), "local")
+        // Not a provider name, a vendor, a URL, or a binary path. Each of these
+        // would end up as an argument to a spawned process.
+        for value in ["", "  ", "openai", "anthropic", "ollama", "local;id",
+                      "wss://elsewhere/stream", "/usr/bin/agy", "localhost"] {
+            XCTAssertNil(CallaCopilotCommandValidation.provider(value), "accepted \(value)")
+        }
+        XCTAssertNil(CallaCopilotCommandValidation.provider(nil))
+    }
+
+    func testTiersAreTheThreeTheFastTransportUnderstands() {
+        for tier in ["fast", "balanced", "deep"] {
+            XCTAssertEqual(CallaCopilotCommandValidation.tier(tier), tier)
+        }
+        // A model *name* is not a tier: the transport quick enough for a live call
+        // only accepts the coarse ones.
+        for value in ["", "flash", "pro", "gemini-3.7-flash-low", "fastest"] {
+            XCTAssertNil(CallaCopilotCommandValidation.tier(value), "accepted \(value)")
+        }
+    }
+
+    func testSummaryModelsAreAllowlistedAndExcludeTheLiveTier() {
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.summaryModel("gemini-3.1-pro-high"),
+            "gemini-3.1-pro-high")
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.summaryModel("claude-sonnet-4-6"),
+            "claude-sonnet-4-6")
+        // The summary pass exists to be better than the live tier, so a flash
+        // model here is a mistake rather than a preference.
+        for value in ["gemini-3.7-flash-low", "gemini-3.7-flash-medium", "gpt-4o", "",
+                      "gemini-3.1-pro-high; rm -rf /"] {
+            XCTAssertNil(CallaCopilotCommandValidation.summaryModel(value), "accepted \(value)")
+        }
+        XCTAssertNil(CallaCopilotCommandValidation.summaryModel(nil))
+    }
+
+    func testTiersStayInStepWithTheAllowlistThatSpawnsThem() {
+        // These three names are also `IntelligenceCore.ModelTier`'s cases; the
+        // host maps them onto agentapi's tier tokens. Drift here means a call
+        // starts with an argument the host rejects.
+        XCTAssertEqual(CallaCopilotCommandValidation.allowedTiers, ["fast", "balanced", "deep"])
+    }
+
+    func testTheGatewayRouteIsStillTheOnlyRemoteOneAllowed() {
+        // Adding a local provider must not have loosened this: a transcript still
+        // must not be steerable to another host.
+        XCTAssertNotNil(CallaCopilotCommandValidation.gatewayURL(
+            "wss://nomonhomelab.tailec0dca.ts.net/call-copilot/stream"))
+        for url in ["wss://evil.example/call-copilot/stream",
+                    "ws://nomonhomelab.tailec0dca.ts.net/call-copilot/stream",
+                    "https://nomonhomelab.tailec0dca.ts.net/call-copilot/stream",
+                    "wss://nomonhomelab.tailec0dca.ts.net/other"] {
+            XCTAssertNil(CallaCopilotCommandValidation.gatewayURL(url), "accepted \(url)")
+        }
+    }
+
+    func testPersonasAreTheGatewaySeedsOrAnIdentifierShapedName() {
+        // The four seeded ones must stay in lockstep with PERSONAS in the
+        // gateway's protocol.mjs.
         for persona in ["generic", "interview", "sales", "support"] {
             XCTAssertEqual(CallaCopilotCommandValidation.persona(persona), persona)
         }
         XCTAssertEqual(CallaCopilotCommandValidation.persona("Interview"), "interview")
-        XCTAssertNil(CallaCopilotCommandValidation.persona("therapist"))
-        XCTAssertNil(CallaCopilotCommandValidation.persona(""))
+
+        // A user-defined persona is accepted, because its guidance travels with
+        // it — but it stays identifier-shaped, since an id can end up naming a
+        // session key or a path.
+        XCTAssertEqual(CallaCopilotCommandValidation.persona("board-review"), "board-review")
+        for rejected in ["", "  ", "board review", "board/review", "../etc", "a<24 chars?>",
+                         String(repeating: "a", count: 25)] {
+            XCTAssertNil(CallaCopilotCommandValidation.persona(rejected), "accepted \(rejected)")
+        }
+    }
+
+    // MARK: - Prompt profile
+
+    func testProfileAcceptsOrdinaryPromptTextAndTrimsIt() {
+        let profile = CallaCopilotCommandValidation.profile(
+            about: "  Senior engineer at Acme.\nI own billing.  ",
+            personaGuidance: nil,
+            baseGuidance: nil)
+        XCTAssertEqual(profile?.about, "Senior engineer at Acme.\nI own billing.")
+        XCTAssertNil(profile?.personaGuidance)
+        XCTAssertNil(profile?.baseGuidance)
+    }
+
+    func testAnEmptyProfileIsNoProfileRatherThanAnEmptyOne() {
+        XCTAssertNil(CallaCopilotCommandValidation.profile(about: nil, personaGuidance: nil, baseGuidance: nil))
+        XCTAssertNil(CallaCopilotCommandValidation.profile(about: "   ", personaGuidance: "\n", baseGuidance: ""))
+    }
+
+    func testOverLengthPromptTextIsRefusedRatherThanTruncated() {
+        // Truncating would run the call on a different prompt than the one
+        // Settings shows, which is worse than refusing outright.
+        let tooLong = String(repeating: "a", count: CallaCopilotCommandValidation.aboutLimit + 1)
+        XCTAssertNil(CallaCopilotCommandValidation.profile(about: tooLong, personaGuidance: nil, baseGuidance: nil))
+
+        let atLimit = String(repeating: "a", count: CallaCopilotCommandValidation.aboutLimit)
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.profile(about: atLimit, personaGuidance: nil, baseGuidance: nil)?.about,
+            atLimit)
+    }
+
+    func testControlCharactersAreRefusedButNewlinesAreNot() {
+        XCTAssertNotNil(CallaCopilotCommandValidation.profile(
+            about: "line one\nline two\tindented", personaGuidance: nil, baseGuidance: nil))
+        for hostile in ["null\u{0}byte", "escape\u{1B}[2Jsequence", "bell\u{7}"] {
+            XCTAssertNil(
+                CallaCopilotCommandValidation.profile(about: hostile, personaGuidance: nil, baseGuidance: nil),
+                "accepted \(hostile.debugDescription)")
+        }
+    }
+
+    func testOneRefusedFieldRefusesTheWholeProfile() {
+        // Otherwise a rejected paragraph reads as an unset one, and the call
+        // silently runs on the gateway's default wording instead.
+        let profile = CallaCopilotCommandValidation.profile(
+            about: "fine",
+            personaGuidance: String(repeating: "b", count: CallaCopilotCommandValidation.personaGuidanceLimit + 1),
+            baseGuidance: nil)
+        XCTAssertNil(profile)
     }
 
     func testTheArchiveModelIsNotOfferedForLiveTranscription() {
