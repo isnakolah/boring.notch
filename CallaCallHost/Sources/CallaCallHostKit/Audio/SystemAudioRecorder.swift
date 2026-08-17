@@ -121,31 +121,75 @@ extension SystemAudioRecorder: SCStreamDelegate {
 
 extension CMSampleBuffer {
     /// Copies a CoreMedia audio sample buffer into an `AVAudioPCMBuffer`.
+    ///
+    /// The copy is the point. `CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer`
+    /// does not move any audio: it points the buffer list's `mData` at memory
+    /// owned by the block buffer it hands back. Filling an `AVAudioPCMBuffer`'s
+    /// own list that way leaves the buffer aliasing that memory, and the block
+    /// buffer is released as soon as it goes out of scope — so every sample is
+    /// then read from freed memory, which comes back as silence. That is
+    /// exactly what happened: `system.wav` was the right length, and every
+    /// sample in it was zero, so the other side of every call transcribed to
+    /// nothing and the copilot was never asked anything.
+    ///
+    /// The list is also sized from the format rather than from
+    /// `MemoryLayout<AudioBufferList>.size`, which only ever covers one buffer
+    /// and so cannot describe non-interleaved stereo.
     func toPCMBuffer() -> AVAudioPCMBuffer? {
         guard let formatDescription = CMSampleBufferGetFormatDescription(self),
-              let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)
+              let streamDescription = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription),
+              let format = AVAudioFormat(streamDescription: streamDescription)
         else { return nil }
-
-        let format = AVAudioFormat(streamDescription: streamDescription)
-        guard let format else { return nil }
 
         let frameCount = AVAudioFrameCount(CMSampleBufferGetNumSamples(self))
         guard frameCount > 0,
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
+              let destination = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
         else { return nil }
-        buffer.frameLength = frameCount
+        destination.frameLength = frameCount
+
+        // Ask how big the list needs to be for this buffer's channel layout.
+        var listSize = 0
+        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+            self,
+            bufferListSizeNeededOut: &listSize,
+            bufferListOut: nil,
+            bufferListSize: 0,
+            blockBufferAllocator: nil,
+            blockBufferMemoryAllocator: nil,
+            flags: 0,
+            blockBufferOut: nil) == noErr, listSize > 0
+        else { return nil }
+
+        let storage = UnsafeMutableRawPointer.allocate(
+            byteCount: listSize, alignment: MemoryLayout<AudioBufferList>.alignment)
+        defer { storage.deallocate() }
+        let list = storage.assumingMemoryBound(to: AudioBufferList.self)
 
         var blockBuffer: CMBlockBuffer?
-        let status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
+        guard CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer(
             self,
             bufferListSizeNeededOut: nil,
-            bufferListOut: buffer.mutableAudioBufferList,
-            bufferListSize: MemoryLayout<AudioBufferList>.size,
+            bufferListOut: list,
+            bufferListSize: listSize,
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
             flags: kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
-            blockBufferOut: &blockBuffer)
-        guard status == noErr else { return nil }
-        return buffer
+            blockBufferOut: &blockBuffer) == noErr, blockBuffer != nil
+        else { return nil }
+
+        // Copied while the block buffer is still alive, into storage the
+        // AVAudioPCMBuffer owns outright.
+        return withExtendedLifetime(blockBuffer) { () -> AVAudioPCMBuffer? in
+            let source = UnsafeMutableAudioBufferListPointer(list)
+            let target = UnsafeMutableAudioBufferListPointer(destination.mutableAudioBufferList)
+            guard source.count > 0, target.count > 0 else { return nil }
+            for index in 0..<min(source.count, target.count) {
+                guard let from = source[index].mData, let to = target[index].mData else { return nil }
+                let byteCount = Int(min(source[index].mDataByteSize, target[index].mDataByteSize))
+                memcpy(to, from, byteCount)
+                target[index].mDataByteSize = UInt32(byteCount)
+            }
+            return destination
+        }
     }
 }
