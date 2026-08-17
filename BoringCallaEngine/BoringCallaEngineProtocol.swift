@@ -19,11 +19,25 @@ import Foundation
     /// validates the command, then drives the unsandboxed capture host that
     /// owns the microphone and screen-recording grants.
     func copilotControl(_ command: Data, with reply: @escaping (Data) -> Void)
-    /// Recent turns of the current call.
+    /// Turns of the current call newer than `seq`; -1 asks for the whole tail.
     ///
-    /// The only method here that does not reply with `Status`. A transcript is
-    /// far too large to ride the two-second status poll, and the notch app is
-    /// sandboxed, so it cannot read the capture host's files itself — this is
-    /// the only way that text reaches the UI.
-    func copilotTranscript(with reply: @escaping (Data) -> Void)
+    /// One of the few methods here that does not reply with `Status`. A
+    /// transcript is far too large to ride the two-second status poll, and the
+    /// notch app is sandboxed, so it cannot read the capture host's files
+    /// itself — this is the only way that text reaches the UI. The cursor keeps
+    /// the live panel's sub-second poll cheap: past the first read it almost
+    /// always returns an empty array.
+    func copilotTranscript(since seq: Int, with reply: @escaping (Data) -> Void)
+    /// Every call this Mac has archived, newest first. Replies with
+    /// `[CallSummary]`, not `Status`.
+    func copilotCalls(with reply: @escaping (Data) -> Void)
+    /// One archived call's full transcript. Replies with `[CallTurn]`.
+    func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
+    /// Runs the capture host's `permissions` subcommand so the microphone and
+    /// screen-recording prompts are attributed to the host's own signature.
+    ///
+    /// Asking from inside this service would prompt for — and grant to — the
+    /// engine, which is not the process that captures anything. Same shape as
+    /// the fix already applied to the Tutor host.
+    func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
 }
