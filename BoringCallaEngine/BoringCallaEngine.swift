@@ -54,8 +54,85 @@ private struct CopilotStatus: Codable {
     var headline: String? = nil
     var angles: [String] = []
     var confirm: [String] = []
+    var summary: String? = nil
+    var openQuestions: [String] = []
     var suggestionAfterSeq: Int? = nil
+    /// Which brain answered: "local" or "gateway". The notch shows this, because
+    /// an automatic failover the user cannot see is indistinguishable from a
+    /// broken copilot.
+    var activeProvider: String? = nil
+    /// The model that answered, or why the local brain stood down.
+    var providerDetail: String? = nil
+    /// Whether the local Antigravity CLI is installed, so Settings can say
+    /// "not installed" instead of a call failing the moment someone speaks.
+    var agyAvailable = false
+    var agyVersion: String? = nil
     var lastResult: String? = nil
+    /// What the *capture host* was granted, read back from the file it writes.
+    /// Preflighting here would report this service's own TCC state, which is
+    /// not the state that decides whether anything gets recorded.
+    var hostMicGranted = false
+    var hostScreenGranted = false
+    /// False until the host has reported once. Distinguishing this from a
+    /// denial is the point: the two look identical in a bare Bool, and showing
+    /// "not granted" against a host that holds both is exactly the wrong answer
+    /// this path exists to stop giving.
+    var hostPermissionsKnown = false
+    var modelDownload: ModelDownloadFile? = nil
+}
+
+/// Mirrors `permissions.json`, written by CallaCallHost about itself.
+private struct CopilotPermissionsFile: Codable {
+    var micGranted: Bool
+    var screenGranted: Bool
+    var checkedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case micGranted = "mic_granted"
+        case screenGranted = "screen_granted"
+        case checkedAt = "checked_at"
+    }
+}
+
+/// Mirrors `model-download.json`, written by the host while it fetches a model.
+private struct ModelDownloadFile: Codable {
+    var model: String
+    var receivedBytes: Int64
+    var totalBytes: Int64
+    var state: String
+    var message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model, state, message
+        case receivedBytes = "received_bytes"
+        case totalBytes = "total_bytes"
+    }
+}
+
+/// Just enough of a `CallTurn` to count and order them.
+///
+/// Deliberately not the whole shape: this decodes every line of an archive on a
+/// list refresh, and the text is the expensive part nobody is reading yet.
+private struct ArchivedTurn: Codable {
+    var seq: Int
+}
+
+/// One archived call, as listed for the History pane.
+private struct CallSummaryFile: Codable {
+    var id: String
+    var startedAt: Date?
+    var endedAt: Date?
+    var turnCount: Int
+    var persona: String
+    var hasAudio: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, persona
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case turnCount = "turn_count"
+        case hasAudio = "has_audio"
+    }
 }
 
 /// Mirrors `ActiveCallStatus` written by CallaCallHost.
@@ -67,6 +144,10 @@ private struct CopilotHostStatus: Codable {
     var gatewayConnected: Bool
     var micActive: Bool
     var systemAudioActive: Bool
+    /// Optional: a status file written by an older host has neither, and a
+    /// missing key must not throw away the whole status.
+    var provider: String?
+    var providerDetail: String?
 
     enum CodingKeys: String, CodingKey {
         case callID = "call_id"
@@ -76,6 +157,8 @@ private struct CopilotHostStatus: Codable {
         case gatewayConnected = "gateway_connected"
         case micActive = "mic_active"
         case systemAudioActive = "system_audio_active"
+        case provider
+        case providerDetail = "provider_detail"
     }
 }
 
@@ -86,6 +169,8 @@ private struct CopilotSuggestionFile: Codable {
     var headline: String
     var angles: [String]
     var confirm: [String]
+    var summary: String?
+    var openQuestions: [String]?
 
     enum CodingKeys: String, CodingKey {
         case callID = "call_id"
@@ -93,6 +178,8 @@ private struct CopilotSuggestionFile: Codable {
         case headline
         case angles
         case confirm
+        case summary
+        case openQuestions = "open_questions"
     }
 }
 
@@ -101,6 +188,39 @@ private struct CopilotCommand: Codable {
     var action: String
     var persona: String?
     var model: String?
+    var callID: String?
+    var profile: CopilotProfile?
+    /// "local" or "gateway". Absent means leave the stored preference alone.
+    var provider: String?
+    /// Live model tier for the local brain: fast | balanced | deep.
+    var tier: String?
+    /// Exact model for the end-of-call pass.
+    var summaryModel: String?
+    /// Whether the gateway may answer when the local brain cannot.
+    var fallback: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case action, persona, model, profile, provider, tier, fallback
+        case summaryModel = "summary_model"
+        case callID = "call_id"
+    }
+}
+
+/// The user's prompt text, on its way to the gateway.
+///
+/// Free text, unlike every other field a command carries — which is why it is
+/// kept in its own type and handed to the host on stdin. Nothing in here is ever
+/// allowed to become a process argument.
+private struct CopilotProfile: Codable {
+    var about: String?
+    var personaGuidance: String?
+    var baseGuidance: String?
+
+    enum CodingKeys: String, CodingKey {
+        case about
+        case personaGuidance = "persona_guidance"
+        case baseGuidance = "base_guidance"
+    }
 }
 
 private struct ActiveLesson: Codable {
@@ -253,7 +373,24 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var copilotProcess: Process?
     private var copilotPersona = "generic"
     private var copilotModel = "whisper-small-en"
+    /// Which brain the next call starts on. Local by default, so a call still
+    /// gets suggestions when `nomonhomelab` is unreachable.
+    private var copilotProvider = "local"
+    private var copilotTier = "balanced"
+    private var copilotSummaryModel = "gemini-3.1-pro-high"
+    private var copilotFallback = true
     private var copilotResult: String?
+    /// `agy --version`, probed once. Cached because it costs a process and the
+    /// status poll runs every two seconds.
+    private var agyProbe: (available: Bool, version: String?)?
+    /// One-shot channel for the prompt profile, held only between building the
+    /// process and writing to it.
+    private var copilotProfilePipe: Pipe?
+    private var copilotPendingProfile: Data?
+    private var archiveProcess: Process?
+    private var modelProcess: Process?
+    private var permissionProcess: Process?
+    private var hostPermissionCheckStarted = false
     /// The host writes ISO-8601 dates; the default decoder would reject them.
     private lazy var jsonDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
@@ -503,6 +640,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var copilotRoot: URL { root.appendingPathComponent("copilot", isDirectory: true) }
     private var copilotStatusURL: URL { copilotRoot.appendingPathComponent("active-call.json") }
     private var copilotSuggestionURL: URL { copilotRoot.appendingPathComponent("latest-suggestion.json") }
+    private var copilotPermissionsURL: URL { copilotRoot.appendingPathComponent("permissions.json") }
+    private var copilotModelDownloadURL: URL { copilotRoot.appendingPathComponent("model-download.json") }
+    private var copilotCallsRoot: URL { copilotRoot.appendingPathComponent("calls", isDirectory: true) }
     private var copilotPIDURL: URL { root.appendingPathComponent("callhost.pid") }
 
     /// The gateway route the copilot streams to. Fixed, like `probeGateway`'s
@@ -531,6 +671,24 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             switch action {
             case "start": self.startCopilot(command)
             case "stop": self.stopCopilot()
+            case "archive": self.retranscribeCall(command)
+            case "fetch_model": self.fetchModel(command)
+            case "set_provider":
+                guard let provider = CallaCopilotCommandValidation.provider(command.provider) else {
+                    self.copilotResult = "Rejected unknown intelligence provider"; break
+                }
+                self.copilotProvider = provider
+                if let tier = CallaCopilotCommandValidation.tier(command.tier) { self.copilotTier = tier }
+                if let summary = CallaCopilotCommandValidation.summaryModel(command.summaryModel) {
+                    self.copilotSummaryModel = summary
+                }
+                if let fallback = command.fallback { self.copilotFallback = fallback }
+                // Like persona: the host binds its provider at launch, so a
+                // change mid-call would be a lie. Automatic fallback is the only
+                // thing that switches brains during a call.
+                self.copilotResult = self.copilotProcess?.isRunning == true
+                    ? "Intelligence set to \(provider); applies to the next call"
+                    : "Intelligence set to \(provider)"
             case "set_persona":
                 guard let persona = CallaCopilotCommandValidation.persona(command.persona) else {
                     self.copilotResult = "Rejected unknown persona"; break
@@ -554,6 +712,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
         if let persona = CallaCopilotCommandValidation.persona(command.persona) { copilotPersona = persona }
         if let model = CallaCopilotCommandValidation.liveModel(command.model) { copilotModel = model }
+        if let provider = CallaCopilotCommandValidation.provider(command.provider) { copilotProvider = provider }
+        if let tier = CallaCopilotCommandValidation.tier(command.tier) { copilotTier = tier }
+        if let summary = CallaCopilotCommandValidation.summaryModel(command.summaryModel) { copilotSummaryModel = summary }
+        if let fallback = command.fallback { copilotFallback = fallback }
         guard let gateway = CallaCopilotCommandValidation.gatewayURL(Self.copilotGateway) else {
             copilotResult = "Copilot gateway route is not valid"; return
         }
@@ -561,19 +723,56 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         // Screen Recording is what captures the other party. Without it the
         // call still runs, but only our own side is transcribed — which makes
         // the suggestions close to useless, so say so rather than fail quietly.
-        if !CGPreflightScreenCaptureAccess() {
+        //
+        // Asked of the *host's* own report, not of this process: this used to
+        // call `CGPreflightScreenCaptureAccess()` here, which answers for the
+        // engine's signature and so could say "granted" while the host that
+        // does the recording had nothing. Same bug already fixed for the Tutor
+        // host.
+        // Only warn on a definite no. Unknown resolves itself a moment later
+        // when the host writes its own status, and `serve` reports both grants
+        // as it starts anyway.
+        if hostPermissions()?.screenGranted == false {
             copilotResult = "Grant Screen Recording to capture the other party"
         }
 
         let process = Process()
         process.executableURL = executable
         process.currentDirectoryURL = executable.deletingLastPathComponent()
-        process.arguments = [
+        var arguments = [
             "serve",
             "--gateway", gateway.absoluteString,
             "--persona", copilotPersona,
             "--model", copilotModel,
+            "--provider", copilotProvider,
+            "--tier", copilotTier,
         ]
+        // Every value here came back from an allowlist above, so nothing the UI
+        // sent can widen this command line.
+        if let summaryModel = CallaCopilotCommandValidation.summaryModel(copilotSummaryModel) {
+            arguments += ["--summary-model", summaryModel]
+        }
+        if !copilotFallback { arguments.append("--no-fallback") }
+        process.arguments = arguments
+        // The user's prompt text goes in over stdin rather than as arguments.
+        // It is the only free-text field this service accepts, and an argument
+        // list is exactly where free text stops being only a prompt.
+        if let profile = CallaCopilotCommandValidation.profile(
+            about: command.profile?.about,
+            personaGuidance: command.profile?.personaGuidance,
+            baseGuidance: command.profile?.baseGuidance),
+           let payload = try? JSONEncoder().encode(profile) {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            copilotProfilePipe = pipe
+            copilotPendingProfile = payload
+        } else if command.profile != nil {
+            // A profile that fails validation must not silently become "no
+            // profile" — the call would run with different guidance than the
+            // settings pane shows.
+            copilotResult = "Prompt settings were rejected; fix them in Settings › Prompts"
+            return
+        }
         var environment = ProcessInfo.processInfo.environment
         environment["CALLA_RUNTIME_ROOT"] = root.path
         process.environment = environment
@@ -596,10 +795,163 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             try process.run()
             copilotProcess = process
             try? writeOwnedPID(process.processIdentifier, to: copilotPIDURL)
+            // Written after the child exists, and closed straight away so the
+            // host sees EOF and starts rather than blocking on a read.
+            if let payload = copilotPendingProfile, let pipe = copilotProfilePipe {
+                pipe.fileHandleForWriting.write(payload)
+                pipe.fileHandleForWriting.write(Data("\n".utf8))
+                try? pipe.fileHandleForWriting.close()
+            }
+            copilotPendingProfile = nil
+            copilotProfilePipe = nil
             if copilotResult == nil { copilotResult = "Call started" }
         } catch {
+            copilotPendingProfile = nil
+            copilotProfilePipe = nil
             copilotResult = "Could not start call host: \(error.localizedDescription)"
         }
+    }
+
+    /// Re-runs the archive model over a finished call's saved audio.
+    private func retranscribeCall(_ command: CopilotCommand) {
+        guard let callID = CallaCopilotCommandValidation.callID(command.callID) else {
+            copilotResult = "Rejected invalid call id"; return
+        }
+        guard archiveProcess?.isRunning != true else {
+            copilotResult = "A re-transcribe is already running"; return
+        }
+        guard let executable = copilotExecutable else {
+            copilotResult = "Call host is not installed"; return
+        }
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = executable.deletingLastPathComponent()
+        process.arguments = ["retranscribe", "--call", callID]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CALLA_RUNTIME_ROOT"] = root.path
+        process.environment = environment
+        process.terminationHandler = { [weak self] child in
+            self?.queue.async {
+                self?.archiveProcess = nil
+                self?.copilotResult = child.terminationStatus == 0
+                    ? "Re-transcribed \(callID)"
+                    : "Re-transcribe failed (status \(child.terminationStatus))"
+            }
+        }
+        do {
+            try process.run()
+            archiveProcess = process
+            copilotResult = "Re-transcribing \(callID)…"
+        } catch {
+            copilotResult = "Could not re-transcribe: \(error.localizedDescription)"
+        }
+    }
+
+    /// Downloads a transcription model ahead of a call.
+    ///
+    /// Same work the first call would do anyway, moved to a moment where a
+    /// several-minute wait is not sitting between the user and a meeting.
+    private func fetchModel(_ command: CopilotCommand) {
+        guard let model = CallaCopilotCommandValidation.liveModel(command.model) else {
+            copilotResult = "Rejected unknown model"; return
+        }
+        guard modelProcess?.isRunning != true else {
+            copilotResult = "A model download is already running"; return
+        }
+        guard let executable = copilotExecutable else {
+            copilotResult = "Call host is not installed"; return
+        }
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = executable.deletingLastPathComponent()
+        process.arguments = ["models", "--fetch", model]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CALLA_RUNTIME_ROOT"] = root.path
+        process.environment = environment
+        process.terminationHandler = { [weak self] child in
+            self?.queue.async {
+                self?.modelProcess = nil
+                if child.terminationStatus != 0 {
+                    self?.copilotResult = "Model download failed (status \(child.terminationStatus))"
+                }
+            }
+        }
+        do {
+            try process.run()
+            modelProcess = process
+            copilotResult = "Downloading \(model)…"
+        } catch {
+            copilotResult = "Could not download model: \(error.localizedDescription)"
+        }
+    }
+
+    /// Runs the host's own permission request, so the prompts are attributed to
+    /// the signature that captures.
+    func requestCopilotPermissions(with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let executable = self.copilotExecutable else {
+                self.copilotResult = "Call host is not installed"
+                reply(self.encodedStatus()); return
+            }
+            guard self.permissionProcess?.isRunning != true else {
+                reply(self.encodedStatus()); return
+            }
+            let process = Process()
+            process.executableURL = executable
+            process.currentDirectoryURL = executable.deletingLastPathComponent()
+            process.arguments = ["permissions"]
+            var environment = ProcessInfo.processInfo.environment
+            environment["CALLA_RUNTIME_ROOT"] = self.root.path
+            process.environment = environment
+            process.terminationHandler = { [weak self] _ in
+                self?.queue.async { self?.permissionProcess = nil }
+            }
+            do {
+                try process.run()
+                self.permissionProcess = process
+                self.copilotResult = "Requesting microphone and screen recording…"
+            } catch {
+                self.copilotResult = "Could not request permissions: \(error.localizedDescription)"
+            }
+            reply(self.encodedStatus())
+        }
+    }
+
+    /// What the host last reported about its own grants.
+    ///
+    /// Absent means *unknown*, not denied — after a fresh install nothing has
+    /// written the file yet, and reporting "not granted" against a host that
+    /// holds both is the same wrong answer this whole path was fixing. A
+    /// prompt-free `permissions --check` fills it in once per engine lifetime.
+    private func hostPermissions() -> (micGranted: Bool, screenGranted: Bool)? {
+        guard let data = try? Data(contentsOf: copilotPermissionsURL),
+              let file = try? jsonDecoder.decode(CopilotPermissionsFile.self, from: data) else {
+            refreshHostPermissionsOnce()
+            return nil
+        }
+        return (file.micGranted, file.screenGranted)
+    }
+
+    /// Asks the host to report its grants without prompting for them.
+    ///
+    /// `--check` never raises a dialog, so this is safe to fire on a status
+    /// poll; the answer lands on the next one.
+    private func refreshHostPermissionsOnce() {
+        guard !hostPermissionCheckStarted, permissionProcess?.isRunning != true,
+              let executable = copilotExecutable else { return }
+        hostPermissionCheckStarted = true
+
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = executable.deletingLastPathComponent()
+        process.arguments = ["permissions", "--check"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CALLA_RUNTIME_ROOT"] = root.path
+        process.environment = environment
+        process.terminationHandler = { [weak self] _ in
+            self?.queue.async { self?.permissionProcess = nil }
+        }
+        if (try? process.run()) != nil { permissionProcess = process }
     }
 
     private func stopCopilot() {
@@ -615,32 +967,114 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         copilotResult = "Ending call…"
     }
 
-    func copilotTranscript(with reply: @escaping (Data) -> Void) {
+    func copilotTranscript(since seq: Int, with reply: @escaping (Data) -> Void) {
         queue.async {
-            reply(self.currentCopilotTranscript())
+            reply(self.currentCopilotTranscript(since: seq))
+        }
+    }
+
+    func copilotCalls(with reply: @escaping (Data) -> Void) {
+        queue.async {
+            reply(self.archivedCalls())
+        }
+    }
+
+    func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let validID = CallaCopilotCommandValidation.callID(callID) else {
+                reply(Data("[]".utf8)); return
+            }
+            reply(self.transcriptData(forCall: validID, since: -1, limit: 5000))
         }
     }
 
     /// Reads the live call's `transcript.jsonl`, newest turns last.
     ///
     /// Bounded on purpose: an hour-long call is thousands of turns, and the
-    /// window only ever shows the tail. Reading the whole file into an XPC
-    /// reply would stall the engine queue that also serves the status poll.
-    private func currentCopilotTranscript(limit: Int = 400) -> Data {
+    /// panel only ever shows the tail. Reading the whole file into an XPC reply
+    /// would stall the engine queue that also serves the status poll.
+    ///
+    /// `since` is what makes a sub-second poll affordable: past the first read
+    /// the reply is almost always empty, because turns arrive at the pace of
+    /// human speech and not at the pace of the poll.
+    private func currentCopilotTranscript(since seq: Int, limit: Int = 400) -> Data {
         guard let callID = (try? Data(contentsOf: copilotStatusURL))
             .flatMap({ try? jsonDecoder.decode(CopilotHostStatus.self, from: $0) })?.callID,
             let validID = CallaCopilotCommandValidation.callID(callID) else {
             return Data("[]".utf8)
         }
-        let file = copilotRoot
-            .appendingPathComponent("calls", isDirectory: true)
-            .appendingPathComponent(validID, isDirectory: true)
+        return transcriptData(forCall: validID, since: seq, limit: limit)
+    }
+
+    private func transcriptData(forCall callID: String, since seq: Int, limit: Int) -> Data {
+        let file = copilotCallsRoot
+            .appendingPathComponent(callID, isDirectory: true)
             .appendingPathComponent("transcript.jsonl")
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { return Data("[]".utf8) }
-        let lines = text
+        var lines = text
             .split(separator: "\n", omittingEmptySubsequences: true)
             .suffix(limit)
+            .map(String.init)
+        if seq >= 0 {
+            // Filtering on the decoded `seq` rather than on line position: the
+            // file is appended to while this runs, and counting lines would
+            // skip or repeat a turn depending on the timing.
+            lines = lines.filter { line in
+                guard let data = line.data(using: .utf8),
+                      let turn = try? jsonDecoder.decode(ArchivedTurn.self, from: data) else { return false }
+                return turn.seq > seq
+            }
+        }
         return Data(("[" + lines.joined(separator: ",") + "]").utf8)
+    }
+
+    /// Every call with a transcript on disk, newest first.
+    private func archivedCalls(limit: Int = 200) -> Data {
+        guard let ids = try? fileManager.contentsOfDirectory(atPath: copilotCallsRoot.path) else {
+            return Data("[]".utf8)
+        }
+        let summaries: [CallSummaryFile] = ids
+            .compactMap { CallaCopilotCommandValidation.callID($0) }
+            .compactMap { summary(forCall: $0) }
+            .sorted { ($0.startedAt ?? .distantPast) > ($1.startedAt ?? .distantPast) }
+            .prefix(limit)
+            .map { $0 }
+        // Plain encoder, like `encodedStatus()` — the notch decodes both with a
+        // plain decoder, so the date strategies have to match.
+        return (try? JSONEncoder().encode(summaries)) ?? Data("[]".utf8)
+    }
+
+    private func summary(forCall callID: String) -> CallSummaryFile? {
+        let directory = copilotCallsRoot.appendingPathComponent(callID, isDirectory: true)
+        let transcript = directory.appendingPathComponent("transcript.jsonl")
+        guard let text = try? String(contentsOf: transcript, encoding: .utf8) else { return nil }
+
+        let turns = text
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { line -> ArchivedTurn? in
+                guard let data = line.data(using: .utf8) else { return nil }
+                return try? jsonDecoder.decode(ArchivedTurn.self, from: data)
+            }
+        guard !turns.isEmpty else { return nil }
+
+        // The call's own metadata file is the authority when it exists; a call
+        // killed mid-flight has none, and the transcript's timestamps are still
+        // enough to list it.
+        let meta = (try? Data(contentsOf: directory.appendingPathComponent("call.json")))
+            .flatMap { try? jsonDecoder.decode(CopilotHostStatus.self, from: $0) }
+        let started = meta?.startedAt
+            ?? (try? fileManager.attributesOfItem(atPath: transcript.path)[.creationDate] as? Date) ?? nil
+        let ended = (try? fileManager.attributesOfItem(atPath: transcript.path)[.modificationDate] as? Date) ?? nil
+        let audio = (try? fileManager.contentsOfDirectory(atPath: directory.path))?
+            .contains { $0.hasSuffix(".wav") } ?? false
+
+        return CallSummaryFile(
+            id: callID,
+            startedAt: started,
+            endedAt: ended,
+            turnCount: turns.count,
+            persona: meta?.persona ?? "generic",
+            hasAudio: audio)
     }
 
     private func currentCopilotStatus() -> CopilotStatus {
@@ -648,6 +1082,19 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         status.available = copilotExecutable != nil
         status.persona = copilotPersona
         status.lastResult = copilotResult
+        // Preference until a live call reports otherwise, so Settings and the
+        // notch agree before the first suggestion lands.
+        status.activeProvider = copilotProvider
+        let agy = agyAvailability()
+        status.agyAvailable = agy.available
+        status.agyVersion = agy.version
+
+        let permissions = hostPermissions()
+        status.hostPermissionsKnown = permissions != nil
+        status.hostMicGranted = permissions?.micGranted ?? false
+        status.hostScreenGranted = permissions?.screenGranted ?? false
+        status.modelDownload = (try? Data(contentsOf: copilotModelDownloadURL))
+            .flatMap { try? jsonDecoder.decode(ModelDownloadFile.self, from: $0) }
 
         if let data = try? Data(contentsOf: copilotStatusURL),
            let host = try? jsonDecoder.decode(CopilotHostStatus.self, from: data) {
@@ -659,6 +1106,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             status.gatewayConnected = host.gatewayConnected
             status.micActive = host.micActive
             status.systemAudioActive = host.systemAudioActive
+            // The host is the authority once a call is live: it knows whether the
+            // local brain actually answered or handed over to the gateway.
+            status.activeProvider = host.provider ?? copilotProvider
+            status.providerDetail = host.providerDetail
 
             if let suggestionData = try? Data(contentsOf: copilotSuggestionURL),
                let suggestion = try? jsonDecoder.decode(CopilotSuggestionFile.self, from: suggestionData),
@@ -668,10 +1119,46 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 status.headline = suggestion.headline
                 status.angles = suggestion.angles
                 status.confirm = suggestion.confirm
+                status.summary = suggestion.summary
+                status.openQuestions = suggestion.openQuestions ?? []
                 status.suggestionAfterSeq = suggestion.afterSeq
             }
         }
         return status
+    }
+
+    /// Whether the local Antigravity CLI is installed, and its version.
+    ///
+    /// Looked up the same way the provider does — well-known install paths first,
+    /// because a GUI app inherits a minimal `PATH` — and cached for the life of
+    /// the service: the answer only changes when the user installs or removes
+    /// `agy`, and this is read by a 2s poll.
+    private func agyAvailability() -> (available: Bool, version: String?) {
+        if let agyProbe { return agyProbe }
+        let candidates = [
+            "~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy",
+        ].map { ($0 as NSString).expandingTildeInPath }
+        guard let path = candidates.first(where: { fileManager.isExecutableFile(atPath: $0) }) else {
+            let probe = (available: false, version: String?.none)
+            agyProbe = probe
+            return probe
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        var version: String?
+        if (try? process.run()) != nil {
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            version = text.isEmpty ? nil : text
+        }
+        let probe = (available: true, version: version)
+        agyProbe = probe
+        return probe
     }
 
     private func runCourseScript(_ action: String, payload: [String: Any]) {
