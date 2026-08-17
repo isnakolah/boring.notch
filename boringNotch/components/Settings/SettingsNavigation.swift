@@ -14,8 +14,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case general, appearance, advanced
     case media, battery, huds, calendar
     case shelf
+    case copilot
     case tutorCourses, tutorCreate, tutorBehavior, tutorAccess, tutorEngine
-    case pomodoro, sweep, usage
+    case pomodoro, usage
+    case sweep, sweepCleanUp, sweepHistory, sweepOptions
     case shortcuts, about
 
     var id: String { rawValue }
@@ -30,13 +32,17 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .huds: return "HUDs"
         case .calendar: return "Calendar"
         case .shelf: return "Shelf"
+        case .copilot: return "Call copilot"
         case .tutorCourses: return "Courses"
         case .tutorCreate: return "Create"
         case .tutorBehavior: return "Behavior"
         case .tutorAccess: return "Access"
         case .tutorEngine: return "Engine"
         case .pomodoro: return "Pomodoro"
-        case .sweep: return "Sweep"
+        case .sweep: return "Overview"
+        case .sweepCleanUp: return "Clean Up"
+        case .sweepHistory: return "History"
+        case .sweepOptions: return "Options"
         case .usage: return "Usage"
         case .shortcuts: return "Shortcuts"
         case .about: return "About"
@@ -53,13 +59,17 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .huds: return "dial.medium.fill"
         case .calendar: return "calendar"
         case .shelf: return "books.vertical"
+        case .copilot: return "waveform.badge.mic"
         case .tutorCourses: return "books.vertical.fill"
         case .tutorCreate: return "wand.and.stars"
         case .tutorBehavior: return "slider.horizontal.3"
         case .tutorAccess: return "lock.shield"
         case .tutorEngine: return "bolt.horizontal.circle"
         case .pomodoro: return "timer.circle.fill"
-        case .sweep: return "externaldrive.badge.checkmark"
+        case .sweep: return "chart.pie"
+        case .sweepCleanUp: return "sparkles"
+        case .sweepHistory: return "clock.arrow.circlepath"
+        case .sweepOptions: return "slider.horizontal.3"
         case .usage: return "chart.bar.xaxis"
         case .shortcuts: return "keyboard"
         case .about: return "info.circle"
@@ -72,8 +82,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         switch self {
         case .general, .appearance, .advanced: return .notch
         case .media, .battery, .huds, .calendar: return .activities
-        case .shelf, .pomodoro, .sweep, .usage: return .tools
+        case .shelf, .pomodoro, .usage, .copilot: return .tools
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine: return .tutor
+        case .sweep, .sweepCleanUp, .sweepHistory, .sweepOptions: return .sweep
         case .shortcuts, .about: return .app
         }
     }
@@ -98,6 +109,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine:
             return .activity(symbol: "graduationcap.fill", text: "Shape the lamp base",
                              tint: NotchTint.active, caption: "A lesson in progress")
+        case .copilot:
+            return .activity(symbol: "waveform.badge.mic", text: "When could you start?",
+                             tint: NotchTint.active, caption: "A pointer mid-call")
         case .pomodoro:
             return .activity(symbol: "timer", text: "24:10 focus",
                              tint: NotchTint.healthy, caption: "Focus timer")
@@ -122,6 +136,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case "HUD": self = .huds
         case "Battery": self = .battery
         case "Shelf": self = .shelf
+        case "Copilot", "CallCopilot": self = .copilot
         case "Tutor": self = .tutorCourses
         case "Usage": self = .usage
         case "Pomodoro": self = .pomodoro
@@ -158,7 +173,7 @@ enum SettingsGroup: String, CaseIterable, Identifiable {
         switch self {
         case .notch: return [.general, .appearance, .advanced]
         case .activities: return [.media, .battery, .huds, .calendar]
-        case .tools: return [.shelf, .pomodoro, .sweep, .usage]
+        case .tools: return [.shelf, .copilot, .pomodoro, .sweep, .usage]
         // Tutor gets a group rather than a disclosure under Tools. A
         // `DisclosureGroup` inside a selectable `List` rendered collapsed
         // regardless of its binding and would not toggle from the label, which

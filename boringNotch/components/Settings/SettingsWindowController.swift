@@ -46,7 +46,10 @@ class SettingsWindowController: NSWindowController {
         
         window.title = "Boring Notch Settings"
         window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
+        // Each pane names itself in its own header now, so a title in the bar
+        // is the same word twice. The bar itself stays: dropping it would put
+        // the traffic lights on top of the sidebar's notch preview.
+        window.titleVisibility = .hidden
         window.toolbarStyle = .unified
         window.isMovableByWindowBackground = true
         

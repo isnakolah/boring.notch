@@ -67,6 +67,8 @@ struct SettingsView: View {
         case .huds: HUD()
         case .calendar: CalendarSettings()
         case .shelf: Shelf()
+        case .copilot:
+            CopilotPane()
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine:
             TutorPane(tab: selectedTab)
         case .pomodoro: PomodoroSettings()
