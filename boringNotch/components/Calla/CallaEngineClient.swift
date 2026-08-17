@@ -15,7 +15,11 @@ import Defaults
     func ask(_ text: String, with reply: @escaping (Data) -> Void)
     func courseControl(_ command: Data, with reply: @escaping (Data) -> Void)
     func copilotControl(_ command: Data, with reply: @escaping (Data) -> Void)
-    func copilotTranscript(with reply: @escaping (Data) -> Void)
+    /// Turns newer than `seq`. Pass -1 for the whole tail.
+    func copilotTranscript(since seq: Int, with reply: @escaping (Data) -> Void)
+    func copilotCalls(with reply: @escaping (Data) -> Void)
+    func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
+    func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
 }
 
 struct CallaEnginePreferences: Codable, Equatable {
@@ -91,13 +95,61 @@ struct CallaCopilotStatus: Codable, Equatable {
     var headline: String? = nil
     var angles: [String] = []
     var confirm: [String] = []
+    /// Where the conversation has got to, refreshed on every reply. This is
+    /// what the panel shows between questions.
+    var summary: String? = nil
+    /// Raised and unresolved, likeliest to come back to you first.
+    var openQuestions: [String] = []
     var suggestionAfterSeq: Int? = nil
+    /// Which brain answered this call: "local" or "gateway". Shown in the notch,
+    /// because a failover the user cannot see looks exactly like a broken copilot.
+    var activeProvider: String? = nil
+    /// The model that answered, or why the local brain stood down.
+    var providerDetail: String? = nil
+    /// Whether the local Antigravity CLI is installed at all.
+    var agyAvailable = false
+    var agyVersion: String? = nil
     var lastResult: String? = nil
+    /// Reported by the capture host about itself. The engine used to preflight
+    /// these in its own process, which answered a question nobody asked: TCC
+    /// grants are keyed to the signature that captures, and that is the host.
+    var hostMicGranted = false
+    var hostScreenGranted = false
+    /// False until the host has reported. Absent is not the same as denied —
+    /// after a fresh install nothing has asked yet.
+    var hostPermissionsKnown = false
+    var modelDownload: CallaModelDownload? = nil
 
     var hasSuggestion: Bool {
         guard let headline else { return false }
         return !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+}
+
+/// Progress of a transcription model fetch.
+///
+/// The first call on a new Mac blocks for minutes pulling ~487MB with no sign
+/// that anything is happening; this is what makes that visible.
+struct CallaModelDownload: Codable, Equatable {
+    let model: String
+    let receivedBytes: Int64
+    let totalBytes: Int64
+    /// `downloading`, `verifying`, `ready` or `failed`.
+    let state: String
+    let message: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model, state, message
+        case receivedBytes = "received_bytes"
+        case totalBytes = "total_bytes"
+    }
+
+    var fraction: Double {
+        guard totalBytes > 0 else { return 0 }
+        return min(1, max(0, Double(receivedBytes) / Double(totalBytes)))
+    }
+
+    var isActive: Bool { state == "downloading" || state == "verifying" }
 }
 
 /// One transcribed turn, tagged with the side of the call it came from.
@@ -121,11 +173,111 @@ struct CallaCopilotCommand: Codable {
     let action: String
     let persona: String?
     let model: String?
+    let callID: String?
+    /// Prompt text the user edited. Never reaches a process argument — the
+    /// engine hands it to the capture host on stdin.
+    let profile: CallaCopilotProfile?
+    /// "local" or "gateway". Absent leaves the engine's stored choice alone.
+    let provider: String?
+    /// Live model tier for the local brain: fast | balanced | deep.
+    let tier: String?
+    /// Exact model for the end-of-call pass.
+    let summaryModel: String?
+    /// Whether the gateway may answer when the local brain cannot.
+    let fallback: Bool?
 
-    init(action: String, persona: String? = nil, model: String? = nil) {
+    enum CodingKeys: String, CodingKey {
+        case action, persona, model, profile, provider, tier, fallback
+        case summaryModel = "summary_model"
+        case callID = "call_id"
+    }
+
+    init(action: String,
+         persona: String? = nil,
+         model: String? = nil,
+         callID: String? = nil,
+         profile: CallaCopilotProfile? = nil,
+         provider: String? = nil,
+         tier: String? = nil,
+         summaryModel: String? = nil,
+         fallback: Bool? = nil) {
         self.action = action
         self.persona = persona
         self.model = model
+        self.callID = callID
+        self.profile = profile
+        self.provider = provider
+        self.tier = tier
+        self.summaryModel = summaryModel
+        self.fallback = fallback
+    }
+}
+
+/// The user's own prompt text, carried to the gateway on `call_start`.
+///
+/// Every field is free text, which is exactly why it is fenced off into its own
+/// type: it is a prompt payload and nothing else, and the engine's validator
+/// refuses to let any of it name a process or become a command-line argument.
+struct CallaCopilotProfile: Codable, Equatable {
+    /// Who the user is — role, company, product. Injected into every call.
+    let about: String?
+    /// Replaces the gateway's own persona block for the persona in play.
+    let personaGuidance: String?
+    /// Replaces the gateway's base guidance. Empty means "use the gateway's".
+    let baseGuidance: String?
+
+    enum CodingKeys: String, CodingKey {
+        case about
+        case personaGuidance = "persona_guidance"
+        case baseGuidance = "base_guidance"
+    }
+
+    var isEmpty: Bool {
+        [about, personaGuidance, baseGuidance]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .allSatisfy(\.isEmpty)
+    }
+
+    /// Reads the current settings into a profile, or nil when nothing is set.
+    @MainActor
+    static var current: CallaCopilotProfile? {
+        let persona = Defaults[.callaCopilotPersona]
+        let overrides = Defaults[.callaCopilotPersonaOverrides]
+            .merging(Defaults[.callaCopilotCustomPersonas]) { override, _ in override }
+        let profile = CallaCopilotProfile(
+            about: nonEmpty(Defaults[.callaCopilotAboutMe]),
+            personaGuidance: nonEmpty(overrides[persona] ?? ""),
+            baseGuidance: nonEmpty(Defaults[.callaCopilotBaseGuidance]))
+        return profile.isEmpty ? nil : profile
+    }
+
+    private static func nonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// One archived call, as listed in settings.
+struct CallaCallSummary: Codable, Equatable, Identifiable {
+    let id: String
+    let startedAt: Date?
+    let endedAt: Date?
+    let turnCount: Int
+    let persona: String
+    /// Whether raw audio is still on disk, which is what re-transcribing needs.
+    let hasAudio: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, persona
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case turnCount = "turn_count"
+        case hasAudio = "has_audio"
+    }
+
+    var duration: TimeInterval? {
+        guard let startedAt, let endedAt else { return nil }
+        return max(0, endedAt.timeIntervalSince(startedAt))
     }
 }
 
@@ -363,7 +515,33 @@ final class CallaEngineClient: ObservableObject {
     // MARK: - Live call copilot
 
     func startCall(persona: String, model: String) {
-        send(CallaCopilotCommand(action: "start", persona: persona, model: model))
+        send(CallaCopilotCommand(
+            action: "start",
+            persona: persona,
+            model: model,
+            profile: CallaCopilotProfile.current,
+            provider: Defaults[.callaIntelligenceProvider],
+            tier: Defaults[.callaIntelligenceLiveTier],
+            summaryModel: Defaults[.callaIntelligenceSummaryModel],
+            fallback: Defaults[.callaIntelligenceFallback]))
+    }
+
+    /// Changes which brain answers. Takes effect on the next call: the capture
+    /// host binds its provider at launch, so switching mid-call would report a
+    /// change that did not happen. Automatic fallback is the only thing that swaps
+    /// brains during a call.
+    func setIntelligence(
+        provider: String,
+        tier: String? = nil,
+        summaryModel: String? = nil,
+        fallback: Bool? = nil
+    ) {
+        send(CallaCopilotCommand(
+            action: "set_provider",
+            provider: provider,
+            tier: tier,
+            summaryModel: summaryModel,
+            fallback: fallback))
     }
 
     func endCall() {
@@ -379,20 +557,65 @@ final class CallaEngineClient: ObservableObject {
         invoke { proxy, reply in proxy.copilotControl(data, with: reply) }
     }
 
-    /// Fetches the live call's recent turns.
+    /// Fetches the live call's turns.
     ///
     /// Deliberately not on the status poll: the transcript is large, and only
-    /// the window ever wants it.
-    func fetchTranscript(completion: @escaping ([CallaCallTurn]) -> Void) {
+    /// the live panel wants it. Pass the newest `seq` already held to get back
+    /// just what arrived since — the live panel polls sub-second, and re-reading
+    /// the whole call at that rate is what made the old window feel slow.
+    func fetchTranscript(since seq: Int? = nil, completion: @escaping ([CallaCallTurn]) -> Void) {
         let connection = connection ?? makeConnection()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
             NSLog("[CallaEngine] transcript unavailable: %@", error.localizedDescription)
             Task { @MainActor in completion([]) }
         }) as? BoringCallaEngineProtocol else { return }
-        proxy.copilotTranscript { data in
+        proxy.copilotTranscript(since: seq ?? -1) { data in
             let turns = (try? JSONDecoder().decode([CallaCallTurn].self, from: data)) ?? []
             Task { @MainActor in completion(turns) }
         }
+    }
+
+    /// Lists the calls this Mac has archived, newest first.
+    func fetchCalls(completion: @escaping ([CallaCallSummary]) -> Void) {
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            NSLog("[CallaEngine] call list unavailable: %@", error.localizedDescription)
+            Task { @MainActor in completion([]) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotCalls { data in
+            let calls = (try? JSONDecoder().decode([CallaCallSummary].self, from: data)) ?? []
+            Task { @MainActor in completion(calls) }
+        }
+    }
+
+    /// Reads one archived call's transcript in full.
+    func fetchCallTranscript(callID: String, completion: @escaping ([CallaCallTurn]) -> Void) {
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            NSLog("[CallaEngine] archive unavailable: %@", error.localizedDescription)
+            Task { @MainActor in completion([]) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotCallTranscript(callID) { data in
+            let turns = (try? JSONDecoder().decode([CallaCallTurn].self, from: data)) ?? []
+            Task { @MainActor in completion(turns) }
+        }
+    }
+
+    /// Re-runs the large model over a finished call's saved audio.
+    func retranscribe(callID: String) {
+        send(CallaCopilotCommand(action: "archive", callID: callID))
+    }
+
+    /// Asks the capture host — not the engine — for microphone and screen
+    /// recording. TCC keys a grant to the code signature that asks, so asking
+    /// from here would prompt for the wrong process and grant nothing useful.
+    func requestCopilotPermissions() {
+        invoke { $0.requestCopilotPermissions(with: $1) }
+    }
+
+    /// Downloads a transcription model ahead of a call.
+    func prefetchModel(_ model: String) {
+        send(CallaCopilotCommand(action: "fetch_model", model: model))
     }
 
     private func makeConnection() -> NSXPCConnection {
