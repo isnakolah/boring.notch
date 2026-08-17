@@ -358,6 +358,19 @@ struct EventListView: View {
         } else {
             openURL(url)
         }
+
+        // Joining from here is the clearest statement of intent the copilot
+        // ever gets — clearer than the microphone detector, which has to infer
+        // it. Start now rather than waiting out the detector's dwell.
+        if event.videoCallURL != nil { startCopilotForMeeting() }
+    }
+
+    private func startCopilotForMeeting() {
+        guard Defaults[.callaCopilotEnabled], Defaults[.callaCopilotAutoStartOnMeeting] else { return }
+        let engine = CallaEngineClient.shared
+        guard engine.status.copilot.available, !engine.status.copilot.running else { return }
+        engine.startCall(persona: Defaults[.callaCopilotPersona],
+                         model: Defaults[.callaCopilotLiveModel])
     }
 
     /// Turns the event's remaining time window into a Pomodoro plan and starts
