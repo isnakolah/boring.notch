@@ -13,12 +13,24 @@ public enum PromptComposer {
         public var about: Int
         public var role: Int
         public var base: Int
+        /// Larger than the rest because it is assembled from several notes plus a
+        /// previous call's account. Still bounded: this is sent once per
+        /// conversation, but a rollover re-sends it, and an unbounded block would
+        /// make every rollover progressively slower.
+        public var knowledge: Int
         public var taskGuidance: Int
 
-        public init(about: Int = 1200, role: Int = 2000, base: Int = 8000, taskGuidance: Int = 4000) {
+        public init(
+            about: Int = 1200,
+            role: Int = 2000,
+            base: Int = 8000,
+            knowledge: Int = 8000,
+            taskGuidance: Int = 4000
+        ) {
             self.about = about
             self.role = role
             self.base = base
+            self.knowledge = knowledge
             self.taskGuidance = taskGuidance
         }
 
@@ -41,6 +53,12 @@ public enum PromptComposer {
 
         let about = clamp(request.system.about, to: limits.about)
         if !about.isEmpty { sections.append("## About the user\n\(about)") }
+
+        // After `about` and before the contract: it is context to reason from,
+        // not an instruction, and putting it last would have it read as the most
+        // recent thing asked for.
+        let knowledge = clamp(request.system.knowledge, to: limits.knowledge)
+        if !knowledge.isEmpty { sections.append("## Background\n\(knowledge)") }
 
         let guidance = clamp(request.system.taskGuidance, to: limits.taskGuidance)
         if !guidance.isEmpty { sections.append("## Task\n\(guidance)") }

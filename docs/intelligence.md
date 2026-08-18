@@ -19,7 +19,7 @@ which providers may serve it.
 ```swift
 static let suggest = IntelligenceTask(
     id: "copilot.suggest",                    // dotted, stable, also a Defaults-key suffix
-    defaultTier: .balanced,                   // .fast | .balanced | .deep
+    defaultTier: .fast,                       // .fast | .balanced | .deep
     contract: .sentinelJSON(keys: ["headline", "angles", "confirm"], marker: "<<<CALLA_END>>>"),
     latencyBudget: 12,
     conversation: .perSession,                // .oneShot | .perSession | .persistent(key:)
@@ -156,6 +156,65 @@ removes it (`--mode plan` costs +790, `--sandbox` +722, `disabledTools` is MCP-o
   compact brief. This keeps latency flat across a long call, not just cost.
 - The host itself makes zero model calls while idle.
 
+## Two lanes and a ledger
+
+A call has two jobs with opposite requirements. Answering a question is urgent and
+wants the smallest prompt that still contains the answer; keeping the account is
+not urgent and wants to think. They run as **two conversations, both warm from the
+start of the call**, opened concurrently in `CopilotAdvisor.prepare()`:
+
+| Lane | Task | Conversation | Tier | Fires |
+|---|---|---|---|---|
+| Question | `copilot.suggest` | `<callID>` | fast (`flash_lite`) | a remote question flushes |
+| Chunk | `copilot.brief` | `<callID>#brief` | balanced (`flash`) | 4 statements or 90s |
+| Fold | `copilot.exec` | fresh each time | balanced | the account passes 12 points |
+
+The panel's bottom switcher chooses which lane is *on screen*; both run either way.
+
+`CallLedger` is what they share, and it is the answer to a call outrunning any
+context window. It holds the call in three layers:
+
+```
+standing   one folded paragraph for the part nobody is discussing any more
+chunks     points, appended as each chunk of the call is summarised
+tail       the last few statements, verbatim, not yet summarised
+```
+
+A statement enters the tail. When a chunk closes, its statements are summarised
+into points, the points are **appended**, and the raw statements are dropped — the
+summary replaces the transcript it came from. When the points pile up, the oldest
+fold into `standing` and leave.
+
+Three consequences worth stating plainly:
+
+- **The account grows rather than being rewritten.** The chunk lane is warm, so it
+  is asked for points about the *new* turns only; earlier points are never
+  re-emitted and so cannot be silently lost. The old design handed the model the
+  whole account every 90s and took back whatever came out.
+- **A question carries both forms.** `questionContext` sends the account as
+  established fact and the last few statements verbatim, because a question is
+  almost always about the verbatim part ("so how would you scale *that*?"). Sent in
+  full every time, so a context rollover or a host restart is not amnesia.
+- **What is sent has a ceiling.** Chunks close every 4 statements and fold above 12
+  points, so an hour of call does not become an hour of prompt. Pinned by
+  `CallLedgerTests.testQuestionContextStaysBoundedOverALongCall`.
+
+Nothing on disk is compacted: `transcript.jsonl` is still the complete record, and
+the ledger is prompt-and-panel memory only.
+
+The question lane is single-flight, and not only for pacing: `AgyProvider` reads a
+session's state before its await and writes it back after, so two concurrent
+requests on one conversation key can bootstrap twice and lose the conversation id
+between them. One question is answered at a time and only the newest is queued
+behind it — by the time a model answers, an older question has been overtaken. A
+chunk never closes while a question is in flight, either: two conversations, one
+resident server, and the answer is the only thing anyone is waiting for.
+
+One more thing that is latency and not intelligence: the app learns of a suggestion
+by polling the engine, so that poll drops to 0.6s while a call is running
+(`CallaEngineClient.startMonitoring`). At the idle 4s cadence a 1.2s answer sat in
+a file longer than it took to produce.
+
 ## Statement batching
 
 Turns are not sentences. `UtteranceDetector` closes an utterance after 500ms of
@@ -190,7 +249,10 @@ cd CallaCallHost && swift build && ./.build/debug/CallaCallHost probe-local
 
 `probe-local` is the acceptance gate: it replays a canned call and **fails on latency
 as well as on error**, because a silent fall back to the print transport looks like
-success otherwise. It also prints the segmentation ratio and the last local failure.
+success otherwise. It also fails if fewer than two chunks accumulated — one chunk
+proves the summary lane answers, two prove it appends rather than rewriting, which
+is invisible from the suggestions alone. It prints the whole ledger, the
+segmentation ratio and the last local failure.
 
 After any change here, check for leaks — this should print `0`:
 

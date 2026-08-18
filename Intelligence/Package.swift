@@ -16,11 +16,20 @@ let package = Package(
     products: [
         .library(name: "IntelligenceCore", targets: ["IntelligenceCore"]),
         .library(name: "IntelligenceProviders", targets: ["IntelligenceProviders"]),
+        .library(name: "IntelligenceStore", targets: ["IntelligenceStore"]),
     ],
     targets: [
         .target(name: "IntelligenceCore"),
         .target(name: "IntelligenceProviders", dependencies: ["IntelligenceCore"]),
+        // Knowledge and call history on SQLite. Deliberately not folded into
+        // IntelligenceCore: this one links SQLite3 and NaturalLanguage and owns a
+        // file on disk, and Core's whole value is that it does neither.
+        .target(
+            name: "IntelligenceStore",
+            dependencies: ["IntelligenceCore"],
+            linkerSettings: [.linkedLibrary("sqlite3")]),
         .testTarget(name: "IntelligenceCoreTests", dependencies: ["IntelligenceCore"]),
         .testTarget(name: "IntelligenceProvidersTests", dependencies: ["IntelligenceProviders"]),
+        .testTarget(name: "IntelligenceStoreTests", dependencies: ["IntelligenceStore"]),
     ]
 )

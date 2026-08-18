@@ -4,22 +4,37 @@ import Foundation
 /// once per conversation and never restate them.
 ///
 /// Ordering is fixed: `base` (the contract and house style), then `role` (the
-/// persona), then `about` (who the user is), then `taskGuidance`.
+/// persona), then `about` (who the user is), then `knowledge` (what this
+/// particular call is about), then `taskGuidance`.
 public struct PromptBlocks: Sendable, Hashable {
     public var base: String
     public var role: String
     public var about: String
+    /// What the user has recorded about *this* call — the meeting's own details,
+    /// notes attached to it, and what the last occurrence of it concluded.
+    ///
+    /// Kept apart from `about` because the two have different lifetimes and
+    /// different limits: `about` is one paragraph that is true of every call,
+    /// while this is assembled per call and is allowed to be much longer.
+    public var knowledge: String
     public var taskGuidance: String
 
-    public init(base: String = "", role: String = "", about: String = "", taskGuidance: String = "") {
+    public init(
+        base: String = "",
+        role: String = "",
+        about: String = "",
+        knowledge: String = "",
+        taskGuidance: String = ""
+    ) {
         self.base = base
         self.role = role
         self.about = about
+        self.knowledge = knowledge
         self.taskGuidance = taskGuidance
     }
 
     public var isEmpty: Bool {
-        base.isEmpty && role.isEmpty && about.isEmpty && taskGuidance.isEmpty
+        base.isEmpty && role.isEmpty && about.isEmpty && knowledge.isEmpty && taskGuidance.isEmpty
     }
 }
 

@@ -58,6 +58,12 @@ public struct StatementRules: Sendable, Hashable {
     /// Silence after a capped turn below which we assume the continuation is
     /// still coming.
     public var cappedContinuationGap: Double
+    /// Silence after a question before it goes out.
+    ///
+    /// Far shorter than the other boundaries, and it ignores the request floor: a
+    /// question is the one input where the answer is wanted *now*, and the cost of
+    /// being early is a suggestion about a question that was still being finished.
+    public var questionGap: Double
     /// Silence needed after terminal punctuation.
     public var terminalGap: Double
     /// Silence that ends a statement even without punctuation.
@@ -81,6 +87,7 @@ public struct StatementRules: Sendable, Hashable {
     public init(
         vadCapSeconds: Double = 9.5,
         cappedContinuationGap: Double = 0.3,
+        questionGap: Double = 0.35,
         terminalGap: Double = 0.7,
         silenceGap: Double = 1.5,
         hangingGap: Double = 2.5,
@@ -93,6 +100,7 @@ public struct StatementRules: Sendable, Hashable {
     ) {
         self.vadCapSeconds = vadCapSeconds
         self.cappedContinuationGap = cappedContinuationGap
+        self.questionGap = questionGap
         self.terminalGap = terminalGap
         self.silenceGap = silenceGap
         self.hangingGap = hangingGap
@@ -204,6 +212,13 @@ public struct StatementSegmenter: Sendable {
         // Rule 1: the VAD chopped this utterance at its cap; the rest is coming.
         if lane.lastWasCapped, gap < rules.cappedContinuationGap { return nil }
 
+        // Rule 0: a question outranks the pacing. It flushes on a short pause and
+        // ignores the request floor, because the floor exists to stop the copilot
+        // narrating — not to make someone wait while they are being asked something.
+        if Statement.invitesAnAnswer(lane.text), gap >= rules.questionGap {
+            return flush(speaker, at: now, viaSpeakerChange: false, force: true)
+        }
+
         // Rule 8: request floor. Keep buffering; the next emission carries it.
         guard now - lastEmit >= rules.requestFloor else { return nil }
 
@@ -308,30 +323,49 @@ public extension Statement {
     /// Whisper drops question marks often, and an interviewer's most demanding
     /// prompts are imperatives — "walk me through the architecture", "tell me about
     /// a time you disagreed" — which are questions in everything but grammar.
-    var invitesAnAnswer: Bool {
-        let text = self.text.lowercased()
+    var invitesAnAnswer: Bool { Statement.invitesAnAnswer(text) }
+
+    /// Whether this text is something that wants answering.
+    static func invitesAnAnswer(_ raw: String) -> Bool {
+        let text = raw.lowercased()
         if text.contains("?") { return true }
 
         let words = text.split(whereSeparator: { !$0.isLetter && $0 != "'" }).map(String.init)
-        guard let first = words.first else { return false }
-        if Statement.interrogatives.contains(first) { return true }
+        // Spoken questions rarely start on the interrogative. "So how would you
+        // scale this", "okay and why did that break", "right, what happens next" —
+        // the marker is filler, and matching only `words.first` misses every one of
+        // them. On a call that is not an edge case; it is how most questions
+        // actually arrive.
+        let opening = words.drop { discourseMarkers.contains($0) }
+        guard let first = opening.first else { return false }
+        if interrogatives.contains(first) { return true }
         // A leading auxiliary is a yes/no question: "did you ship it", "would you
         // reach for a queue here".
-        if Statement.auxiliaries.contains(first), words.count > 1 { return true }
-        return Statement.requestPhrases.contains { text.contains($0) }
+        if auxiliaries.contains(first), opening.count > 1 { return true }
+        return requestPhrases.contains { text.contains($0) }
     }
 
-    private static let interrogatives: Set<String> = [
+    /// Filler that can precede a question without changing what it is.
+    ///
+    /// Deliberately short, and deliberately only ever *skipped* rather than
+    /// treated as evidence: a statement that merely opens with "so" is not a
+    /// question, and this list only decides which word gets tested next.
+    static let discourseMarkers: Set<String> = [
+        "so", "and", "but", "ok", "okay", "right", "well", "now", "yeah", "yes",
+        "um", "uh", "erm", "like", "just", "then", "also", "actually",
+    ]
+
+    static let interrogatives: Set<String> = [
         "what", "why", "how", "when", "where", "who", "whom", "whose", "which",
     ]
 
-    private static let auxiliaries: Set<String> = [
+    static let auxiliaries: Set<String> = [
         "do", "does", "did", "can", "could", "would", "will", "should", "shall",
         "is", "are", "was", "were", "have", "has", "had", "am",
     ]
 
     /// Imperatives that function as questions in an interview.
-    private static let requestPhrases: [String] = [
+    static let requestPhrases: [String] = [
         "tell me", "walk me through", "talk me through", "describe", "explain",
         "give me an example", "give an example", "take me through",
         "your thoughts", "elaborate", "any questions",
