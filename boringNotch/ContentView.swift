@@ -329,6 +329,13 @@ struct ContentView: View {
                     return
                 }
 
+                // A choice is on screen and unanswered. Moving the pointer onto
+                // one of its halves hands the drag to that half's own delegate,
+                // which reads as the outer target being exited — so this timer
+                // starts while the reader is still deciding, and the notch shuts
+                // under the pointer half a second later.
+                if NotchDropRouter.shared.isChoosing { return }
+
                 vm.dropEvent = false
                 if !SharingStateManager.shared.preventNotchClose {
                     vm.close()
@@ -490,11 +497,20 @@ struct ContentView: View {
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
                     case .dropChooser:
                         NotchDropChooserView(
+                            // `dropEvent` is what tells the close debounce that
+                            // the drag ended in something. Without it, dropping
+                            // on a half opened the right view and the notch shut
+                            // half a second later, which reads as nothing having
+                            // happened at all.
                             onShelf: { providers in
+                                vm.dropEvent = true
                                 coordinator.currentView = .shelf
                                 acceptIntoShelf(providers)
                             },
-                            onMeeting: { providers in routeToKnowledge(providers) })
+                            onMeeting: { providers in
+                                vm.dropEvent = true
+                                routeToKnowledge(providers)
+                            })
                     case .knowledgeDrop:
                         CallaKnowledgeDropView()
                     case .shelf:
