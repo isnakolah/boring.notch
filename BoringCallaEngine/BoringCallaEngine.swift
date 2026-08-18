@@ -2,6 +2,7 @@ import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation
+import IntelligenceStore
 
 private struct Preferences: Codable, Equatable {
     let captureEnabled: Bool
@@ -57,6 +58,21 @@ private struct CopilotStatus: Codable {
     var summary: String? = nil
     var openQuestions: [String] = []
     var suggestionAfterSeq: Int? = nil
+    /// Who is speaking right now: `me`, `them`, or nobody.
+    var speaking: String? = nil
+    /// A request is in flight.
+    var thinking = false
+    /// Which job is in flight: `answer` or `summary`.
+    var working: String? = nil
+    /// The newest pointer answers a question, rather than remarking on a statement.
+    var answering = false
+    /// Warm and ready, but deliberately not recording — the pre-roll before a
+    /// scheduled meeting. `micActive` and `systemAudioActive` are both false while
+    /// this is true, which is the claim the pre-roll card makes to the user.
+    var prewarming = false
+    /// The meeting this call was armed for, so the card has something to name.
+    var meetingTitle: String? = nil
+    var meetingStartsAt: Date? = nil
     /// Which brain answered: "local" or "gateway". The notch shows this, because
     /// an automatic failover the user cannot see is indistinguishable from a
     /// broken copilot.
@@ -142,6 +158,20 @@ private struct ArchivedTurn: Codable {
     var seq: Int
 }
 
+/// A transcript turn on its way to the notch.
+///
+/// Only needed since the store became the source: the JSONL path replies with the
+/// host's own lines verbatim, which already carry these keys. Mirrors
+/// `CallaCallTurn` in the app.
+private struct ArchivedTurnOut: Codable {
+    var id: UUID
+    var seq: Int
+    var source: String
+    var t0: Double
+    var t1: Double
+    var text: String
+}
+
 /// One archived call, as listed for the History pane.
 private struct CallSummaryFile: Codable {
     var id: String
@@ -184,16 +214,26 @@ private struct CopilotHostStatus: Codable {
     /// missing key must not throw away the whole status.
     var provider: String?
     var providerDetail: String?
+    var speaking: String?
+    var thinking: Bool?
+    var working: String?
+    var answering: Bool?
+    var prewarming: Bool?
+    var meetingTitle: String?
+    var meetingStartsAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case callID = "call_id"
         case persona
+        case prewarming
+        case meetingTitle = "meeting_title"
+        case meetingStartsAt = "meeting_starts_at"
         case startedAt = "started_at"
         case turnCount = "turn_count"
         case gatewayConnected = "gateway_connected"
         case micActive = "mic_active"
         case systemAudioActive = "system_audio_active"
-        case provider
+        case provider, speaking, thinking, answering, working
         case providerDetail = "provider_detail"
     }
 }
@@ -234,14 +274,35 @@ private struct CopilotCommand: Codable {
     var summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     var fallback: Bool?
-    /// Answer only when asked, rather than remarking on every statement.
-    var answersOnly: Bool?
+    /// The calendar event this call belongs to. The app sends the identity and
+    /// the event's own fields; the knowledge itself is composed here, because the
+    /// app is sandboxed and cannot open the store.
+    var meeting: CopilotMeeting?
 
     enum CodingKeys: String, CodingKey {
-        case action, persona, model, profile, provider, tier, fallback
-        case answersOnly = "answers_only"
+        case action, persona, model, profile, provider, tier, fallback, meeting
         case summaryModel = "summary_model"
         case callID = "call_id"
+    }
+}
+
+/// The calendar event a call is for, as the app sends it.
+private struct CopilotMeeting: Codable {
+    var eventID: String?
+    var seriesID: String?
+    var title: String?
+    var startsAt: Double?
+    var endsAt: Double?
+    var location: String?
+    var attendees: [String]?
+    var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title, location, attendees, notes
+        case eventID = "event_id"
+        case seriesID = "series_id"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
     }
 }
 
@@ -259,6 +320,60 @@ private struct CopilotProfile: Codable {
         case about
         case personaGuidance = "persona_guidance"
         case baseGuidance = "base_guidance"
+    }
+}
+
+extension JSONEncoder {
+    /// ISO-8601 dates, matching the decoder the app already uses for every other
+    /// reply this service sends.
+    static var calla: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
+/// A mutable cell for handing one value back out of a detached task.
+///
+/// `@unchecked Sendable` is accurate rather than lazy here: exactly one task
+/// writes it, and the reader only runs after that task has signalled a semaphore,
+/// which is a full barrier.
+private final class ResultBox<T>: @unchecked Sendable {
+    var value: T?
+}
+
+/// A knowledge note crossing the XPC boundary in either direction.
+///
+/// The app owns the editing UI and the store lives on this side of the sandbox
+/// line, so every create, edit and delete is one of these.
+private struct KnowledgeCommand: Codable {
+    /// `upsert`, `delete`, or `list`.
+    var action: String
+    var id: String?
+    var title: String?
+    var body: String?
+    var scope: String?
+    var scopeKey: String?
+    /// For `list`: restrict to one event and its series.
+    var eventID: String?
+    var seriesID: String?
+    /// `manual` or `document`. A document is a file the app read on its own side
+    /// of the sandbox line; only the text it extracted ever reaches this process.
+    var source: String?
+    var originName: String?
+    var originKind: String?
+    var byteSize: Int?
+    var pageCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case action, id, title, body, scope, source
+        case scopeKey = "scope_key"
+        case eventID = "event_id"
+        case seriesID = "series_id"
+        case originName = "origin_name"
+        case originKind = "origin_kind"
+        case byteSize = "byte_size"
+        case pageCount = "page_count"
     }
 }
 
@@ -419,7 +534,6 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var copilotSummaryModel = "gemini-3.1-pro-high"
     private var copilotFallback = true
     /// Mirrors the notch's "Answers only" toggle.
-    private var copilotAnswersOnly = false
     private var retranscribingCallID: String?
     private var copilotResult: String?
     /// `agy --version`, probed once. Cached because it costs a process and the
@@ -453,6 +567,20 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     /// process and writing to it.
     private var copilotProfilePipe: Pipe?
     private var copilotPendingProfile: Data?
+    /// Knowledge and call history.
+    ///
+    /// This process opens it because the app cannot: the app is sandboxed, the
+    /// store lives in the unsandboxed runtime directory, and every read the
+    /// Settings panes do comes through XPC. Opened lazily so a broken file costs
+    /// the knowledge features rather than the whole engine.
+    private lazy var store: CallaStore? = {
+        do {
+            return try CallaStore(path: copilotRoot.appendingPathComponent("calla.sqlite"))
+        } catch {
+            NSLog("[CallaEngine] knowledge store unavailable: %@", error.localizedDescription)
+            return nil
+        }
+    }()
     private var archiveProcess: Process?
     private var modelProcess: Process?
     private var permissionProcess: Process?
@@ -484,6 +612,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             do {
                 try self.prepareRuntimeDirectories()
                 self.restorePreferences()
+                self.importArchivesOnce()
                 self.reclaimStaleOwnedChildren()
                 self.detectConflicts()
                 // Teaching depends on the host, so a failure here is fatal.
@@ -776,6 +905,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             }
             switch action {
             case "start": self.startCopilot(command)
+            case "prewarm": self.startCopilot(command, prewarm: true)
+            case "release": self.releasePrewarm()
             case "stop": self.stopCopilot()
             case "archive": self.retranscribeCall(command)
             case "fetch_model": self.fetchModel(command)
@@ -809,14 +940,6 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 self.loginAgy(force: command.fallback == true)
             case "test_login":
                 self.testLoginFlow()
-            case "set_detail":
-                // Written to a file the running host reads per statement, so a
-                // toggle takes effect mid-call instead of at the next one.
-                self.copilotAnswersOnly = command.answersOnly ?? false
-                self.writeCopilotControl()
-                self.copilotResult = self.copilotAnswersOnly
-                    ? "Answering questions only"
-                    : "Answering and summarising"
             case "sign_out":
                 self.signOutAgy()
             case "restore_login":
@@ -827,7 +950,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
-    private func startCopilot(_ command: CopilotCommand) {
+    private func startCopilot(_ command: CopilotCommand, prewarm: Bool = false) {
         guard copilotProcess?.isRunning != true else { copilotResult = "Call already running"; return }
         guard let executable = copilotExecutable else {
             copilotResult = "Call host is not installed"; return
@@ -875,21 +998,42 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             arguments += ["--summary-model", summaryModel]
         }
         if !copilotFallback { arguments.append("--no-fallback") }
+        // Warm everything, record nothing. The flag is ours, not the caller's:
+        // it is derived from which action was validated, never from a string the
+        // app sent, so nothing the UI says can turn a pre-roll into a recording.
+        if prewarm { arguments.append("--prewarm") }
         process.arguments = arguments
-        writeCopilotControl()
         // The user's prompt text goes in over stdin rather than as arguments.
         // It is the only free-text field this service accepts, and an argument
         // list is exactly where free text stops being only a prompt.
+        let meeting = command.meeting.flatMap { incoming in
+            CallaCopilotCommandValidation.meeting(
+                eventID: incoming.eventID, seriesID: incoming.seriesID, title: incoming.title,
+                startsAt: incoming.startsAt, endsAt: incoming.endsAt, location: incoming.location,
+                attendees: incoming.attendees, notes: incoming.notes)
+        }
+        if command.meeting != nil, meeting == nil {
+            copilotResult = "The meeting details were rejected; the call was not started"
+            return
+        }
+        // Composed here rather than sent by the app. The app cannot open the
+        // store — it is sandboxed and the file is not in its container — so the
+        // only process that sees both the meeting the app names and the notes the
+        // user wrote is this one.
+        let knowledge = meeting.flatMap { composedKnowledge(for: $0) }
+
         if let profile = CallaCopilotCommandValidation.profile(
             about: command.profile?.about,
             personaGuidance: command.profile?.personaGuidance,
-            baseGuidance: command.profile?.baseGuidance),
+            baseGuidance: command.profile?.baseGuidance,
+            knowledge: knowledge,
+            meeting: meeting),
            let payload = try? JSONEncoder().encode(profile) {
             let pipe = Pipe()
             process.standardInput = pipe
             copilotProfilePipe = pipe
             copilotPendingProfile = payload
-        } else if command.profile != nil {
+        } else if command.profile != nil || meeting != nil {
             // A profile that fails validation must not silently become "no
             // profile" — the call would run with different guidance than the
             // settings pane shows.
@@ -927,12 +1071,222 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             }
             copilotPendingProfile = nil
             copilotProfilePipe = nil
-            if copilotResult == nil { copilotResult = "Call started" }
+            if copilotResult == nil {
+                copilotResult = prewarm ? "Copilot warmed up; not recording" : "Call started"
+            }
         } catch {
             copilotPendingProfile = nil
             copilotProfilePipe = nil
             copilotResult = "Could not start call host: \(error.localizedDescription)"
         }
+    }
+
+    /// Copies calls recorded before the store existed into it, once.
+    ///
+    /// Detached rather than on the engine queue: it walks every call directory and
+    /// parses every transcript this Mac has ever recorded, and the engine queue
+    /// also serves the status poll the notch is waiting on. Nothing depends on it
+    /// having finished — every reader falls back to the files until it has.
+    private func importArchivesOnce() {
+        guard let store else { return }
+        let directory = copilotCallsRoot
+        Task.detached(priority: .utility) {
+            let imported = await store.importArchives(from: directory)
+            if imported > 0 {
+                NSLog("[CallaEngine] imported %d archived call(s) into the store", imported)
+            }
+            // Loads the embedding backend and vectors anything that has none.
+            //
+            // The host does this too, but only when a call starts — which left a
+            // note written in Settings lexically searchable and nothing more until
+            // the next meeting. Ordered after the import on purpose, so the pass
+            // that follows covers the calls that just arrived as well.
+            await store.prepare()
+        }
+    }
+
+    // MARK: - Knowledge
+
+    /// The app's only way to touch the knowledge base.
+    ///
+    /// Replies with the resulting note list in every case, including deletes, so
+    /// the Settings pane never has to guess what the store now holds — the app
+    /// cannot read the file to check.
+    func knowledgeControl(_ data: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let command = try? JSONDecoder().decode(KnowledgeCommand.self, from: data),
+                  let store = self.store else {
+                reply(Data("[]".utf8)); return
+            }
+
+            switch command.action {
+            case "upsert":
+                // Bounded and control-character-checked on exactly the same rules
+                // as the rest of the prompt payload. This text goes straight into
+                // a model prompt, so it is no more trusted for having been typed
+                // in Settings than for having arrived in a calendar invite.
+                //
+                // A document gets a far larger ceiling than a typed note, because
+                // it is never packed into a prompt whole — it is chunked and
+                // searched, and the thing being bounded is how much of a file the
+                // store will hold rather than how much of it a model will read.
+                let isDocument = command.source == "document"
+                let bodyLimit = isDocument
+                    ? CallaCopilotCommandValidation.documentLimit
+                    : CallaCopilotCommandValidation.knowledgeLimit
+                guard case .accepted(let title) = CallaCopilotCommandValidation.promptText(
+                        command.title, limit: CallaCopilotCommandValidation.meetingTitleLimit),
+                      case .accepted(let body) = CallaCopilotCommandValidation.promptText(
+                        command.body, limit: bodyLimit),
+                      case .accepted(let originName) = CallaCopilotCommandValidation.promptText(
+                        command.originName, limit: CallaCopilotCommandValidation.meetingTitleLimit),
+                      let scope = self.scope(command.scope, key: command.scopeKey),
+                      title != nil || body != nil
+                else { break }
+                var note = KnowledgeNote(
+                    title: title ?? "", body: body ?? "",
+                    source: isDocument ? .document : .manual,
+                    scope: scope,
+                    originName: originName,
+                    originKind: CallaCopilotCommandValidation.documentKind(command.originKind),
+                    byteSize: max(0, command.byteSize ?? 0),
+                    pageCount: max(0, command.pageCount ?? 0))
+                if let id = command.id, !id.isEmpty { note.id = id }
+                _ = self.awaitOnQueue { try? await store.upsert(note) }
+            case "delete":
+                guard let id = command.id, !id.isEmpty else { break }
+                _ = self.awaitOnQueue { try? await store.deleteNote(id: id) }
+            default:
+                break
+            }
+
+            let notes = self.awaitOnQueue { () -> [KnowledgeNote] in
+                // A listing for one event carries everything that would actually
+                // reach a call there — the always-on notes and the persona's
+                // included — because "what will the copilot know in this meeting"
+                // is the only question the pane is really asking.
+                if command.eventID != nil || command.seriesID != nil {
+                    let context = MeetingContext(eventID: command.eventID, seriesID: command.seriesID)
+                    return (try? await store.notes(for: context, persona: self.copilotPersona)) ?? []
+                }
+                return (try? await store.notes()) ?? []
+            } ?? []
+            reply((try? JSONEncoder.calla.encode(notes)) ?? Data("[]".utf8))
+        }
+    }
+
+    func copilotCallsForEvent(_ data: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let query = try? JSONDecoder().decode(KnowledgeCommand.self, from: data),
+                  let store = self.store else {
+                reply(Data("[]".utf8)); return
+            }
+            let calls = self.awaitOnQueue { () -> [CallRecord] in
+                // No event named means "every call that knows which meeting it
+                // was", which is what the Knowledge pane asks for to put a name
+                // on each group. Filtering to a single meeting is the other case.
+                if query.eventID == nil, query.seriesID == nil {
+                    return (try? await store.calls(limit: 500)) ?? []
+                }
+                return (try? await store.calls(forEvent: query.eventID, seriesID: query.seriesID)) ?? []
+            } ?? []
+            reply((try? JSONEncoder.calla.encode(calls)) ?? Data("[]".utf8))
+        }
+    }
+
+    private func scope(_ kind: String?, key: String?) -> KnowledgeScope? {
+        switch kind {
+        case "always", nil: .always
+        case "event": CallaCopilotCommandValidation.eventIdentifier(key).map(KnowledgeScope.event)
+        case "series": CallaCopilotCommandValidation.eventIdentifier(key).map(KnowledgeScope.series)
+        case "persona": CallaCopilotCommandValidation.persona(key).map(KnowledgeScope.persona)
+        default: nil
+        }
+    }
+
+    /// Tells a prewarmed host to start recording.
+    ///
+    /// A file rather than a signal or a socket: there is no live command channel
+    /// to a running host, and the host already wakes every 250ms for its
+    /// segmenter. The call id is stamped in so a marker left behind by a host that
+    /// died cannot release an unrelated call later — the one failure that would
+    /// record a meeting nobody agreed to.
+    private func releasePrewarm() {
+        guard copilotProcess?.isRunning == true else {
+            copilotResult = "Nothing is warmed up"
+            return
+        }
+        let callID = currentCopilotStatus().callID
+        let payload = ["call_id": callID].compactMapValues { $0 }
+        guard let data = try? JSONEncoder().encode(payload) else { return }
+        let marker = copilotRoot.appendingPathComponent("prewarm-release.json")
+        do {
+            try fileManager.createDirectory(at: copilotRoot, withIntermediateDirectories: true,
+                                            attributes: [.posixPermissions: 0o700])
+            try data.write(to: marker, options: .atomic)
+            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
+            copilotResult = "Recording"
+        } catch {
+            copilotResult = "Could not start recording: \(error.localizedDescription)"
+        }
+    }
+
+    /// Every note that applies to this meeting, as one block for the prompt.
+    ///
+    /// Synchronous on the engine's own queue, which is a deliberate trade: the
+    /// store is an actor and this is the one call that must finish before the host
+    /// is spawned, because the prompt blocks are bound at bootstrap and a lane
+    /// that opened without them stays without them for the whole call. It is a
+    /// handful of indexed reads on a local file.
+    ///
+    /// Ordered general to specific, so the note about *this* meeting is the last
+    /// thing read. Truncated to the validator's ceiling rather than refused: a
+    /// knowledge base that grew past the limit should cost its oldest notes, not
+    /// the call.
+    private func composedKnowledge(
+        for meeting: CallaCopilotCommandValidation.MeetingFields
+    ) -> String? {
+        guard let store else { return nil }
+        let context = MeetingContext(
+            eventID: meeting.eventID,
+            seriesID: meeting.seriesID,
+            title: meeting.title,
+            startsAt: meeting.startsAt.map(Date.init(timeIntervalSince1970:)),
+            endsAt: meeting.endsAt.map(Date.init(timeIntervalSince1970:)),
+            location: meeting.location,
+            attendees: meeting.attendees,
+            notes: meeting.notes)
+
+        // The packing policy lives with the data rather than here: which notes go
+        // in whole and which only get a line naming themselves is a fact about
+        // what a note *is*, and it is unit-tested next to the store.
+        let limit = CallaCopilotCommandValidation.knowledgeLimit
+        return awaitOnQueue {
+            (try? await store.promptBlock(
+                for: context, persona: self.copilotPersona, limit: limit)) ?? nil
+        } ?? nil
+    }
+
+    /// Runs an async store call to completion from the engine's serial queue.
+    ///
+    /// The engine is callback-based `@objc` XPC code with no async context of its
+    /// own, and the store is an actor. A semaphore is the honest bridge; it is
+    /// never taken on the actor's executor, so it cannot deadlock against the very
+    /// task it is waiting for.
+    private func awaitOnQueue<T: Sendable>(_ body: @escaping @Sendable () async -> T) -> T? {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = ResultBox<T>()
+        Task.detached {
+            box.value = await body()
+            semaphore.signal()
+        }
+        // A store query is milliseconds. The timeout exists so a pathological
+        // lock cannot wedge the engine's only queue and take the notch with it.
+        guard semaphore.wait(timeout: .now() + 5) == .success else {
+            NSLog("[CallaEngine] store call timed out")
+            return nil
+        }
+        return box.value
     }
 
     /// Re-runs the archive model over a finished call's saved audio.
@@ -1107,6 +1461,24 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             guard let callID = CallaCopilotCommandValidation.callID(callID) else {
                 reply(Data("[]".utf8)); return
             }
+            // The store is the record now. The JSONL file is still written and is
+            // still the fallback: a call recorded before the import ran, or one
+            // whose store write failed, must not read as a call with no advice.
+            if let store = self.store {
+                let stored = self.awaitOnQueue {
+                    (try? await store.suggestions(forCall: callID)) ?? []
+                } ?? []
+                if !stored.isEmpty {
+                    let mapped = stored.map { entry in
+                        CopilotSuggestionFile(
+                            callID: callID, afterSeq: entry.afterSeq, headline: entry.headline,
+                            angles: entry.angles, confirm: entry.confirm,
+                            summary: entry.summary, openQuestions: entry.openQuestions)
+                    }
+                    reply((try? JSONEncoder().encode(mapped)) ?? Data("[]".utf8))
+                    return
+                }
+            }
             let url = self.copilotCallsRoot
                 .appendingPathComponent(callID, isDirectory: true)
                 .appendingPathComponent("suggestions.jsonl")
@@ -1157,6 +1529,22 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func transcriptData(forCall callID: String, since seq: Int, limit: Int) -> Data {
+        // Indexed on `(call_id, seq)`, so `since` is a range scan rather than a
+        // whole-file read and filter. That matters here more than anywhere else:
+        // the live panel polls this sub-second for the length of a call.
+        if let store {
+            let turns = awaitOnQueue {
+                (try? await store.turns(forCall: callID, since: seq)) ?? []
+            } ?? []
+            if !turns.isEmpty {
+                let mapped = turns.suffix(limit).map { turn in
+                    ArchivedTurnOut(
+                        id: UUID(), seq: turn.seq, source: turn.source,
+                        t0: turn.t0, t1: turn.t1, text: turn.text)
+                }
+                return (try? JSONEncoder().encode(mapped)) ?? Data("[]".utf8)
+            }
+        }
         let file = copilotCallsRoot
             .appendingPathComponent(callID, isDirectory: true)
             .appendingPathComponent("transcript.jsonl")
@@ -1178,8 +1566,37 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         return Data(("[" + lines.joined(separator: ",") + "]").utf8)
     }
 
-    /// Every call with a transcript on disk, newest first.
+    /// Every call this Mac has recorded, newest first.
+    ///
+    /// The list, the times and the turn counts come from the store, which is one
+    /// indexed query rather than parsing every transcript on disk — the old path
+    /// read and decoded every line of every call to count them, which is why
+    /// History took visibly longer the more you used it.
+    ///
+    /// Three fields still come from the filesystem, because only the filesystem
+    /// knows them: whether the WAVs are still there, whether the large model has
+    /// been over the call, and how many turns that pass produced.
     private func archivedCalls(limit: Int = 200) -> Data {
+        if let store {
+            let records = awaitOnQueue { (try? await store.calls(limit: limit)) ?? [] } ?? []
+            if !records.isEmpty {
+                let summaries = records.map { record -> CallSummaryFile in
+                    let facts = archiveFacts(forCall: record.id)
+                    return CallSummaryFile(
+                        id: record.id,
+                        startedAt: record.startedAt,
+                        endedAt: record.endedAt,
+                        turnCount: record.turnCount,
+                        persona: record.persona,
+                        hasAudio: facts.hasAudio,
+                        retranscribed: facts.archivedTurnCount > 0,
+                        archivedTurnCount: facts.archivedTurnCount,
+                        suggestionCount: facts.suggestionCount)
+                }
+                return (try? JSONEncoder().encode(summaries)) ?? Data("[]".utf8)
+            }
+        }
+
         guard let ids = try? fileManager.contentsOfDirectory(atPath: copilotCallsRoot.path) else {
             return Data("[]".utf8)
         }
@@ -1192,6 +1609,25 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         // Plain encoder, like `encodedStatus()` — the notch decodes both with a
         // plain decoder, so the date strategies have to match.
         return (try? JSONEncoder().encode(summaries)) ?? Data("[]".utf8)
+    }
+
+    /// What only the call's directory can answer.
+    ///
+    /// Counted by scanning for newlines rather than decoding: these are line
+    /// counts, and decoding every suggestion of every call to arrive at one
+    /// integer is what made the old listing slow.
+    private func archiveFacts(forCall callID: String) -> (hasAudio: Bool, archivedTurnCount: Int, suggestionCount: Int) {
+        let directory = copilotCallsRoot.appendingPathComponent(callID, isDirectory: true)
+        let contents = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        let hasAudio = contents.contains { $0.hasSuffix(".wav") }
+        let archived = lineCount(directory.appendingPathComponent("transcript-archive.jsonl"))
+        let suggestions = lineCount(directory.appendingPathComponent("suggestions.jsonl"))
+        return (hasAudio, archived, suggestions)
+    }
+
+    private func lineCount(_ url: URL) -> Int {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return 0 }
+        return text.split(separator: "\n", omittingEmptySubsequences: true).count
     }
 
     private func summary(forCall callID: String) -> CallSummaryFile? {
@@ -1278,6 +1714,13 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             // local brain actually answered or handed over to the gateway.
             status.activeProvider = host.provider ?? copilotProvider
             status.providerDetail = host.providerDetail
+            status.speaking = host.speaking
+            status.thinking = host.thinking ?? false
+            status.working = host.working
+            status.answering = host.answering ?? false
+            status.prewarming = host.prewarming ?? false
+            status.meetingTitle = host.meetingTitle
+            status.meetingStartsAt = host.meetingStartsAt
 
             if let suggestionData = try? Data(contentsOf: copilotSuggestionURL),
                let suggestion = try? jsonDecoder.decode(CopilotSuggestionFile.self, from: suggestionData),
@@ -1795,15 +2238,6 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         agyAuthCache = nil
     }
 
-    /// Live copilot settings, for a host that is already running.
-    private func writeCopilotControl() {
-        let payload: [String: Any] = ["answers_only": copilotAnswersOnly]
-        guard JSONSerialization.isValidJSONObject(payload),
-              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-        else { return }
-        try? fileManager.createDirectory(at: copilotRoot, withIntermediateDirectories: true)
-        try? data.write(to: copilotRoot.appendingPathComponent("control.json"), options: .atomic)
-    }
 
     private func agyBinaryPath() -> String? {
         ["~/.local/bin/agy", "/opt/homebrew/bin/agy", "/usr/local/bin/agy"]

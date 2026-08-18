@@ -11,6 +11,9 @@ public enum CallaCopilotCommandValidation {
     /// Commands the notch may send. Anything else is refused outright.
     public static let allowedActions: Set<String> = [
         "start", "stop", "set_persona", "set_provider", "archive", "fetch_model", "login",
+        // The two-minute pre-roll: warm everything, record nothing. `release`
+        // promotes a prewarmed host to a recording one; `stop` cancels it.
+        "prewarm", "release",
         // A rehearsal of the sign-in against a throwaway HOME, so the flow can be
         // watched without signing out.
         "test_login",
@@ -102,19 +105,107 @@ public enum CallaCopilotCommandValidation {
     /// prompt is a different prompt than the one Settings shows.
     public static func profile(about: String?,
                                personaGuidance: String?,
-                               baseGuidance: String?) -> ProfileFields? {
+                               baseGuidance: String?,
+                               knowledge: String? = nil,
+                               meeting: MeetingFields? = nil) -> ProfileFields? {
         guard case .accepted(let about) = promptText(about, limit: aboutLimit),
               case .accepted(let persona) = promptText(personaGuidance, limit: personaGuidanceLimit),
-              case .accepted(let base) = promptText(baseGuidance, limit: baseGuidanceLimit)
+              case .accepted(let base) = promptText(baseGuidance, limit: baseGuidanceLimit),
+              case .accepted(let knowledge) = promptText(knowledge, limit: knowledgeLimit)
         else { return nil }
 
-        if about == nil, persona == nil, base == nil { return nil }
-        return ProfileFields(about: about, personaGuidance: persona, baseGuidance: base)
+        if about == nil, persona == nil, base == nil, knowledge == nil, meeting == nil { return nil }
+        return ProfileFields(about: about, personaGuidance: persona, baseGuidance: base,
+                             knowledge: knowledge, meeting: meeting)
     }
 
     public static let aboutLimit = 1200
     public static let personaGuidanceLimit = 2000
     public static let baseGuidanceLimit = 8000
+    /// Larger than the rest because it is assembled from several notes plus a
+    /// previous call's account, and the engine composes it from the store rather
+    /// than taking it from a text field the user typed.
+    public static let knowledgeLimit = 8000
+    /// A whole attached file's extracted text.
+    ///
+    /// Far larger than `knowledgeLimit`, and for a different reason: a document is
+    /// never packed into a prompt whole. It is chunked and searched, so what this
+    /// bounds is how much of a file the store will accept, not how much of it a
+    /// model will read. Matches the reader's own ceiling on the app side.
+    public static let documentLimit = 2_000_000
+    public static let meetingTitleLimit = 200
+    public static let meetingNotesLimit = 4000
+    /// Long enough for a real invite, short enough that an attendee list cannot
+    /// become the whole prompt.
+    public static let meetingAttendeeLimit = 120
+    public static let meetingAttendeeCount = 40
+
+    /// Whether an event identifier is shaped like one.
+    ///
+    /// EventKit's `calendarItemIdentifier` and `calendarItemExternalIdentifier`
+    /// are opaque, so this cannot be an allowlist. It is still checked rather than
+    /// passed through: the id is stored, joined on, and shown in Settings, and a
+    /// newline or a control character in it would corrupt every one of those.
+    /// How a document was read. An allowlist, because it selects an icon and a
+    /// label and there is no reason for it to be free text.
+    public static let allowedDocumentKinds: Set<String> = ["pdf", "rich", "text", "image"]
+
+    public static func documentKind(_ value: String?) -> String? {
+        guard let value = trimmed(value)?.lowercased(),
+              allowedDocumentKinds.contains(value) else { return nil }
+        return value
+    }
+
+    public static func eventIdentifier(_ value: String?) -> String? {
+        guard let value = trimmed(value), value.count <= 256 else { return nil }
+        let forbidden = value.unicodeScalars.contains { scalar in
+            scalar.properties.generalCategory == .control
+        }
+        return forbidden ? nil : value
+    }
+
+    /// The calendar event a call belongs to.
+    ///
+    /// Every text field here came out of someone else's calendar invite — an
+    /// attacker-controlled string as far as this process is concerned — and all of
+    /// it ends up in a model prompt. Same rules as the rest of the profile:
+    /// bounded, no control characters, refused rather than truncated, and it
+    /// travels on stdin so none of it can become a command-line argument.
+    public static func meeting(eventID: String?,
+                               seriesID: String?,
+                               title: String?,
+                               startsAt: Double?,
+                               endsAt: Double?,
+                               location: String?,
+                               attendees: [String]?,
+                               notes: String?) -> MeetingFields? {
+        guard case .accepted(let title) = promptText(title, limit: meetingTitleLimit),
+              case .accepted(let location) = promptText(location, limit: meetingTitleLimit),
+              case .accepted(let notes) = promptText(notes, limit: meetingNotesLimit)
+        else { return nil }
+
+        var cleanedAttendees: [String] = []
+        for attendee in (attendees ?? []).prefix(meetingAttendeeCount) {
+            guard case .accepted(let value) = promptText(attendee, limit: meetingAttendeeLimit) else {
+                return nil
+            }
+            if let value { cleanedAttendees.append(value) }
+        }
+
+        let event = eventIdentifier(eventID)
+        let series = eventIdentifier(seriesID)
+        // An identifier that was sent and rejected is a refusal, not an absence —
+        // the same distinction `PromptResult` draws for prompt text. Letting it
+        // through as nil would file the call's summary under nothing.
+        if eventID != nil, event == nil { return nil }
+        if seriesID != nil, series == nil { return nil }
+
+        let fields = MeetingFields(
+            eventID: event, seriesID: series, title: title,
+            startsAt: startsAt, endsAt: endsAt, location: location,
+            attendees: cleanedAttendees, notes: notes)
+        return fields.isEmpty ? nil : fields
+    }
 
     /// A validated prompt payload. Codable so the engine can hand it straight to
     /// the host without a second hand-mirrored struct.
@@ -122,17 +213,69 @@ public enum CallaCopilotCommandValidation {
         public let about: String?
         public let personaGuidance: String?
         public let baseGuidance: String?
+        public let knowledge: String?
+        public let meeting: MeetingFields?
 
         enum CodingKeys: String, CodingKey {
-            case about
+            case about, knowledge, meeting
             case personaGuidance = "persona_guidance"
             case baseGuidance = "base_guidance"
         }
 
-        public init(about: String?, personaGuidance: String?, baseGuidance: String?) {
+        public init(about: String?,
+                    personaGuidance: String?,
+                    baseGuidance: String?,
+                    knowledge: String? = nil,
+                    meeting: MeetingFields? = nil) {
             self.about = about
             self.personaGuidance = personaGuidance
             self.baseGuidance = baseGuidance
+            self.knowledge = knowledge
+            self.meeting = meeting
+        }
+    }
+
+    /// The wire shape of a meeting, mirroring `IntelligenceStore.MeetingContext`.
+    ///
+    /// Hand-mirrored rather than shared because this file is deliberately pure and
+    /// dependency-free — it compiles into the validation test target without a
+    /// package graph, which is what lets every rule above be unit-tested without
+    /// launching an XPC service. Dates are epoch seconds for the same reason the
+    /// store encodes them that way: no decoder strategy to keep in step.
+    public struct MeetingFields: Codable, Equatable {
+        public let eventID: String?
+        public let seriesID: String?
+        public let title: String?
+        public let startsAt: Double?
+        public let endsAt: Double?
+        public let location: String?
+        public let attendees: [String]
+        public let notes: String?
+
+        enum CodingKeys: String, CodingKey {
+            case title, location, attendees, notes
+            case eventID = "event_id"
+            case seriesID = "series_id"
+            case startsAt = "starts_at"
+            case endsAt = "ends_at"
+        }
+
+        public init(eventID: String?, seriesID: String?, title: String?,
+                    startsAt: Double?, endsAt: Double?, location: String?,
+                    attendees: [String], notes: String?) {
+            self.eventID = eventID
+            self.seriesID = seriesID
+            self.title = title
+            self.startsAt = startsAt
+            self.endsAt = endsAt
+            self.location = location
+            self.attendees = attendees
+            self.notes = notes
+        }
+
+        public var isEmpty: Bool {
+            eventID == nil && seriesID == nil && title == nil
+                && location == nil && notes == nil && attendees.isEmpty
         }
     }
 
@@ -147,7 +290,9 @@ public enum CallaCopilotCommandValidation {
         case refused
     }
 
-    private static func promptText(_ value: String?, limit: Int) -> PromptResult {
+    /// Also used directly by the engine for knowledge notes, which are the same
+    /// kind of payload arriving through a different door.
+    public static func promptText(_ value: String?, limit: Int) -> PromptResult {
         guard let value else { return .accepted(nil) }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return .accepted(nil) }

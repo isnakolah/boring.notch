@@ -43,4 +43,11 @@ import Foundation
     /// the fix already applied to the Tutor host.
     func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
     func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void)
+    /// Create, edit, delete or list knowledge notes.
+    ///
+    /// The store lives on this side of the sandbox line, so every edit the app
+    /// makes is one of these rather than a file write.
+    func knowledgeControl(_ command: Data, with reply: @escaping (Data) -> Void)
+    /// Calls recorded against a calendar event, or its whole recurring series.
+    func copilotCallsForEvent(_ query: Data, with reply: @escaping (Data) -> Void)
 }
