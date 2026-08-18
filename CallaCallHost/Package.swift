@@ -35,6 +35,7 @@ let package = Package(
                 "whisper",
                 .product(name: "IntelligenceCore", package: "Intelligence"),
                 .product(name: "IntelligenceProviders", package: "Intelligence"),
+                .product(name: "IntelligenceStore", package: "Intelligence"),
             ],
             // The only model that ships inside the bundle: under a megabyte,
             // and the gate that keeps whisper from hallucinating words onto a

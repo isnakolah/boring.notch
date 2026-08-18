@@ -1,5 +1,6 @@
 import CallaCallHostKit
 import IntelligenceCore
+import IntelligenceStore
 import CoreGraphics
 import Foundation
 
@@ -55,6 +56,9 @@ func usage() -> Never {
       --summary-model <m> Exact model for the end-of-call pass
       --no-fallback       Do not let the gateway answer when local fails
       --no-system-audio   Microphone only
+      --prewarm           Load the model, open both agy lanes and pack the
+                          knowledge, but do not record. Capture starts when the
+                          engine writes prewarm-release.json.
 
     RECORD OPTIONS:
       --seconds <n>       How long to capture (default 30)
@@ -183,7 +187,9 @@ func ensureModel(_ model: WhisperModel) async throws -> URL {
                             totalBytes: model.sizeBytes, state: "ready").write()
         return store.localURL(for: model)
     }
-    print("downloading \(model.displayName) (\(model.sizeBytes / 1_048_576) MB)…")
+    // Not necessarily a download: an identical copy already on this Mac — Mila
+    // ships the same whisper.cpp pin — is verified and hard-linked instead.
+    print("installing \(model.displayName) (\(model.sizeBytes / 1_048_576) MB)…")
     // Progress goes to a file as well as stdout. The engine spawns this with
     // no pipe attached, so anything printed here reached nobody — which is why
     // the first call on a new Mac looked like a hang.
@@ -231,11 +237,16 @@ case "serve":
     let model = resolveModel()
     let persona = value(for: "--persona") ?? "generic"
     let captureSystemAudio = !arguments.contains("--no-system-audio")
+    let prewarm = arguments.contains("--prewarm")
     guard let gateway = value(for: "--gateway").flatMap(URL.init(string:)) else { usage() }
     // Read before anything slow: the engine writes and closes the pipe right
     // after spawning, and this is the only chance to take it.
     let profile = CallProfile.readFromStandardInput()
 
+    // Asked for even on a prewarm. The point of arming two minutes early is that
+    // a permission the user has to grant is discovered *then* rather than in the
+    // opening seconds of the meeting — and TCC keys the grant to this executable,
+    // so nobody else can ask on its behalf.
     guard await MicrophoneRecorder.requestAccess() else {
         HostPermissions.probeAndWrite(mic: false, screen: await SystemAudioRecorder.hasPermission())
         complain("microphone access denied\n")
@@ -246,6 +257,22 @@ case "serve":
     do {
         let modelURL = try await ensureModel(model)
         let gate = await SpeechGateFactory.makeBundledGate()
+
+        // Opened here rather than inside the session so a store that cannot be
+        // opened — a corrupt file, a full disk — costs the knowledge and the
+        // history, not the call.
+        let store: CallaStore?
+        do {
+            store = try CallaStore(path: CallHostPaths.storeFile)
+        } catch {
+            complain("knowledge store unavailable: \(error.localizedDescription)\n")
+            store = nil
+        }
+        // Loading the embedding backend can need the network the first time, so
+        // it runs alongside the call rather than in front of it. Retrieval is
+        // lexical until it lands, which is the designed degradation.
+        if let store { Task { await store.prepare() } }
+
         let config = CallSession.Configuration(
             persona: persona,
             gatewayURL: gateway,
@@ -255,10 +282,12 @@ case "serve":
             provider: copilotProvider(),
             fallbackToGateway: !arguments.contains("--no-fallback"),
             liveTier: liveTier(),
-            summaryModel: value(for: "--summary-model"))
+            summaryModel: value(for: "--summary-model"),
+            store: store,
+            prewarm: prewarm)
         let session = try CallSession(config: config, modelURL: modelURL, speechGate: gate)
         try await session.start()
-        print("serving call \(config.callID)")
+        print(prewarm ? "prewarmed call \(config.callID)" : "serving call \(config.callID)")
 
         // A DispatchSource handler runs even though the default SIGINT
         // disposition is ignored, which is what lets the async teardown finish
@@ -382,14 +411,22 @@ case "probe-local":
     // actually emits (it closes an utterance after 500ms of silence). A fixture
     // that alternates speaker every turn would make the segmentation ratio look
     // like 1.0 no matter how well the batching works.
+    // Fact-bearing and long enough for the brief to be rebuilt more than once, so
+    // `probe-local` can show whether the account accumulates rather than resets.
     let script: [(TurnSource, String)] = [
         (.them, "Thanks for making the time today,"),
-        (.them, "let's get straight into it."),
-        (.me, "Happy to be here."),
+        (.them, "I'm Mark, I lead the platform team here."),
+        (.me, "Good to meet you."),
+        (.them, "We run about forty services on Kubernetes,"),
+        (.them, "and ingestion peaks around twelve thousand events a second."),
+        (.me, "That's a useful baseline."),
         (.them, "So walk me through how you would approach"),
-        (.them, "scaling this system to about ten times the traffic."),
-        (.me, "Sure, so the first thing I would look at"),
+        (.them, "scaling that to roughly ten times the traffic."),
+        (.me, "Sure, the first thing I would look at"),
         (.me, "is where the read load actually sits."),
+        (.them, "We already cache reads in Redis, so assume that is done."),
+        (.me, "Then I would shard writes by tenant and add a queue."),
+        (.them, "Budget is capped at thirty thousand a month, by the way."),
         (.them, "And when could you realistically start?"),
     ]
 
@@ -416,6 +453,7 @@ case "probe-local":
     let statements = await advisor.statementsEmitted
     let ratio = await advisor.segmentationRatio()
     let lastLocalFailure = await advisor.lastFailure
+    let ledger = await advisor.ledgerState
     await advisor.shutdown()
 
     let count = await probe.count
@@ -425,9 +463,21 @@ case "probe-local":
     print("suggestions:  \(count)")
     print(String(format: "median:       %.0fms", median))
     print("segmentation: \(turnsSeen) turns -> \(statements) statements (ratio \(String(format: "%.2f", ratio)))")
+    print("standing:     \(ledger.standing.isEmpty ? "(not folded yet)" : ledger.standing)")
+    print("chunks:       \(ledger.chunks.count) (\(ledger.pointCount) points), tail \(ledger.tail.count)")
+    for (index, chunk) in ledger.chunks.enumerated() {
+        for point in chunk.points { print("  [\(index)] \(point)") }
+    }
 
     guard count > 0 else {
         complain("no suggestion arrived\n")
+        exit(1)
+    }
+    // The account has to *grow*. One chunk proves the lane answers; two prove it
+    // appends rather than rewriting, which is the whole point of the second lane
+    // and is invisible from the suggestions alone.
+    guard ledger.chunks.count >= 2 else {
+        complain("the account stopped at \(ledger.chunks.count) chunk(s) — the summary lane is not accumulating\n")
         exit(1)
     }
     // Hand-measured fast path is ~2.5-3.5s per suggestion; the print-transport

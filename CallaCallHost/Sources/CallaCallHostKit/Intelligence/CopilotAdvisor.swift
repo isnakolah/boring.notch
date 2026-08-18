@@ -1,6 +1,7 @@
 import Foundation
 import IntelligenceCore
 import IntelligenceProviders
+import IntelligenceStore
 import os.log
 
 private let advisorLog = Logger(
@@ -36,6 +37,8 @@ public actor CopilotAdvisor {
         /// worth an extra few seconds.
         public var summaryModel: String?
         public var runtimeRoot: URL
+        /// The knowledge base and call history. Absent in probes and tests.
+        public var store: CallaStore?
 
         public init(
             callID: String,
@@ -45,7 +48,8 @@ public actor CopilotAdvisor {
             fallbackToGateway: Bool,
             liveTier: ModelTier,
             summaryModel: String?,
-            runtimeRoot: URL
+            runtimeRoot: URL,
+            store: CallaStore? = nil
         ) {
             self.callID = callID
             self.persona = persona
@@ -55,6 +59,7 @@ public actor CopilotAdvisor {
             self.liveTier = liveTier
             self.summaryModel = summaryModel
             self.runtimeRoot = runtimeRoot
+            self.store = store
         }
     }
 
@@ -62,19 +67,51 @@ public actor CopilotAdvisor {
     private let provider: AgyProvider
     private var segmenter: StatementSegmenter
     private let blocks: PromptBlocks
+    /// What the account and fold lanes are told about the call.
+    ///
+    /// They are separate `agy` conversations from the question lane, with their own
+    /// system prompt — which used to be the contract and nothing else. A lane that
+    /// does not know the user owns billing writes "they discussed a service" where
+    /// it could have written the name, and the fold then bakes the vaguer wording
+    /// into standing fact. Same background, minus the persona and the answer
+    /// contract, which are the question lane's business alone.
+    private let about: String
+    private let background: String
     private let startedAt: Date
+
+    private func ledgerBlocks(_ base: String) -> PromptBlocks {
+        PromptBlocks(base: base, about: about, knowledge: background)
+    }
 
     /// Set once the local provider has failed in a way that will not fix itself,
     /// so the Gateway's pushes stop being suppressed.
     private var localGaveUp = false
-    private var inFlight = false
-    /// Statements that completed while a request was in flight. They go out as one
-    /// prompt: a live call outruns any model, and three fragments in one request
-    /// beat three requests.
-    private var queued: [Statement] = []
+
+    /// One question at a time on the question lane.
+    ///
+    /// Not just pacing: `AgyProvider` reads its session state before the await and
+    /// writes it back after, so two concurrent requests on the same conversation key
+    /// can bootstrap twice or lose the conversation id between them.
+    private var askInFlight = false
+    /// The question that arrived while one was being answered. Only the newest is
+    /// kept — by the time the model answers, an older question has been overtaken
+    /// by the one the other side actually just asked.
+    private var queuedQuestion: [Statement]?
 
     private var onSuggestion: (@Sendable (CopilotFrame.Suggestion, Provider) -> Void)?
     private var onProviderChange: (@Sendable (Provider, String?) -> Void)?
+    /// Fired when the copilot starts or stops working, so the panel can say so.
+    private var onActivity: (@Sendable () -> Void)?
+
+    /// The audio position of the last turn and when it was seen, so silence is
+    /// measured on the same scale the turns use.
+    private var lastTurnEnd: Double = 0
+    private var lastTurnObservedAt = Date()
+
+    /// Where the audio has got to, extrapolated from the last turn.
+    private func audioNow() -> Double {
+        lastTurnEnd + Date().timeIntervalSince(lastTurnObservedAt)
+    }
 
     public private(set) var statementsEmitted = 0
     public private(set) var turnsSeen = 0
@@ -84,6 +121,16 @@ public actor CopilotAdvisor {
     /// Without this a run with fallback disabled fails completely silently, which
     /// is the one situation where the reason matters most.
     public private(set) var lastFailure: String?
+    /// What the copilot is doing: `answer`, `summary`, or nothing.
+    ///
+    /// One bool used to cover both, which meant the panel said "finding an answer"
+    /// while it was actually rebuilding the account — the two take very different
+    /// amounts of time, so conflating them makes the slower one look like a stall.
+    public private(set) var workingOn: String?
+    /// A request is in flight, priority or paced.
+    public var isThinking: Bool { workingOn != nil }
+    /// The newest pointer answered a question rather than remarking on a statement.
+    public private(set) var lastAnswerWasToAQuestion = false
 
     /// Append-only diagnostics, next to the other host logs.
     ///
@@ -115,15 +162,27 @@ public actor CopilotAdvisor {
         self.config = config
         segmenter = StatementSegmenter(rules: .call)
         blocks = CopilotLocalPrompt.blocks(persona: config.persona, profile: config.profile)
+        about = config.profile?.about ?? ""
+        background = CopilotLocalPrompt.background(profile: config.profile)
         startedAt = Date()
         activeProvider = config.preferred
         provider = AgyProvider(configuration: .init(runtimeRoot: config.runtimeRoot))
+        store = config.store
     }
 
+    /// Where knowledge is retrieved from, and where this call is recorded.
+    ///
+    /// Optional because every path that uses the advisor without a store — the
+    /// `probe-local` subcommand, the unit tests — must keep working. A nil store
+    /// means no retrieval and no persistence; it never means a failed call.
+    private let store: CallaStore?
+
     public func setHandlers(
+        onActivity: (@Sendable () -> Void)? = nil,
         onSuggestion: @escaping @Sendable (CopilotFrame.Suggestion, Provider) -> Void,
         onProviderChange: @escaping @Sendable (Provider, String?) -> Void
     ) {
+        self.onActivity = onActivity
         self.onSuggestion = onSuggestion
         self.onProviderChange = onProviderChange
     }
@@ -147,13 +206,30 @@ public actor CopilotAdvisor {
             return
         }
         await provider.prewarm()
-        let opened = await provider.openSession(
+        // Both lanes warm, and warmed together.
+        //
+        // They are separate `agy` conversations — the question lane holds the call
+        // and answers from it, the chunk lane holds the account and grows it — so
+        // each pays its own bootstrap. Paying them concurrently while the call is
+        // still greetings is the difference between two warm lanes and one warm lane
+        // plus a ~10s stall the first time the account is compiled.
+        async let question = provider.openSession(
             task: CopilotTasks.suggest,
             sessionKey: config.callID,
             system: blocks
         )
-        trace("prepare: session opened=\(opened)")
+        async let chunks = provider.openSession(
+            task: CopilotTasks.brief,
+            sessionKey: briefSessionKey,
+            system: ledgerBlocks(CopilotBriefPrompt.base)
+        )
+        let (openedQuestion, openedChunks) = await (question, chunks)
+        trace("prepare: question lane opened=\(openedQuestion) chunk lane opened=\(openedChunks)")
     }
+
+    /// The chunk lane's conversation. Suffixed rather than separate so a stray
+    /// `closeSession` on the call id cannot take the wrong one down.
+    private var briefSessionKey: String { "\(config.callID)#brief" }
 
     // MARK: - Transcript in
 
@@ -164,7 +240,14 @@ public actor CopilotAdvisor {
         turnsSeen += 1
         guard config.preferred == .local, !localGaveUp else { return }
 
-        let elapsed = Date().timeIntervalSince(startedAt)
+        // One clock, and it is the audio's.
+        //
+        // The segmenter reasons about gaps between turns, and those are in audio
+        // time. Feeding it wall-clock from the tick and audio time from the turns
+        // mixed two scales that drift apart — transcription runs behind live audio —
+        // so a gap could come out negative and the pacing rules never fired.
+        lastTurnEnd = turn.t1
+        lastTurnObservedAt = Date()
         // Logged at ingest, because "transcription works but nothing comes back"
         // needs to distinguish a turn never arriving from a statement never
         // completing from a request that failed.
@@ -177,7 +260,7 @@ public actor CopilotAdvisor {
                 end: turn.t1,
                 text: turn.text
             ),
-            now: max(elapsed, turn.t1)
+            now: audioNow()
         )
         dispatch(statements)
     }
@@ -186,96 +269,345 @@ public actor CopilotAdvisor {
     /// buffer still get out.
     public func tick() {
         guard config.preferred == .local, !localGaveUp else { return }
-        dispatch(segmenter.tick(now: Date().timeIntervalSince(startedAt)))
+        dispatch(segmenter.tick(now: audioNow()))
+        // Also checked here: a call can go quiet for minutes, and a chunk's
+        // ninety-second deadline should still close while it does.
+        closeChunkIfDue()
     }
 
     private func dispatch(_ statements: [Statement]) {
         guard !statements.isEmpty else { return }
-        trace("statements ready: \(statements.map { "seq \($0.fromSeq)-\($0.toSeq) (\($0.text.split(separator: " ").count)w)" }.joined(separator: ", "))")
+
+        // Everything said enters the ledger, whether or not it is answered.
+        //
+        // Previously this was appended where a suggestion was published, which made
+        // the account a summary of the *answers* rather than of the call.
         statementsEmitted += statements.count
-        queued.append(contentsOf: statements)
-        guard !inFlight else { return }
-        inFlight = true
-        Task { await self.drainQueue() }
-    }
+        ledger.append(statements)
+        closeChunkIfDue()
 
-    private func drainQueue() async {
-        while !queued.isEmpty {
-            let batch = queued
-            queued.removeAll()
-            await ask(batch)
+        // Only a question spends a pointer request.
+        //
+        // Both jobs run the whole time — questions get answered, the account keeps
+        // growing — and the panel's toggle only chooses which one is on screen. That
+        // is also what makes the answer fast: commentary on ordinary statements used
+        // to occupy the provider, so a question could arrive behind a request nobody
+        // asked for. Now the queue is almost always empty when one lands.
+        let questions = statements.filter { $0.speaker == .remote && $0.invitesAnAnswer }
+        guard !questions.isEmpty else {
+            trace("no question in \(statements.count) statement(s); ledger only")
+            return
         }
-        inFlight = false
+        trace("PRIORITY question through seq \(questions.last?.toSeq ?? -1)")
+        enqueueQuestion(questions)
     }
 
-    /// Live settings the app can change mid-call.
+    /// One question in flight, the newest one queued behind it.
     ///
-    /// A small JSON file rather than a new IPC channel, matching how every other
-    /// piece of state crosses this boundary here. Read per batch, so a toggle takes
-    /// effect on the next statement rather than the next call.
-    private var answersOnly: Bool {
-        let url = config.runtimeRoot.appendingPathComponent("control.json")
-        guard let data = try? Data(contentsOf: url),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return false }
-        return object["answers_only"] as? Bool ?? false
+    /// Answering two at once is worse than it sounds: they share the question lane's
+    /// conversation, whose session state in `AgyProvider` is read before the await
+    /// and written after it, so the second can bootstrap a conversation the first
+    /// then overwrites. And the older answer is discarded on arrival anyway.
+    private func enqueueQuestion(_ statements: [Statement]) {
+        guard !askInFlight else {
+            if let dropped = queuedQuestion?.last?.toSeq {
+                trace("dropped queued question through seq \(dropped); a newer one arrived")
+            }
+            queuedQuestion = statements
+            return
+        }
+        askInFlight = true
+        Task { await self.runQuestion(statements) }
     }
 
-    /// Sent when the copilot should speak only on being asked.
-    private static let answersOnlyGuidance = [
-        "Answer only what has been asked.",
-        "If the latest input contains no question and no request, return an empty",
-        "`headline` and add nothing — silence is the correct output, not a remark",
-        "about what was said.",
-    ].joined(separator: " ")
+    private func runQuestion(_ statements: [Statement]) async {
+        var batch = statements
+        while true {
+            await ask(batch)
+            guard let next = queuedQuestion else { break }
+            queuedQuestion = nil
+            batch = next
+        }
+        askInFlight = false
+        // A chunk that came due while the question held the lane goes now.
+        closeChunkIfDue()
+    }
 
-    /// The fewest words worth a request on their own.
+
+    // MARK: - The ledger
+    //
+    // The account of the call, grown a chunk at a time on its own warm lane by a
+    // stronger model, replacing the one-line summary every pointer used to carry.
+    // Two reasons: asking a fast model to re-summarise on every pointer paid for the
+    // same paragraph over and over and made the urgent thing slower; and a compiled
+    // account plus the last few turns verbatim is a better piece of context to send
+    // with the next question than an ever-growing pile of turns.
+
+    /// The account as it stands. Exposed so `probe-local` can show whether it is
+    /// actually accumulating, which is not visible from the suggestions alone.
+    public var brief: String { ledger.panelSummary() }
+    /// The whole ledger, for diagnostics.
+    public var ledgerState: CallLedger { ledger }
+
+    /// The account in the shape the store keeps it, for the end of the call.
     ///
-    /// The transcriber emits whatever the VAD closed — "environment, right?", "yeah
-    /// so", a name — and asking about a fragment costs a full ~15k-token request to
-    /// be told nothing. Below this the text is carried forward instead of dropped,
-    /// so the next real request still has it as context.
-    private static let minWordsWorthAsking = 6
+    /// This is what survives the process. Everything else the advisor holds is
+    /// working memory that dies with the host; these three fields are the reason
+    /// the next occurrence of a recurring meeting is not starting from nothing.
+    public func durableSummary() -> CallSummary {
+        CallSummary(
+            callID: config.callID,
+            standing: ledger.standing,
+            points: ledger.chunks.flatMap(\.points),
+            openQuestions: ledger.openQuestions)
+    }
 
-    /// Statements too thin to ask about on their own, waiting for one that is not.
-    private var pendingContext: [Statement] = []
+    private var ledger = CallLedger()
+    private var chunkInFlight = false
+    private var execInFlight = false
+    private var lastChunkAt = Date()
+    /// How many times the chunk lane's conversation has been rolled over. When this
+    /// moves, the lane has forgotten the account and the next chunk has to restate
+    /// it — the one case where the warm conversation is not enough on its own.
+    private var chunkRollovers = 0
+    /// The last frame published, so a finished chunk can refresh the panel without
+    /// wiping the pointer on it.
+    private var lastSuggestion: CopilotFrame.Suggestion?
+    /// The seq of the last real answer. Kept apart from `lastSuggestion` because
+    /// the account publishes frames of its own.
+    private var lastAnswerSeq = -1
+
+    /// A chunk closes as soon as there is anything to summarise and the lane is
+    /// free — one statement is enough.
+    ///
+    /// Batching was the wrong instinct here. Waiting for three statements meant the
+    /// panel sat still for fifteen seconds at a time, and a summary that arrives in
+    /// a lump every quarter minute reads as broken however fast each request is.
+    /// The lane is single-flight, so this is self-regulating: statements that arrive
+    /// while a request is out simply ride the next one, and a fast exchange batches
+    /// itself without a rule saying so.
+    ///
+    /// The timer is now only a backstop for the case where a statement arrived while
+    /// a question held the lane and nothing has happened since.
+    private static let chunkEveryStatements = 1
+    private static let chunkEverySeconds: TimeInterval = 20
+
+    /// Closes a chunk, on its own schedule and never in the pointer's way.
+    ///
+    /// Deferred while a question is in flight: the two lanes are separate
+    /// conversations but one resident language server, and the answer is the only
+    /// thing anybody is waiting for. It goes as soon as the answer is published.
+    private func closeChunkIfDue() {
+        guard !chunkInFlight, !ledger.tail.isEmpty else { return }
+        guard !askInFlight else { return }
+        let dueByCount = ledger.tail.count >= Self.chunkEveryStatements
+        let dueByTime = Date().timeIntervalSince(lastChunkAt) >= Self.chunkEverySeconds
+        guard dueByCount || dueByTime else { return }
+
+        chunkInFlight = true
+        let material = ledger.takeTail()
+        Task { await self.closeChunk(material) }
+    }
+
+    private func closeChunk(_ material: [Statement]) async {
+        // Reported separately from answering: this is the slower job, and a panel
+        // that claims to be finding an answer for four seconds reads as stuck.
+        let wasWorkingOn = workingOn
+        workingOn = wasWorkingOn ?? "summary"
+        onActivity?()
+        defer {
+            chunkInFlight = false
+            workingOn = wasWorkingOn
+            onActivity?()
+        }
+
+        // The new turns, and the lines already on the record.
+        //
+        // The lane's conversation is the memory of everything before them, which is
+        // what lets the account grow by appending instead of being rewritten. But
+        // remembering the turns is not the same as remembering the exact lines it
+        // wrote about them: without these it re-says the same fact in new words
+        // every chunk, and the panel fills with near-duplicates.
+        var input = PromptComposer.render(material)
+        let recorded = chunkRolloverPending
+            // A rolled-over conversation remembers nothing, so it gets the lot.
+            ? ledger.accountLines
+            : ledger.lastPoints(6)
+        if !recorded.isEmpty {
+            input = "Already on the record — do not repeat these, in any wording:\n"
+                + recorded.joined(separator: "\n")
+                + "\n\nNew turns:\n" + input
+        }
+
+        let request = IntelligenceRequest(
+            task: CopilotTasks.brief,
+            sessionKey: briefSessionKey,
+            system: ledgerBlocks(CopilotBriefPrompt.base),
+            input: input
+        )
+        do {
+            let response = try await provider.respond(to: request)
+            chunkRolloverPending = response.attribution.rollovers > chunkRollovers
+            chunkRollovers = response.attribution.rollovers
+            guard let payload = response.payload,
+                  let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any]
+            else { return }
+            let points = (object["points"] as? [String])
+                // Tolerated in case a model answers with the older single-string shape.
+                ?? (object["summary"] as? String).map { [$0] }
+                ?? []
+            ledger.applyChunk(
+                points: points,
+                openQuestions: object["open_questions"] as? [String],
+                throughSeq: material.last?.toSeq ?? -1
+            )
+            lastChunkAt = Date()
+            trace("""
+            chunk closed in \(Int(response.attribution.latency * 1000))ms from \
+            \(material.count) statements -> \(points.count) points \
+            (\(ledger.pointCount) in the account)
+            """)
+            publishLedgerToPanel()
+            foldIfDue()
+        } catch {
+            // A chunk that fails costs context, not the call. Its statements go back
+            // to the tail, so the next chunk carries them.
+            trace("chunk failed: \(String(describing: error))")
+            ledger.restore(material)
+        }
+    }
+
+    /// Set when the chunk lane rolled its conversation; cleared once the account has
+    /// been restated into the fresh one.
+    private var chunkRolloverPending = false
+
+    /// Folds the oldest points into standing fact, in a fresh conversation each
+    /// time. Runs behind the chunk lane and never while a question is in flight.
+    private func foldIfDue() {
+        guard !execInFlight, !askInFlight, ledger.needsFold else { return }
+        let folding = ledger.foldable()
+        guard !folding.isEmpty else { return }
+        execInFlight = true
+        Task { await self.fold(folding) }
+    }
+
+    private func fold(_ chunks: [CallLedger.Chunk]) async {
+        let wasWorkingOn = workingOn
+        workingOn = wasWorkingOn ?? "summary"
+        onActivity?()
+        defer {
+            execInFlight = false
+            workingOn = wasWorkingOn
+            onActivity?()
+        }
+        let previous = ledger.standing.isEmpty ? "(nothing yet)" : ledger.standing
+        let request = IntelligenceRequest(
+            task: CopilotTasks.exec,
+            sessionKey: nil,
+            system: ledgerBlocks(CopilotExecPrompt.base),
+            input: """
+            Summary so far:
+            \(previous)
+
+            Points to fold into it:
+            \(chunks.flatMap(\.points).joined(separator: "\n"))
+            """
+        )
+        do {
+            let response = try await provider.respond(to: request)
+            guard let payload = response.payload,
+                  let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
+                  let standing = object["standing"] as? String
+            else { return }
+            ledger.applyFold(standing: standing, over: chunks.count)
+            trace("folded \(chunks.count) chunk(s) in \(Int(response.attribution.latency * 1000))ms")
+            publishLedgerToPanel()
+        } catch {
+            // Nothing is dropped on failure: the points stay where they are and the
+            // next chunk makes the fold due again.
+            trace("fold failed: \(String(describing: error))")
+        }
+    }
+
+    /// Pushes the account to the panel without disturbing the pointer on screen.
+    ///
+    /// The frame the whole app speaks is a *suggestion*, so before this the account
+    /// could only travel as a refresh of one — and on a call where nobody has asked
+    /// anything yet there is no suggestion to refresh. The account compiled
+    /// perfectly and reached nothing: a call could run for minutes with points
+    /// accumulating in memory and an empty panel on screen. An answerless frame is
+    /// the fix; the app already treats an empty headline as "no pointer, show the
+    /// account", which is exactly the state being described.
+    private func publishLedgerToPanel() {
+        let summary = ledger.panelSummary()
+        guard !summary.isEmpty || !ledger.openQuestions.isEmpty else { return }
+        var frame = lastSuggestion ?? CopilotFrame.Suggestion(
+            callID: config.callID,
+            afterSeq: ledger.lastSeq ?? turnsSeen,
+            headline: "",
+            angles: [],
+            confirm: [],
+            latencyMs: 0
+        )
+        frame.summary = summary
+        frame.openQuestions = ledger.openQuestions
+        lastSuggestion = frame
+        onSuggestion?(frame, activeProvider)
+    }
+
+    /// Knowledge for the question about to be asked.
+    ///
+    /// Only the *question* is used as the query, not the whole batch: a statement
+    /// that merely preceded the question drags its own subject into the search and
+    /// the top hit ends up being about the small talk. Three chunks is the ceiling
+    /// because they are prepended to a live prompt — more context here costs
+    /// latency on the one request nobody can wait for.
+    ///
+    /// The search is a few milliseconds (an FTS index lookup plus a scan of a few
+    /// thousand vectors), so this is on the critical path without being on the
+    /// budget. It never throws: a store that cannot answer returns nothing and the
+    /// call proceeds exactly as it did before there was one.
+    private func recall(for statements: [Statement]) async -> [String] {
+        guard let store, let meeting = config.profile?.meeting else { return [] }
+        let question = statements
+            .filter { $0.speaker == .remote && $0.invitesAnAnswer }
+            .map(\.text)
+            .joined(separator: " ")
+        let query = question.isEmpty ? statements.map(\.text).joined(separator: " ") : question
+        let hits = await store.search(
+            query: query,
+            scopes: meeting.scopes(persona: config.persona),
+            limit: 3)
+        guard !hits.isEmpty else { return [] }
+        trace("recalled \(hits.count) chunk(s): \(hits.map(\.title).joined(separator: ", "))")
+        return hits.map { "\($0.title): \($0.text)" }
+    }
 
     private func ask(_ statements: [Statement]) async {
         guard let afterSeq = statements.last?.toSeq else { return }
 
-        let batch = pendingContext + statements
-        let words = batch.reduce(0) { $0 + $1.text.split(separator: " ").count }
+        let batch = statements
         let asked = batch.contains { $0.speaker == .remote && $0.invitesAnAnswer }
 
-        // "Answers only": speak when asked, stay quiet otherwise.
-        if answersOnly, !asked {
-            pendingContext = batch
-            trace("held (answers-only, nothing asked): through seq \(afterSeq), \(words)w pending")
-            return
+        workingOn = "answer"
+        onActivity?()
+        defer {
+            workingOn = nil
+            onActivity?()
         }
-        // Otherwise a question always earns a request, and so does enough material.
-        if !asked, words < Self.minWordsWorthAsking {
-            pendingContext = batch
-            trace("held (too thin): through seq \(afterSeq), \(words)w pending")
-            return
-        }
-        pendingContext = []
 
-        // "Answers only" means answer when asked and stay quiet otherwise. Checked
-        // here rather than left to the model: an unwanted request costs ~15k tokens
-        // and puts a suggestion on screen competing with the one that matters.
-        if answersOnly, !statements.contains(where: { $0.speaker == .remote && $0.invitesAnAnswer }) {
-            trace("skipped (answers-only, nothing was asked): through seq \(afterSeq)")
-            return
-        }
-        var system = blocks
-        if answersOnly { system.taskGuidance = Self.answersOnlyGuidance }
+        let system = blocks
+        let recalled = await recall(for: batch)
 
         let request = IntelligenceRequest(
             task: CopilotTasks.suggest,
             sessionKey: config.callID,
             system: system,
-            input: PromptComposer.render(batch),
+            // What the notes say, then the account as established fact, then the
+            // last few statements verbatim, then the question. Sent in full every
+            // time rather than left to the conversation to remember, so a context
+            // rollover — or a host restart — is invisible instead of amnesia.
+            input: ledger.questionContext(batch, recalled: recalled),
             tier: config.liveTier
         )
 
@@ -302,7 +634,27 @@ public actor CopilotAdvisor {
                 onProviderChange?(.local, providerDetail)
             }
             trace("suggestion after seq \(afterSeq) in \(Int(response.attribution.latency * 1000))ms via \(response.attribution.model)")
-            onSuggestion?(suggestion, .local)
+            // The pointer carries the compiled account rather than writing its own,
+            // so the panel's summary is the considered one and the fast model never
+            // spends output on it.
+            // A priority request runs alongside whatever was already going, so
+            // answers can finish out of order. The newer question's answer wins;
+            // publishing the older one after it would put a stale pointer on screen.
+            // Measured against the last *answer*, not the last frame: the account
+            // publishes frames too, and theirs can be ahead of a question still in
+            // flight — which would drop the answer as stale on a call where every
+            // answer was in fact the newest thing to happen.
+            if lastAnswerSeq > afterSeq {
+                trace("dropped a late answer for seq \(afterSeq); seq \(lastAnswerSeq) is newer")
+                return
+            }
+            var published = suggestion
+            published.summary = ledger.panelSummary()
+            published.openQuestions = ledger.openQuestions
+            lastSuggestion = published
+            lastAnswerSeq = afterSeq
+            lastAnswerWasToAQuestion = asked
+            onSuggestion?(published, .local)
         } catch let failure as IntelligenceFailure {
             note(failure: failure)
         } catch {
@@ -351,16 +703,18 @@ public actor CopilotAdvisor {
     /// model id instead of the fast path's coarse tier.
     public func summarise() async -> CopilotFrame.Suggestion? {
         guard config.preferred == .local, !localGaveUp else { return nil }
-        let leftovers = pendingContext + segmenter.drain(now: Date().timeIntervalSince(startedAt))
-        let tail = leftovers.isEmpty ? "" : "\n\nStill unanswered:\n" + PromptComposer.render(leftovers)
 
         let request = IntelligenceRequest(
             task: CopilotTasks.summary,
             sessionKey: config.callID,
             system: blocks,
             input: """
-            The call has ended. Summarise it for the user's own notes: what was \
-            agreed, what was promised by whom, and what is still open.\(tail)
+            The call has ended. Here is the account kept during it:
+
+            \(ledger.closingBrief(with: segmenter.drain(now: audioNow())))
+
+            Rewrite it as the user's own notes: what was agreed, what was promised \
+            by whom, and what is still open.
             """,
             tier: .deep,
             exactModel: config.summaryModel
@@ -381,6 +735,7 @@ public actor CopilotAdvisor {
     }
 
     public func shutdown() async {
+        await provider.closeSession(briefSessionKey)
         await provider.closeSession(config.callID)
         await provider.shutdown()
     }

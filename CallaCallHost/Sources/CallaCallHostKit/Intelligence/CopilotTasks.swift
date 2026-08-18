@@ -1,5 +1,6 @@
 import Foundation
 import IntelligenceCore
+import IntelligenceStore
 
 /// What the copilot asks the intelligence layer for.
 ///
@@ -18,6 +19,10 @@ public enum CopilotTasks {
         id: "copilot.suggest",
         // Measured ~1.9s against ~5.2s for balanced on the same warm host.
         defaultTier: .fast,
+        // Headline, steps, and anything worth checking. The rolling summary is a
+        // separate task now: asking a fast model to re-summarise the call on every
+        // pointer paid for the same paragraph over and over, and made the one thing
+        // that has to be quick slower.
         contract: .sentinelJSON(
             keys: ["headline", "angles", "confirm"],
             marker: sentinel
@@ -27,6 +32,47 @@ public enum CopilotTasks {
         latencyBudget: 12,
         conversation: .perSession,
         batching: .statement(.call),
+        allowedProviders: [.localAgy]
+    )
+
+    /// The rolling account of the call, one chunk at a time.
+    ///
+    /// Deliberately a different task from `suggest`, on a stronger tier: a summary
+    /// is worth thinking about and nobody is waiting on it mid-sentence, whereas a
+    /// pointer is the opposite on both counts.
+    ///
+    /// `.perSession` under its own key, so this lane is a second warm conversation
+    /// alongside the pointer's and is never charged a bootstrap mid-call. Because
+    /// the conversation remembers the account, each request carries only the turns
+    /// since the last one and asks for points about *those* — the account grows by
+    /// appending rather than by being rewritten, which is what stops a long call
+    /// quietly losing the numbers agreed in its first ten minutes.
+    public static let brief = IntelligenceTask(
+        id: "copilot.brief",
+        defaultTier: .balanced,
+        // Points, not prose. A paragraph in a notch panel is read by nobody
+        // mid-call; a short stack of lines can be scanned in the gap between
+        // sentences.
+        contract: .json(keys: ["points", "open_questions"]),
+        latencyBudget: 45,
+        conversation: .perSession,
+        batching: .manual,
+        allowedProviders: [.localAgy]
+    )
+
+    /// Folds the oldest points into one standing paragraph, so the account can go
+    /// on growing without what a question carries growing with it.
+    ///
+    /// A fresh conversation every time, on purpose: it is given the points it is to
+    /// fold and needs no memory beyond them, and a one-shot thread cannot drag the
+    /// rest of the call into a job nobody is waiting for.
+    public static let exec = IntelligenceTask(
+        id: "copilot.exec",
+        defaultTier: .balanced,
+        contract: .json(keys: ["standing", "open_questions"]),
+        latencyBudget: 60,
+        conversation: .oneShot,
+        batching: .manual,
         allowedProviders: [.localAgy]
     )
 
@@ -70,18 +116,27 @@ public enum CopilotLocalPrompt {
 
     - `headline`: what to say next. **At most 14 words.** Speakable as-is, first \
     person, no preamble, no "you could say".
-    - `angles`: **at most 2**, each **at most 8 words**. Fragments, not sentences.
+    - `angles`: **at most 2**, each **at most 8 words**. Fragments, not sentences. \
+    Where an answer has an order to it, these are its next steps rather than \
+    alternatives to it.
     - `confirm`: only numbers, dates, names or commitments the other side just \
     asserted. **At most 2**, each a fragment. Usually empty.
-    - `summary`: **at most 12 words** on where the call has got to.
-    - `open_questions`: **at most 2**, each a fragment.
 
     No filler, no hedging, no restating the question, no explaining your reasoning. \
     Cut every word that is not doing work.
 
-    If nothing useful can be said yet, return an empty `headline` and keep the \
-    `summary` current. Never invent facts about the user's product, pricing, or \
+    If nothing useful can be said yet, return an empty `headline` rather than \
+    filling the space. Never invent facts about the user's product, pricing, or \
     commitments.
+
+    Input arrives in up to three parts, and they are not equal.
+
+    - `So far:` is the compiled account of the call up to now. Established fact. \
+    Never repeat it back, never advise them to say something already covered there.
+    - `Just said:` is the last few turns, verbatim. This is the live context: a \
+    question almost always refers to it, so read the question in its light and reuse \
+    its wording where that is what the question is about.
+    - The last line is what to answer. Answer that, not the parts above it.
     """
 
     /// The Gateway's per-persona blocks are not in this repository, so these are
@@ -106,9 +161,18 @@ public enum CopilotLocalPrompt {
             headline. If it asks for a number, a scale or a tradeoff, name one \
             concretely rather than hedging.
 
-            `angles` are the next beats of the same answer, not alternatives to it — \
-            two fragments at most, a few words each, that they can reach for if \
-            pressed. Never a paragraph: they are mid-sentence when they read this.
+            `angles` are the **steps of the answer, in the order they should be \
+            said** — not alternatives, not commentary. Each one a few words: the \
+            next thing out of their mouth after the headline. Think of the headline \
+            plus the steps as a spine they can talk down while thinking.
+
+            For a system-design question the steps are the moves: clarify scale, \
+            name the bottleneck, pick the store, then the failure mode. For a \
+            behavioural question they are the beats: situation, what they did, the \
+            result, what they would change. For a coding question: the approach, the \
+            complexity, the edge case. Two steps at most on screen, and they should \
+            advance as the answer progresses rather than repeating what has already \
+            been said.
 
             Use `confirm` for anything the interviewer asserted about the role, the \
             stack or the terms that the user should check before agreeing.
@@ -150,9 +214,94 @@ public enum CopilotLocalPrompt {
                 ? profile!.personaGuidance!
                 : Self.persona(persona),
             about: profile?.about ?? "",
+            knowledge: Self.background(profile: profile),
             taskGuidance: ""
         )
     }
+
+    /// What the call is about, for every lane that needs it.
+    ///
+    /// The meeting header is rebuilt here rather than trusted to be inside
+    /// `knowledge`: the engine composes that blob from the knowledge base, and a
+    /// call can have a meeting with nothing written about it yet — which is the
+    /// common case on the first occurrence, and exactly when knowing the title and
+    /// who is on the call is worth the most.
+    public static func background(profile: CallProfile?) -> String {
+        var blocks: [String] = []
+        if let header = profile?.meeting?.derivedNoteBody() { blocks.append(header) }
+        let knowledge = profile?.knowledge?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !knowledge.isEmpty { blocks.append(knowledge) }
+        return blocks.joined(separator: "\n\n")
+    }
+}
+
+/// The prompt for the chunk lane — the growing account.
+public enum CopilotBriefPrompt {
+    /// Summarises the newest chunk of a call and nothing else.
+    ///
+    /// This lane is one warm conversation for the whole call, so it has already
+    /// seen everything that came before. That is what lets it be asked for points
+    /// about the *new* turns only: the account grows by appending, and the earlier
+    /// points are never re-emitted, so they cannot be silently lost in a rewrite.
+    public static let base = [
+        "You keep the running account of a conversation while it happens.",
+        "",
+        "Each message is the turns since the last one. Write points about those turns",
+        "alone. Everything earlier is already recorded and will be shown alongside",
+        "yours, so restating it wastes the space and the reader's time.",
+        "",
+        "`points`: usually 1 line, never more than 2, each at most 12 words, in the",
+        "order the turns happened. Most messages are a single statement and deserve a",
+        "single line. No bullet characters, no numbering, no leading dashes — one",
+        "thought per line, a fragment rather than a sentence where that is shorter. No",
+        "preamble and no 'they discussed'.",
+        "",
+        "Where the message opens with lines already on the record, they are exactly",
+        "that: written down and visible. A line that repeats one of them in different",
+        "words is worse than no line at all, because both then sit on a small screen",
+        "saying the same thing. Add only what they do not already say.",
+        "",
+        "Keep what will still matter in an hour: names, numbers, systems, constraints,",
+        "decisions, commitments, and who owes what. Drop pleasantries, hedging and",
+        "anything already covered. If the turns established nothing durable, return an",
+        "empty `points` rather than filling it — an empty answer is a normal answer",
+        "here, and most small talk deserves one.",
+        "",
+        "Where these turns correct something earlier — a figure revised, a plan",
+        "abandoned — say so in the point, so the correction outranks the original.",
+        "",
+        "`open_questions`: at most 3 fragments, raised and not yet answered, carried",
+        "forward from earlier ones plus anything new. Drop those since answered.",
+        "",
+        "Never invent numbers, names or commitments that were not said.",
+    ].joined(separator: "\n")
+}
+
+/// The prompt for the exec lane — the fold.
+public enum CopilotExecPrompt {
+    /// Compresses the oldest points into one standing paragraph.
+    ///
+    /// Read by the same person mid-call, but about the part of the conversation
+    /// nobody is discussing any more: it exists so the earlier hour is still
+    /// *present* in every question without costing what an hour of points would.
+    public static let base = [
+        "You compress the earlier part of a conversation into a standing summary.",
+        "",
+        "The input is the summary so far, if there is one, and the points that have",
+        "since accumulated. Merge them into one account of the whole of it.",
+        "",
+        "`standing`: at most 2 lines, at most 20 words each. Durable fact only — who",
+        "the parties are, the numbers and names established, what was decided, what was",
+        "promised and by whom. No narrative, no 'they discussed', no preamble.",
+        "",
+        "Nothing here is recorded anywhere else, so anything you leave out is gone for",
+        "the rest of the call. When two facts compete for the space, keep the one a",
+        "later answer would be wrong without: a figure, a commitment, a constraint.",
+        "",
+        "`open_questions`: at most 3 fragments, still unanswered.",
+        "",
+        "Never invent numbers, names or commitments that were not said.",
+    ].joined(separator: "\n")
 }
 
 /// Turns a contract payload into the frame the whole app already speaks.

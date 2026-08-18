@@ -1,5 +1,6 @@
 import Foundation
 import IntelligenceCore
+import IntelligenceStore
 import os.log
 
 private let sessionLog = Logger(subsystem: "theboringteam.boringnotch.callhost", category: "session")
@@ -28,6 +29,17 @@ public enum CallHostPaths {
     public static var permissionsFile: URL { root.appendingPathComponent("permissions.json") }
     public static var modelDownloadFile: URL { root.appendingPathComponent("model-download.json") }
     public static var socketFile: URL { root.appendingPathComponent("call-host.sock") }
+    /// Written by the engine to tell a prewarmed host to start recording.
+    ///
+    /// A file rather than a socket because there is no live command channel to a
+    /// running host — the engine spawns it with argv plus a stdin blob and then
+    /// only ever reads status files back. Adding a socket server for one boolean
+    /// would be a second IPC mechanism to keep correct; the host already wakes
+    /// every 250ms for the segmenter, so noticing a file costs nothing.
+    public static var prewarmReleaseFile: URL { root.appendingPathComponent("prewarm-release.json") }
+    /// Knowledge and call history. One file, WAL mode, written by the host and
+    /// read by the engine on behalf of the sandboxed app.
+    public static var storeFile: URL { root.appendingPathComponent("calla.sqlite") }
 
     public static func callMetadataFile(for callID: String) -> URL {
         callsDirectory
@@ -128,9 +140,21 @@ public struct CallProfile: Codable, Sendable {
     public var about: String?
     public var personaGuidance: String?
     public var baseGuidance: String?
+    /// What this particular call is about: notes the user attached to the
+    /// meeting, the event's own fields, and what the last occurrence concluded.
+    ///
+    /// Composed by the engine, not here and not by the app. The app is sandboxed
+    /// and cannot open the store; the engine can, and it is the only process that
+    /// sees both the meeting identity the app sends and the knowledge base the
+    /// host will need.
+    public var knowledge: String?
+    /// Which meeting this is. Carried separately from `knowledge` because it is
+    /// structured — the call row is keyed on it, so history can link back to the
+    /// calendar event and the end-of-call summary knows what to file itself under.
+    public var meeting: MeetingContext?
 
     enum CodingKeys: String, CodingKey {
-        case about
+        case about, knowledge, meeting
         case personaGuidance = "persona_guidance"
         case baseGuidance = "base_guidance"
     }
@@ -194,6 +218,25 @@ public struct ActiveCallStatus: Codable, Sendable {
     /// The model that answered, or why the local brain stood down. Shown in the
     /// notch, because a silent failover is indistinguishable from a broken one.
     public var providerDetail: String?
+    /// Who is speaking right now — `me`, `them`, or nobody. Taken from the last
+    /// transcribed turn, so it means "was understood" rather than "made a noise".
+    public var speaking: String?
+    /// A request is in flight. The one state the panel cannot infer for itself: a
+    /// copilot thinking and a copilot with nothing to say look identical.
+    public var thinking: Bool = false
+    /// Which job is in flight: `answer` or `summary`. They take different lengths of
+    /// time, so naming them stops the slower one reading as a stall.
+    public var working: String?
+    /// The newest pointer answers a question that was actually asked, rather than
+    /// remarking on a statement.
+    public var answering: Bool = false
+    /// Warm, but deliberately not recording: the pre-roll before a scheduled
+    /// meeting. `mic_active` and `system_audio_active` are both false while this
+    /// is true, and the notch says so.
+    public var prewarming: Bool = false
+    /// The meeting this call was armed for, so the pre-roll card has a title.
+    public var meetingTitle: String?
+    public var meetingStartsAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case callID = "call_id"
@@ -203,8 +246,10 @@ public struct ActiveCallStatus: Codable, Sendable {
         case gatewayConnected = "gateway_connected"
         case micActive = "mic_active"
         case systemAudioActive = "system_audio_active"
-        case provider
+        case provider, speaking, thinking, answering, working, prewarming
         case providerDetail = "provider_detail"
+        case meetingTitle = "meeting_title"
+        case meetingStartsAt = "meeting_starts_at"
     }
 }
 
@@ -228,6 +273,16 @@ public actor CallSession {
         public var liveTier: ModelTier
         /// Exact model for the end-of-call pass.
         public var summaryModel: String?
+        /// Knowledge and call history. Nil in probes and tests, where the call is
+        /// synthetic and there is nothing worth remembering about it.
+        public var store: CallaStore?
+        /// Warm everything but record nothing until told to.
+        ///
+        /// The two-minute pre-roll: the model loads, both `agy` lanes bootstrap
+        /// and the knowledge is packed while the meeting has not started. The
+        /// capture legs stay stopped until `beginCapture()`, so a copilot that
+        /// booted early is not a copilot that recorded early.
+        public var prewarm: Bool
 
         public init(
             callID: String = "call-\(UUID().uuidString.lowercased().prefix(16))",
@@ -239,7 +294,9 @@ public actor CallSession {
             provider: CopilotAdvisor.Provider = .local,
             fallbackToGateway: Bool = true,
             liveTier: ModelTier = .balanced,
-            summaryModel: String? = nil
+            summaryModel: String? = nil,
+            store: CallaStore? = nil,
+            prewarm: Bool = false
         ) {
             self.callID = callID
             self.persona = persona
@@ -251,6 +308,8 @@ public actor CallSession {
             self.fallbackToGateway = fallbackToGateway
             self.liveTier = liveTier
             self.summaryModel = summaryModel
+            self.store = store
+            self.prewarm = prewarm
         }
     }
 
@@ -275,6 +334,8 @@ public actor CallSession {
 
     private let startedAt = Date()
     private var turnCount = 0
+    private var lastTurnSource: TurnSource?
+    private var lastTurnAt: Date?
     private var micActive = false
     private var systemActive = false
     private var stopped = false
@@ -298,7 +359,8 @@ public actor CallSession {
             fallbackToGateway: config.fallbackToGateway,
             liveTier: config.liveTier,
             summaryModel: config.summaryModel,
-            runtimeRoot: CallHostPaths.root
+            runtimeRoot: CallHostPaths.root,
+            store: config.store
         ))
     }
 
@@ -312,6 +374,10 @@ public actor CallSession {
         }
 
         await advisor.setHandlers(
+            onActivity: { [weak self] in
+                guard let self else { return }
+                Task { await self.writeStatus() }
+            },
             onSuggestion: { [weak self] suggestion, _ in
                 guard let self else { return }
                 Task { await self.handle(suggestion: suggestion) }
@@ -356,6 +422,23 @@ public actor CallSession {
         // status file is gone. Written once — nothing in it changes.
         writeCallMetadata()
 
+        // The same record in the store, where it can be joined to a calendar
+        // event. Opened at start rather than at end so a call that crashes still
+        // leaves its turns attached to something.
+        if let store = config.store {
+            let meeting = config.profile?.meeting
+            try? await store.beginCall(CallRecord(
+                id: config.callID,
+                eventID: meeting?.eventID,
+                seriesID: meeting?.seriesID,
+                eventTitle: meeting?.title,
+                eventStart: meeting?.startsAt,
+                persona: config.persona,
+                startedAt: startedAt,
+                liveModel: config.model.name,
+                provider: config.provider.rawValue))
+        }
+
         // The segmenter's idle and request-floor rules are time-based: without a
         // tick, a sentence someone trailed off from would sit in the buffer until
         // the next turn happened to arrive.
@@ -364,8 +447,33 @@ public actor CallSession {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard let self else { return }
                 await self.advisor.tick()
+                await self.checkPrewarmRelease()
             }
         }
+
+        if config.prewarm {
+            // Everything above this line has run: the model is loaded, both `agy`
+            // lanes are opening, the socket is up and the knowledge is packed. The
+            // two microphones are the only thing that has not started, which is
+            // the whole point — the user is told the copilot is ready and that
+            // nothing is being recorded, and both statements are true.
+            await writeStatus()
+            sessionLog.notice("call \(self.config.callID, privacy: .public) prewarmed; capture held")
+            return
+        }
+
+        try await beginCapture()
+        sessionLog.notice("call \(self.config.callID, privacy: .public) started")
+    }
+
+    /// Starts the two capture legs. This is the moment recording begins.
+    ///
+    /// Split out of `start()` so the pre-roll can pay every other cost early and
+    /// leave exactly this until the user presses Join. Idempotent: a release file
+    /// that is noticed twice must not open a second microphone.
+    public func beginCapture() async throws {
+        guard !capturing, !stopped else { return }
+        capturing = true
 
         wireMicrophone()
         try microphone.start()
@@ -386,7 +494,36 @@ public actor CallSession {
         }
 
         await writeStatus()
-        sessionLog.notice("call \(self.config.callID, privacy: .public) started")
+    }
+
+    /// Whether the capture legs are running. Distinct from `micActive`, which
+    /// reports whether the microphone in particular came up.
+    public private(set) var capturing = false
+
+    /// True while the host is warm but deliberately not recording.
+    public var isPrewarming: Bool { config.prewarm && !capturing && !stopped }
+
+    /// Promotes a prewarmed call to a recording one when the engine says so.
+    ///
+    /// The file is consumed rather than merely read: leaving it in place would
+    /// start the *next* prewarmed call the instant it began polling, which is the
+    /// one failure mode that would record a meeting nobody agreed to.
+    private func checkPrewarmRelease() async {
+        guard isPrewarming else { return }
+        let marker = CallHostPaths.prewarmReleaseFile
+        guard FileManager.default.fileExists(atPath: marker.path) else { return }
+        // Only ours. The engine stamps the call id so a marker left behind by a
+        // host that died cannot release an unrelated call later.
+        let released = (try? Data(contentsOf: marker))
+            .flatMap { try? JSONDecoder().decode([String: String].self, from: $0) }?["call_id"]
+        guard released == nil || released == config.callID else { return }
+        CallHostPaths.remove(marker)
+        sessionLog.notice("prewarm released; capture starting for \(self.config.callID, privacy: .public)")
+        do {
+            try await beginCapture()
+        } catch {
+            sessionLog.error("capture failed to start after prewarm: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     public func stop() async {
@@ -431,6 +568,22 @@ public actor CallSession {
         if let summary = await advisor.summarise() {
             await handle(suggestion: summary)
         }
+
+        // The account outlives the process here, and nowhere else.
+        //
+        // Everything the advisor holds dies with the host, which is why a
+        // recurring meeting used to start from nothing every week. Filed against
+        // the *series* when there is one, so next Tuesday's standup retrieves last
+        // Tuesday's conclusions; a call with no meeting is still recorded, but has
+        // nothing to be filed under and is not indexed.
+        if let store = config.store {
+            let account = await advisor.durableSummary()
+            try? await store.endCall(id: config.callID)
+            if let note = try? await store.finish(summary: account, meeting: config.profile?.meeting) {
+                sessionLog.notice("call account filed as knowledge \(note.id, privacy: .public)")
+            }
+        }
+
         await advisor.shutdown()
 
         try? await socket.endCall(callID: config.callID)
@@ -487,6 +640,15 @@ public actor CallSession {
         }
     }
 
+    /// Who is speaking, judged from the last transcribed turn.
+    ///
+    /// Two seconds: long enough to survive the gap between phrases, short enough
+    /// that the panel stops claiming someone is talking after they have stopped.
+    private func currentSpeaker() -> String? {
+        guard let last = lastTurnAt, Date().timeIntervalSince(last) < 2 else { return nil }
+        return lastTurnSource?.rawValue
+    }
+
     private func handle(turn: CallTurn) async {
         if isSpeakerEcho(turn) {
             echoedTurns += 1
@@ -494,9 +656,18 @@ public actor CallSession {
             return
         }
         remember(turn)
+        lastTurnSource = turn.source
+        lastTurnAt = Date()
 
         turnCount += 1
         archive.record(turn: turn)
+        if let store = config.store {
+            try? await store.record(
+                turn: StoredTurn(
+                    seq: turn.seq, source: turn.source.rawValue,
+                    t0: turn.t0, t1: turn.t1, text: turn.text),
+                callID: config.callID)
+        }
         // The local brain is asked about complete statements, not every phrase the
         // VAD closes. The gateway still gets every turn below, because it batches
         // on its own side and must be able to take over instantly.
@@ -636,6 +807,18 @@ public actor CallSession {
             archive.record(suggestionLine: line)
         }
         try? CallHostPaths.writeAtomically(data, to: CallHostPaths.latestSuggestionFile)
+        if let store = config.store {
+            try? await store.record(
+                suggestion: StoredSuggestion(
+                    afterSeq: suggestion.afterSeq,
+                    headline: suggestion.headline,
+                    angles: suggestion.angles,
+                    confirm: suggestion.confirm,
+                    summary: suggestion.summary,
+                    openQuestions: suggestion.openQuestions,
+                    latencyMs: suggestion.latencyMs),
+                callID: config.callID)
+        }
 
         // The gateway's own `latency_ms` is its model call and nothing else.
         // The observed figure adds its debounce and both network legs, and is
@@ -665,7 +848,14 @@ public actor CallSession {
             micActive: micActive,
             systemAudioActive: systemActive,
             provider: await advisor.activeProvider.rawValue,
-            providerDetail: await advisor.providerDetail)
+            providerDetail: await advisor.providerDetail,
+            speaking: currentSpeaker(),
+            thinking: await advisor.isThinking,
+            working: await advisor.workingOn,
+            answering: await advisor.lastAnswerWasToAQuestion,
+            prewarming: isPrewarming,
+            meetingTitle: config.profile?.meeting?.title,
+            meetingStartsAt: config.profile?.meeting?.startsAt)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         encoder.dateEncodingStrategy = .iso8601

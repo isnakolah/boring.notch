@@ -148,6 +148,10 @@ public actor ModelStore {
 
         let task = Task<URL, Swift.Error> {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            // Adopt a copy that is already on this Mac before spending the download.
+            if let adopted = try Self.adopt(model, into: destination, progress: progress) {
+                return adopted
+            }
             let temporary = try await Self.download(from: model.url, expectedBytes: model.sizeBytes, progress: progress)
             defer { try? FileManager.default.removeItem(at: temporary) }
             try Self.verifySHA256(at: temporary, expected: model.sha256)
@@ -254,6 +258,62 @@ public actor ModelStore {
 
     /// Streaming SHA-256 in 1 MiB chunks — a multi-GB model must never be
     /// loaded into memory just to hash it.
+    /// Places other apps on this Mac keep whisper weights.
+    ///
+    /// Mila ships the same whisper.cpp pin this host does — that is why the two
+    /// agree on behaviour — so its `large-v3-turbo` is byte-for-byte the file this
+    /// would otherwise fetch. Re-downloading 1.6GB that is already on the disk is
+    /// pure waste, and on a metered connection it is worse than waste.
+    static let adoptionDirectories: [String] = [
+        "~/Library/Application Support/Mila/Models",
+    ]
+
+    /// Links an already-present copy into our store, if one checks out.
+    ///
+    /// Verified by SHA-256, not by name or size: adopting another app's file means
+    /// trusting bytes this process did not fetch, and the pinned hash is the only
+    /// thing that makes that safe. Hard-linked rather than copied, so it costs no
+    /// extra disk and cannot drift; a link across volumes falls back to a copy.
+    static func adopt(
+        _ model: WhisperModel,
+        into destination: URL,
+        progress: (@Sendable (Double) -> Void)? = nil,
+        fromDirectories directories: [String] = adoptionDirectories
+    ) throws -> URL? {
+        let manager = FileManager.default
+        for directory in directories {
+            let expanded = (directory as NSString).expandingTildeInPath
+            guard let entries = try? manager.contentsOfDirectory(atPath: expanded) else { continue }
+            for entry in entries where entry.hasSuffix(".bin") {
+                let candidate = URL(fileURLWithPath: expanded).appendingPathComponent(entry)
+                let size = (try? manager.attributesOfItem(atPath: candidate.path)[.size] as? NSNumber)??.int64Value
+                // Size first: hashing every large file in someone else's model
+                // directory to find one match would take minutes.
+                guard size == model.sizeBytes else { continue }
+                progress?(0.5)
+                do {
+                    try verifySHA256(at: candidate, expected: model.sha256)
+                } catch {
+                    modelLog.notice("\(entry, privacy: .public) is the right size for \(model.name, privacy: .public) but not the right file")
+                    continue
+                }
+                if manager.fileExists(atPath: destination.path) {
+                    try manager.removeItem(at: destination)
+                }
+                do {
+                    try manager.linkItem(at: candidate, to: destination)
+                } catch {
+                    // Different volume, or a filesystem without hard links.
+                    try manager.copyItem(at: candidate, to: destination)
+                }
+                progress?(1)
+                modelLog.notice("adopted \(model.name, privacy: .public) from \(candidate.deletingLastPathComponent().path, privacy: .public)")
+                return destination
+            }
+        }
+        return nil
+    }
+
     static func verifySHA256(at fileURL: URL, expected: String) throws {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
