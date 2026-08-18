@@ -36,7 +36,8 @@ struct ShelfQueueChip: View {
 
     var body: some View {
         rowContent
-            .frame(width: Self.size.width, height: Self.size.height)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.size.height)
             .background { background }
             .overlay(alignment: .bottom) { progressBar }
             .clipShape(Self.shape)

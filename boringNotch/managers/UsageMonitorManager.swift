@@ -8,6 +8,7 @@
 //
 
 import Defaults
+import UserNotifications
 import Foundation
 import SwiftUI
 
@@ -49,6 +50,39 @@ final class UsageMonitorManager: ObservableObject {
         if let cached = Self.loadCachedReport(for: "codex") { codex = .loaded(cached) }
     }
 
+    // MARK: - Running out
+
+    /// Notify on the crossing, not on the state.
+    ///
+    /// A quota that is already low is low every time it is polled; saying so
+    /// every five minutes is how a useful warning becomes something you turn
+    /// off. This fires only when a reading moves from above the mark to below it.
+    private func announceIfNewlyLow(provider: String,
+                                    previous: UsageReportDTO?,
+                                    current: UsageReportDTO) {
+        guard Defaults[.usageNotifyOnLow] else { return }
+        let low = Defaults[.usageLowThreshold]
+
+        func crossed(_ old: UsageReportDTO.Quota?, _ new: UsageReportDTO.Quota?) -> Double? {
+            guard let new, new.percentRemaining < low else { return nil }
+            guard let old, old.percentRemaining >= low else { return nil }
+            return new.percentRemaining
+        }
+
+        let hit = crossed(previous?.session, current.session) ?? crossed(previous?.weekly, current.weekly)
+        guard let remaining = hit else { return }
+
+        let name = provider == "claude" ? "Claude" : "Codex"
+        let content = UNMutableNotificationContent()
+        content.title = "\(name) is running low"
+        content.body = "\(Int(remaining.rounded()))% of your allowance is left."
+        if let reset = current.session?.resetText ?? current.weekly?.resetText {
+            content.body += " \(reset)."
+        }
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "usage.low.\(provider)", content: content, trigger: nil))
+    }
+
     // MARK: - Persistent cache
 
     private static func cacheKey(for provider: String) -> Defaults.Key<Data?> {
@@ -82,9 +116,18 @@ final class UsageMonitorManager: ObservableObject {
 
     /// Refreshes any provider whose cached report is older than the configured
     /// interval (or has never loaded). Called when the Usage tab becomes visible.
+    /// The providers the reader has asked for. Someone who only uses one should
+    /// not have the other reported as missing forever, or probed on a timer.
+    static var enabledProviders: [String] {
+        var out: [String] = []
+        if Defaults[.usageShowClaude] { out.append("claude") }
+        if Defaults[.usageShowCodex] { out.append("codex") }
+        return out
+    }
+
     func refreshIfStale() {
         let interval = Defaults[.usageMonitorRefreshInterval]
-        for provider in ["claude", "codex"] {
+        for provider in Self.enabledProviders {
             if isStale(state(for: provider), interval: interval) {
                 refresh(provider: provider, force: false)
             }
@@ -98,8 +141,9 @@ final class UsageMonitorManager: ObservableObject {
 
     /// Refreshes both providers as independent concurrent tasks.
     func refresh(force: Bool) {
-        refresh(provider: "claude", force: force)
-        refresh(provider: "codex", force: force)
+        for provider in Self.enabledProviders {
+            refresh(provider: provider, force: force)
+        }
     }
 
     private func refresh(provider: String, force: Bool) {
@@ -126,9 +170,11 @@ final class UsageMonitorManager: ObservableObject {
                        previous.status == .ok {
                         self.setState(.loaded(previous), for: provider)
                     } else {
+                        let before = self.state(for: provider).report
                         self.setState(.loaded(dto), for: provider)
                         if dto.status == .ok {
                             Self.persistReport(dto, for: provider)
+                            self.announceIfNewlyLow(provider: provider, previous: before, current: dto)
                         }
                     }
                 } else {

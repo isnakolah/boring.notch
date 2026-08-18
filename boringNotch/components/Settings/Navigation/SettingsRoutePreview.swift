@@ -23,8 +23,8 @@ extension SettingsRoute {
         case .battery: return .battery(percent: 68, charging: true)
         case .huds: return .hud(symbol: "speaker.wave.2.fill", fraction: 0.6)
         case .usage:
-            return .meter(label: "CPU 32%", fraction: 0.32,
-                          tint: NotchTint.active, caption: "Usage monitor")
+            return .meter(label: "68% left", fraction: 0.68,
+                          tint: NotchTint.active, caption: "Claude allowance")
         case .headerLayout:
             return .slots(leading: Defaults[.notchHeaderLeading].compactMap { $0 },
                           trailing: Defaults[.notchHeaderTrailing].compactMap { $0 })

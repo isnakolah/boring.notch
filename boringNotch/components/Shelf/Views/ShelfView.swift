@@ -96,15 +96,17 @@ struct ShelfView: View {
             .foregroundStyle(.white.opacity(0.35))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            // Two rows, filling column-major: four items are visible at once and
-            // each still gets ~210pt for its name.
-            ScrollView(.horizontal) {
-                LazyHGrid(
-                    rows: Array(
-                        repeating: GridItem(.fixed(ShelfQueueChip.size.height), spacing: 4),
-                        count: 2
-                    ),
-                    spacing: 6
+            // Two columns, filling row-major, scrolling down.
+            //
+            // It was two rows scrolling sideways, which put the fifth item off
+            // the right-hand edge with nothing to say it was there — and a
+            // sideways scroller of wide, short chips reads as a broken list
+            // rather than a grid. Down is the direction a list of things grows.
+            ScrollView(.vertical) {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 2),
+                    alignment: .leading,
+                    spacing: 4
                 ) {
                     ForEach(tvm.items) { item in
                         ShelfQueueChip(
@@ -115,7 +117,7 @@ struct ShelfView: View {
                         )
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             .scrollIndicators(.never)
             .environmentObject(quickLookService)

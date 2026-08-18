@@ -18,6 +18,8 @@ struct NotchLayoutPane: View {
     /// Which slot the pointer is over mid-drag, so a slot can say it will
     /// take the thing before it is let go.
     @State private var targeted: String?
+    /// Which filled slot the pointer is over, so it can offer to be emptied.
+    @State private var hovered: String?
 
     private var slotsPerSide: Int { NotchHeaderItem.slotsPerSide }
 
@@ -32,7 +34,7 @@ struct NotchLayoutPane: View {
 
     private var arrangementCard: some View {
         SettingCard("Arrangement",
-                    detail: "Drag an item onto a slot to place it, another slot to swap them, or the bin to clear it.") {
+                    detail: "Click an item to put it up or take it down, or drag it where you want it.") {
             VStack(alignment: .leading, spacing: NotchSpace.row) {
                 openNotchPreview
 
@@ -70,19 +72,21 @@ struct NotchLayoutPane: View {
     /// shortcut for the common case: put it in the first free slot.
     private var palette: some View {
         VStack(alignment: .leading, spacing: NotchSpace.tight) {
-            Text("Drag one onto a slot, or click to drop it in the first free one")
+            Text("Click to place or remove. Outlined items are already up there.")
                 .font(NotchType.rowDetail)
                 .foregroundStyle(.secondary)
 
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: NotchSpace.row) {
-                    ForEach(NotchHeaderItem.placeable) { item in
-                        paletteChip(item)
-                    }
+            // A grid, not a horizontal scroller. There are nine of these and
+            // the scroller put the last two past the edge, where nothing tells
+            // you they exist.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72, maximum: 92), spacing: NotchSpace.snug)],
+                      alignment: .leading,
+                      spacing: NotchSpace.row) {
+                ForEach(NotchHeaderItem.placeable) { item in
+                    paletteChip(item)
                 }
-                .padding(.vertical, 4)
             }
-            .scrollIndicators(.visible)
+            .padding(.vertical, 4)
         }
     }
 
@@ -104,9 +108,18 @@ struct NotchLayoutPane: View {
             }
             .opacity(placed ? 0.55 : 1)
             .contentShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
-            .help(placed ? "\(item.label) — already up there" : item.label)
+            .help(placed ? "Click to take \(item.label) down" : "Click to place \(item.label)")
             .onDrag { NSItemProvider(object: NSString(string: "item:\(item.rawValue)")) }
-            .onTapGesture { placeInFirstFreeSlot(item) }
+            .onTapGesture {
+                withAnimation(NotchMotion.settle) {
+                    if placed {
+                        NotchHeaderLayout.remove(item)
+                        notice = nil
+                    } else {
+                        placeInFirstFreeSlot(item)
+                    }
+                }
+            }
 
             Text(item.label)
                 .font(NotchType.figure)
@@ -119,16 +132,10 @@ struct NotchLayoutPane: View {
     }
 
     private func placeInFirstFreeSlot(_ item: NotchHeaderItem) {
-        guard NotchHeaderLayout.side(of: item) == nil else {
-            notice = "\(item.label) is already beside the notch. Drag it to the bin to take it down."
-            return
-        }
-        withAnimation(NotchMotion.settle) {
-            if NotchHeaderLayout.append(item, to: .leading) || NotchHeaderLayout.append(item, to: .trailing) {
-                notice = nil
-            } else {
-                notice = "Both sides are full. Clear a slot first, then place \(item.label)."
-            }
+        if NotchHeaderLayout.append(item, to: .leading) || NotchHeaderLayout.append(item, to: .trailing) {
+            notice = nil
+        } else {
+            notice = "Both sides are full. Take something down first, then place \(item.label)."
         }
     }
 
@@ -189,6 +196,9 @@ struct NotchLayoutPane: View {
             NotchShape(topCornerRadius: 0, bottomCornerRadius: 22)
                 .stroke(Color.white.opacity(0.06), lineWidth: 1)
         )
+        // Centred, because it is a picture of something that is itself centred
+        // on the screen.
+        .frame(maxWidth: .infinity, alignment: .center)
         .animation(NotchMotion.settle, value: leading)
         .animation(NotchMotion.settle, value: trailing)
     }
@@ -221,6 +231,29 @@ struct NotchLayoutPane: View {
                     .foregroundStyle(item.isEnabled ? Color.white : Color.white.opacity(0.35))
             }
         }
+        .overlay(alignment: .topTrailing) {
+            // Removing something used to mean finding a small bin at the far
+            // corner of the card and dragging to it. The slot itself is where
+            // anyone looks first, so the way out is on the slot.
+            if item != .none, hovered == key {
+                Button {
+                    withAnimation(NotchMotion.settle) { NotchHeaderLayout.remove(on: side, at: index) }
+                    notice = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(Color.white, Color.black.opacity(0.65))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 5, y: -5)
+                .help("Take \(item.label) down")
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .onHover { inside in
+            withAnimation(NotchMotion.settle) { hovered = inside ? key : (hovered == key ? nil : hovered) }
+        }
         .contentShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
         .help(item == .none ? "Empty slot" : item.label)
         .onDrag {
@@ -237,33 +270,47 @@ struct NotchLayoutPane: View {
         .animation(NotchMotion.settle, value: isTarget)
     }
 
+    /// A place to drop things, said out loud.
+    ///
+    /// It was a bare 44pt bin glyph in the corner with nothing naming it, which
+    /// is fine once you know and invisible until then. It is a labelled target
+    /// now, and it is no longer the only way to take something down.
     private var binTarget: some View {
-        VStack(spacing: 6) {
-            Text(" ").font(NotchType.eyebrow)
-            ZStack {
-                RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous)
-                    .fill(targeted == "bin" ? NotchTint.stuck.opacity(0.25) : NotchSurface.raised)
-                    .frame(width: 44, height: 44)
-                Image(systemName: "trash")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(targeted == "bin" ? NotchTint.stuck : .secondary)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
-            .onDrop(of: [UTType.plainText.identifier],
-                    isTargeted: Binding(get: { targeted == "bin" },
-                                        set: { targeted = $0 ? "bin" : (targeted == "bin" ? nil : targeted) })) { providers in
-                targeted = nil
-                return handleDrop(providers) { payload in
-                    withAnimation {
-                        switch payload {
-                        case let .slot(side, index): NotchHeaderLayout.remove(on: side, at: index)
-                        case let .item(item): NotchHeaderLayout.remove(item)
-                        }
+        let active = targeted == "bin"
+        return HStack(spacing: NotchSpace.tight) {
+            Image(systemName: active ? "trash.fill" : "trash")
+                .font(.system(size: 12, weight: .medium))
+            Text("Drop to remove")
+                .font(NotchType.rowDetail)
+        }
+        .foregroundStyle(active ? NotchTint.stuck : .secondary)
+        .padding(.horizontal, NotchSpace.snug)
+        .padding(.vertical, NotchSpace.tight)
+        .background(
+            RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous)
+                .fill(active ? NotchTint.stuck.opacity(0.16) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous)
+                .strokeBorder(active ? NotchTint.stuck : Color.secondary.opacity(0.35),
+                              style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
+        .onDrop(of: [UTType.plainText.identifier],
+                isTargeted: Binding(get: { targeted == "bin" },
+                                    set: { targeted = $0 ? "bin" : (targeted == "bin" ? nil : targeted) })) { providers in
+            targeted = nil
+            return handleDrop(providers) { payload in
+                withAnimation(NotchMotion.settle) {
+                    switch payload {
+                    case let .slot(side, index): NotchHeaderLayout.remove(on: side, at: index)
+                    case let .item(item): NotchHeaderLayout.remove(item)
                     }
-                    notice = nil
                 }
+                notice = nil
             }
         }
+        .animation(NotchMotion.settle, value: active)
     }
 
     // MARK: - Items

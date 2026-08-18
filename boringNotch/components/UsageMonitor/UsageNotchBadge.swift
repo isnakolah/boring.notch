@@ -22,21 +22,29 @@ struct UsageNotchBadges: View {
 
     @ObservedObject private var manager = UsageMonitorManager.shared
     @Default(.usageMonitorRefreshInterval) private var refreshInterval
+    @Default(.usageShowClaude) private var showClaude
+    @Default(.usageShowCodex) private var showCodex
     @State private var pollTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 0) {
-            UsageNotchBadge(provider: "CLAUDE", state: manager.claude, alignment: .leading)
-                .padding(.trailing, 10)
-                .onHover { if $0 { onBadgeHover?() } }
+            // Only the CLIs being read. Showing a permanently empty badge for a
+            // tool you do not use is worse than showing nothing.
+            if showClaude {
+                UsageNotchBadge(provider: "CLAUDE", state: manager.claude, alignment: .leading)
+                    .padding(.trailing, 10)
+                    .onHover { if $0 { onBadgeHover?() } }
+            }
 
             Rectangle()
                 .fill(.black)
                 .frame(width: notchWidth)
 
-            UsageNotchBadge(provider: "CODEX", state: manager.codex, alignment: .leading)
-                .padding(.leading, 10)
-                .onHover { if $0 { onBadgeHover?() } }
+            if showCodex {
+                UsageNotchBadge(provider: "CODEX", state: manager.codex, alignment: .leading)
+                    .padding(.leading, 10)
+                    .onHover { if $0 { onBadgeHover?() } }
+            }
         }
         // Size to content so the black notch background hugs the badges (extends
         // only to where the usage numbers reach) instead of ballooning to the

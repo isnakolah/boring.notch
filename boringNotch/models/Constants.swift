@@ -282,6 +282,17 @@ extension Defaults.Keys {
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)
     static let usageMonitorRefreshInterval = Key<Double>("usageMonitorRefreshInterval", default: 300)
     static let showUsageBesideNotch = Key<Bool>("showUsageBesideNotch", default: false)
+
+    /// Which of the two CLIs to read. Someone who only uses one should not have
+    /// the other reported as missing forever.
+    static let usageShowClaude = Key<Bool>("usageShowClaude", default: true)
+    static let usageShowCodex = Key<Bool>("usageShowCodex", default: true)
+    /// Below this much remaining, a quota is drawn as critical. The thresholds
+    /// were hard-coded at 50 and 20, which is a guess about how close to the
+    /// edge someone likes to run.
+    static let usageLowThreshold = Key<Double>("usageLowThreshold", default: 20)
+    /// Say something when a quota first drops below that threshold.
+    static let usageNotifyOnLow = Key<Bool>("usageNotifyOnLow", default: false)
     // Last successful usage report per provider (UsageReportDTO JSON), shown
     // while a fresh probe fails or before the first probe completes.
     static let cachedClaudeUsage = Key<Data?>("cachedClaudeUsage", default: nil)

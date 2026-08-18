@@ -69,7 +69,7 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable, Codable {
         case .appearance: return "What the notch looks like and what sits in its header."
         case .media: return "What plays, how it is shown, and which controls you get."
         case .calendar: return "What is next, and which calendars it comes from."
-        case .system: return "The machine's own numbers: charge, volume, brightness and load."
+        case .system: return "Readouts the notch keeps for you: charge, the volume and brightness HUDs, and what is left of your AI allowance."
         case .shelf: return "A place to drop things, and the devices to send them to."
         case .pomodoro: return "Focus intervals, breaks, and what happens when one ends."
         case .copilot: return "Help during a live call: what it hears, what it knows, what it says."

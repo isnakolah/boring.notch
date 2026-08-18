@@ -68,7 +68,7 @@ enum SettingsPage: Hashable {
         case .calendarSources: return "Calendars & Lists"
         case .battery: return "Battery"
         case .huds: return "HUDs"
-        case .usage: return "Usage Monitor"
+        case .usage: return "AI Usage"
         case .localSend: return "LocalSend"
         case .kdeConnect: return "KDE Connect"
         case .copilotCall: return "Call"
@@ -102,7 +102,7 @@ enum SettingsPage: Hashable {
         case .calendarSources: return "calendar.badge.checkmark"
         case .battery: return "battery.100.bolt"
         case .huds: return "dial.medium.fill"
-        case .usage: return "chart.bar.xaxis"
+        case .usage: return "gauge.with.needle"
         case .localSend: return "antenna.radiowaves.left.and.right"
         case .kdeConnect: return "iphone.gen3.radiowaves.left.and.right"
         case .copilotCall: return "waveform.badge.mic"
@@ -138,7 +138,7 @@ enum SettingsPage: Hashable {
         case .calendarSources: return "Which calendars and reminder lists are shown."
         case .battery: return "Charge, power source, and the notifications about them."
         case .huds: return "Replacing the system volume and brightness overlays."
-        case .usage: return "CPU, memory and the quota meters beside the notch."
+        case .usage: return "How much of your Claude and Codex allowance is left."
         case .localSend: return "Sending shelf items to other devices over the network."
         case .kdeConnect: return "Pairing with a phone through KDE Connect."
         case .copilotCall: return "Starting a call, and what shows in the notch during one."
@@ -175,7 +175,7 @@ enum SettingsPage: Hashable {
         case .calendarSources: return ["reminders", "events", "ical", "google"]
         case .battery: return ["charge", "power", "percentage", "plugged in"]
         case .huds: return ["volume", "brightness", "overlay", "indicator"]
-        case .usage: return ["cpu", "memory", "ram", "quota", "claude"]
+        case .usage: return ["claude", "codex", "quota", "allowance", "tokens", "limit", "cli"]
         case .localSend: return ["airdrop", "transfer", "share", "network"]
         case .kdeConnect: return ["phone", "android", "pair"]
         case .copilotCall: return ["meeting", "live", "zoom", "meet", "teams"]

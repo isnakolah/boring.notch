@@ -445,9 +445,12 @@ enum QuotaDisplayStatus {
     case depleted   // <= 0
 
     static func from(percentRemaining: Double) -> QuotaDisplayStatus {
-        switch percentRemaining {
-        case let x where x > 50: .healthy
-        case let x where x >= 20: .warning
+        // The low mark is the reader's, not a guess baked in here. Warning
+        // starts at twice it, so the ramp keeps its shape wherever they put it.
+        let low = Defaults[.usageLowThreshold]
+        return switch percentRemaining {
+        case let x where x > low * 2.5: .healthy
+        case let x where x >= low: .warning
         case let x where x > 0: .critical
         default: .depleted
         }
