@@ -10,16 +10,72 @@ struct SettingsPane<Content: View>: View {
     let eyebrow: String
     let title: String
     var detail: String?
+    /// Set by the route-aware initialisers. When present the header renders the
+    /// whole trail instead of a single static eyebrow, so a pane cannot be wrong
+    /// about where it is — it is not told, it is derived.
+    var crumbs: [SettingsBreadcrumb.Crumb]?
     @ViewBuilder var content: Content
+
+    @Environment(\.settingsRouter) private var router
+
+    /// The original initialiser. Kept so every pane written against it compiles
+    /// unchanged; panes move onto the route-aware ones as they are touched.
+    init(eyebrow: String, title: String, detail: String? = nil, @ViewBuilder content: () -> Content) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.detail = detail
+        self.crumbs = nil
+        self.content = content()
+    }
+
+    /// A section's landing pane.
+    init(_ section: SettingsSection, @ViewBuilder content: () -> Content) {
+        self.eyebrow = ""
+        self.title = String(localized: section.title)
+        self.detail = String(localized: section.detail)
+        self.crumbs = nil
+        self.content = content()
+    }
+
+    /// A pushed page. Title, detail and the whole trail come from the model.
+    init(_ page: SettingsPage, titleOverride: String? = nil, @ViewBuilder content: () -> Content) {
+        let section = page.section
+        self.eyebrow = String(localized: section.title)
+        self.title = titleOverride ?? String(localized: page.title)
+        self.detail = page.detail.map { String(localized: $0) }
+        // The trail is built from where the page actually sits, so a depth-two
+        // page gets all three crumbs rather than losing its middle one.
+        var trail: [SettingsBreadcrumb.Crumb] = [
+            .init(title: String(localized: section.title), depth: 0)
+        ]
+        if case let .copilotKnowledgeDetail(_) = page {
+            trail.append(.init(title: String(localized: SettingsPage.copilotKnowledge.title), depth: 1))
+            trail.append(.init(title: titleOverride ?? String(localized: page.title), depth: 2))
+        } else {
+            trail.append(.init(title: titleOverride ?? String(localized: page.title), depth: 1))
+        }
+        self.crumbs = trail
+        self.content = content()
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(eyebrow.uppercased())
-                        .font(NotchType.eyebrow)
-                        .foregroundStyle(.tertiary)
-                        .kerning(0.5)
+                    // A landing pane has no trail to draw: its title already
+                    // says the section name, and repeating it above itself is
+                    // the kind of chrome the eyebrow existed to avoid.
+                    if let crumbs, !crumbs.isEmpty, let router {
+                        SettingsBreadcrumb(
+                            crumbs: crumbs,
+                            onSelect: { router.popTo(depth: $0) },
+                            onBack: router.route.path.isEmpty ? nil : { router.pop() })
+                    } else if !eyebrow.isEmpty {
+                        Text(eyebrow.uppercased())
+                            .font(NotchType.eyebrow)
+                            .foregroundStyle(.tertiary)
+                            .kerning(0.5)
+                    }
                     Text(title).font(NotchType.paneTitle)
                     if let detail {
                         Text(detail)
@@ -77,6 +133,15 @@ struct SettingCard<Content: View>: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardBackground, in: RoundedRectangle(cornerRadius: NotchRadius.card, style: .continuous))
+        // A wash rather than a flat 10% fill. The old version tinted the whole
+        // surface evenly, which turned a card reporting a problem into a
+        // coloured panel and made the text on it fight the fill. This keeps the
+        // colour at the leading edge, where the eye enters the card.
+        .background {
+            if let tint {
+                NotchWash(tint: tint)
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: NotchRadius.card, style: .continuous)
                 .strokeBorder(cardBorder, lineWidth: 1)
@@ -84,8 +149,7 @@ struct SettingCard<Content: View>: View {
     }
 
     private var cardBackground: AnyShapeStyle {
-        guard let tint else { return AnyShapeStyle(NotchSurface.raised) }
-        return AnyShapeStyle(tint.opacity(0.10))
+        AnyShapeStyle(NotchSurface.raised)
     }
 
     private var cardBorder: AnyShapeStyle {

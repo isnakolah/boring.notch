@@ -24,8 +24,7 @@ struct UsageMonitorSettings: View {
     @Default(.showUsageBesideNotch) private var showUsageBesideNotch
 
     var body: some View {
-        SettingsPane(eyebrow: "Tools", title: "Usage",
-                     detail: "Session and weekly quotas, read from the claude and codex CLIs on this Mac.") {
+        SettingsPane(SettingsPage.usage) {
             SettingCard("Usage monitor") {
                 VStack(spacing: 12) {
                     SettingRow("Enable usage tab",

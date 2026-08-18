@@ -35,8 +35,7 @@ struct PomodoroSettings: View {
     @Default(.pomodoroPostNotification) private var postNotification
 
     var body: some View {
-        SettingsPane(eyebrow: "Tools", title: "Pomodoro",
-                     detail: "Focus blocks and breaks, counted in the notch.") {
+        SettingsPane(.pomodoro) {
             SettingCard("Pomodoro") {
                 VStack(spacing: 12) {
                     SettingRow("Enable Pomodoro tab") {
@@ -124,19 +123,7 @@ struct PomodoroSettings: View {
                 }
             }
 
-            SettingCard("Keyboard") {
-                VStack(spacing: 12) {
-                    SettingRow("Start / pause") {
-                        KeyboardShortcuts.Recorder("", name: .pomodoroStartPause)
-                    }
-                    SettingRow("Skip to next block") {
-                        KeyboardShortcuts.Recorder("", name: .pomodoroSkipPhase)
-                    }
-                    SettingRow("Stop") {
-                        KeyboardShortcuts.Recorder("", name: .pomodoroStopTimer)
-                    }
-                }
-            }
+            // The three Pomodoro recorders moved to Settings › Shortcuts.
 
             SettingCard("History", detail: "Focus blocks are kept on this Mac for 90 days.") {
                 VStack(spacing: 10) {

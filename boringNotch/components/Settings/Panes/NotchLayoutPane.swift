@@ -10,6 +10,8 @@ import UniformTypeIdentifiers
 /// had already put up there. Here the count is the interface: three slots a
 /// side, and asking for a fourth says so instead of clipping.
 struct NotchLayoutPane: View {
+    @Environment(\.settingsRouter) private var router
+
     @Default(.notchHeaderLeading) private var leading
     @Default(.notchHeaderTrailing) private var trailing
     @State private var notice: String?
@@ -17,8 +19,7 @@ struct NotchLayoutPane: View {
     private var slotsPerSide: Int { NotchHeaderItem.slotsPerSide }
 
     var body: some View {
-        SettingsPane(eyebrow: "Notch", title: "Layout",
-                     detail: "Three slots on each side of the notch. Drag to arrange, or place an item from the list below.") {
+        SettingsPane(SettingsPage.headerLayout) {
             arrangementCard
             itemsCard
         }
@@ -164,8 +165,14 @@ struct NotchLayoutPane: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(item.label).font(NotchType.rowTitle)
-                    if let pane = item.featurePane, !item.isEnabled {
-                        SettingBadge("Off in \(pane)", tint: NotchTint.attention)
+                    if let name = item.featurePaneName, !item.isEnabled {
+                        Button {
+                            if let route = item.featureRoute { router?.go(route) }
+                        } label: {
+                            SettingBadge("Off in \(name)", tint: NotchTint.attention)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open \(name)")
                     }
                 }
                 if let detail = detail(for: item) {

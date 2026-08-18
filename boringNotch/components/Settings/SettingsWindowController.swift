@@ -13,6 +13,14 @@ import Sparkle
 class SettingsWindowController: NSWindowController {
     static let shared = SettingsWindowController()
     private var updaterController: SPUStandardUpdaterController?
+
+    /// Where the window is, held here so a deep link is one assignment.
+    ///
+    /// `show(tab:)` used to replace `window.contentView` with a brand-new
+    /// `NSHostingView` on every call. That threw away every `@StateObject` in
+    /// the tree along with it — a half-typed prompt, an expanded Sweep category,
+    /// a scan's UI state — for what is only a change of destination.
+    @MainActor private let router = SettingsRouter()
     
     private init() {
         let window = NSWindow(
@@ -65,7 +73,9 @@ class SettingsWindowController: NSWindowController {
         window.identifier = NSUserInterfaceItemIdentifier("BoringNotchSettingsWindow")
         
         // Create the SwiftUI content
-        let settingsView = SettingsView(updaterController: updaterController)
+        let settingsView = MainActor.assumeIsolated {
+            SettingsView(router: router, updaterController: updaterController)
+        }
         let hostingView = NSHostingView(rootView: settingsView)
         window.contentView = hostingView
         
@@ -110,11 +120,19 @@ class SettingsWindowController: NSWindowController {
     /// Each deep link used to rebuild `contentView` from scratch, and the Tutor
     /// one also resized the window to 1080x720 and left it that way for the rest
     /// of the session — so opening Tutor once permanently changed the size of
-    /// every other pane. One window, one size the user chose, one content view.
+    /// every other pane. One window, one size the user chose, one content view —
+    /// and now one router, so moving the window somewhere costs an assignment
+    /// rather than the whole view tree.
+    ///
+    /// The string form is kept because that is what every caller passes; it is
+    /// resolved through `SettingsRoute(legacyIdentifier:)`, which still accepts
+    /// every name the flat model answered to.
     private func show(tab: String) {
-        guard let window else { return }
-        window.contentView = NSHostingView(
-            rootView: SettingsView(initialTab: tab, updaterController: updaterController))
+        show(route: SettingsRoute(legacyIdentifier: tab))
+    }
+
+    func show(route: SettingsRoute) {
+        MainActor.assumeIsolated { router.go(route) }
         showWindow()
     }
     

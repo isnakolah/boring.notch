@@ -4,6 +4,10 @@
 //
 //  Created by Alexander on 2025-11-17.
 //
+//  Promoted from a card embedded in Media to a page of its own, and brought
+//  onto the settings design system: it was the last view in the tree still
+//  using raw NSColor and non-continuous corner radii.
+//
 
 import Defaults
 import SwiftUI
@@ -17,19 +21,20 @@ struct MusicSlotConfigurationView: View {
     private let fixedSlotCount: Int = 5
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Slot configuration (fixed 5)
-            slotConfigurationSection
-
-            // Reset button
-            HStack {
-                Spacer()
-                Button("Reset to Defaults") {
-                    withAnimation {
-                        musicControlSlots = MusicControlButton.defaultLayout
+        SettingsPane(SettingsPage.controlSlots) {
+            SettingCard(detail: "Drag a control onto a slot to place it, or onto the bin to clear it. Five slots, always.") {
+                VStack(alignment: .leading, spacing: NotchSpace.row) {
+                    slotConfigurationSection
+                    HStack {
+                        Spacer()
+                        Button("Reset to defaults") {
+                            withAnimation(NotchMotion.settle) {
+                                musicControlSlots = MusicControlButton.defaultLayout
+                            }
+                        }
+                        .controlSize(.small)
                     }
                 }
-                .buttonStyle(.borderless)
             }
         }
         .onAppear {
@@ -71,27 +76,27 @@ struct MusicSlotConfigurationView: View {
                 }
             }
             .padding(12)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(8)
+            .background(NotchSurface.raised)
+            .clipShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
 
             VStack(spacing: 8) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(NSColor.controlBackgroundColor))
+                        .fill(NotchSurface.raised)
                         .frame(width: 56, height: 56)
 
                     Image(systemName: "trash")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(Color.primary)
                 }
-                .cornerRadius(10)
+                .clipShape(RoundedRectangle(cornerRadius: NotchRadius.chip, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 10))
                 .onDrop(of: [UTType.plainText.identifier], isTargeted: nil) { providers in
                     return handleDropOnTrash(providers)
                 }
 
                 Text("Clear slot")
-                    .font(.caption2)
+                    .font(NotchType.figure)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(2)
@@ -104,11 +109,11 @@ struct MusicSlotConfigurationView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Layout Preview")
-                    .font(.headline)
+                    .font(NotchType.cardTitle)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("Drag items in the preview to reorder or drop from the palette")
-                    .font(.subheadline)
+                    .font(NotchType.rowDetail)
                     .foregroundStyle(.secondary)
             }
             previewSection
@@ -117,7 +122,7 @@ struct MusicSlotConfigurationView: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Drag a control onto a slot")
-                    .font(.caption)
+                    .font(NotchType.rowDetail)
                     .foregroundStyle(.secondary)
 
                 ScrollView(.horizontal) {
@@ -126,7 +131,7 @@ struct MusicSlotConfigurationView: View {
                             VStack(spacing: 6) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color(NSColor.controlBackgroundColor))
+                                        .fill(NotchSurface.raised)
                                         .frame(width: 44, height: 44)
 
                                     if control != .none {
@@ -136,7 +141,7 @@ struct MusicSlotConfigurationView: View {
                                             .frame(width: 28, height: 28)
                                     }
                                 }
-                                .cornerRadius(8)
+                                .clipShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
                                 .contentShape(RoundedRectangle(cornerRadius: 8))
                                 .onDrag {
                                     return NSItemProvider(object: NSString(string: "control:\(control.rawValue)"))
@@ -150,7 +155,7 @@ struct MusicSlotConfigurationView: View {
                                 }
 
                                 Text(control.label)
-                                    .font(.caption2)
+                                    .font(NotchType.figure)
                                     .foregroundStyle(.secondary)
                                     .frame(width: 60)
                                     .multilineTextAlignment(.center)
@@ -202,15 +207,15 @@ struct MusicSlotConfigurationView: View {
             Spacer()
         }
         .padding(8)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .cornerRadius(6)
+        .background(NotchSurface.raised.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
     }
 
     @ViewBuilder
     private func slotPreview(for slot: MusicControlButton) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color(NSColor.controlBackgroundColor))
+                .fill(NotchSurface.raised)
                 .frame(width: 44, height: 44)
 
             if slot != .none {
@@ -225,7 +230,7 @@ struct MusicSlotConfigurationView: View {
                     .frame(width: 32, height: 32)
             }
         }
-        .cornerRadius(8)
+        .clipShape(RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 8))
     }
 

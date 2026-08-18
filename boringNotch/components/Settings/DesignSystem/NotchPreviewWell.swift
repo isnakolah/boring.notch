@@ -29,6 +29,7 @@ struct NotchPreviewWell: View {
                 .fill(NotchSurface.sunken)
                 .frame(height: 46)
                 .shadow(color: .black.opacity(0.28), radius: 7, y: 3)
+                .animation(NotchMotion.drill, value: content.caption)
 
                 content.view
                     .padding(.horizontal, 16)
@@ -57,6 +58,14 @@ enum NotchPreviewContent {
     case battery(percent: Int, charging: Bool)
     case hud(symbol: String, fraction: Double)
     case activity(symbol: String, text: String, tint: Color, caption: String)
+    /// The header items as they are actually arranged right now.
+    ///
+    /// Header layout is the one pane where the well is load-bearing rather than
+    /// decorative — it is the answer to what the pane is asking. The pane had
+    /// been drawing its own smaller version of this.
+    case slots(leading: [NotchHeaderItem], trailing: [NotchHeaderItem])
+    /// A figure that is part of a whole: reclaimable space, processor load.
+    case meter(label: String, fraction: Double, tint: Color, caption: String)
 
     var caption: String {
         switch self {
@@ -65,6 +74,8 @@ enum NotchPreviewContent {
         case .battery: return "Charge indicator"
         case .hud: return "System HUD replacement"
         case let .activity(_, _, _, caption): return caption
+        case .slots: return "What sits either side of your notch"
+        case let .meter(_, _, _, caption): return caption
         }
     }
 
@@ -116,6 +127,44 @@ enum NotchPreviewContent {
                 Spacer(minLength: 0)
             }
             .lineLimit(1)
+        case let .slots(leading, trailing):
+            HStack(spacing: 0) {
+                slotStrip(leading, alignment: .leading)
+                Spacer(minLength: 8)
+                slotStrip(trailing, alignment: .trailing)
+            }
+        case let .meter(label, fraction, tint, _):
+            HStack(spacing: 8) {
+                Text(label)
+                    .font(.system(size: 10, design: .rounded).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .contentTransition(.numericText())
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.white.opacity(0.22))
+                        Capsule().fill(tint)
+                            .frame(width: max(0, geometry.size.width * min(max(fraction, 0), 1)))
+                    }
+                }
+                .frame(height: 4)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func slotStrip(_ items: [NotchHeaderItem], alignment: HorizontalAlignment) -> some View {
+        HStack(spacing: 5) {
+            if items.isEmpty {
+                Text("Empty")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.white.opacity(0.25))
+            } else {
+                ForEach(items) { item in
+                    Image(systemName: item.icon)
+                        .font(.system(size: 10))
+                        .foregroundStyle(item.isEnabled ? .white.opacity(0.85) : .white.opacity(0.25))
+                }
+            }
         }
     }
 }

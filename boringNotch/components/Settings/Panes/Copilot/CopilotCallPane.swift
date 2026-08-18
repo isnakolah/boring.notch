@@ -17,21 +17,21 @@ struct CopilotCallPane: View {
     @Default(.callaCopilotLiveModel) private var model
     @Default(.callaCopilotAutoReveal) private var autoReveal
     @Default(.callaCopilotAutoStartOnMeeting) private var autoStart
+    @Default(.callaCopilotPrerollEnabled) private var preroll
+    @Default(.callaCopilotPrerollLead) private var prerollLead
     @Default(.callaCopilotGlassLevel) private var glassLevel
     @Default(.callaCopilotCustomPersonas) private var customPersonas
 
     private var copilot: CallaCopilotStatus { engine.status.copilot }
 
     var body: some View {
-        SettingsPane(eyebrow: "Call copilot", title: "Call",
-                     detail: "Listens to a call and suggests where to take it next. Audio never leaves this Mac; only transcribed text reaches the gateway.") {
+        SettingsPane(SettingsPage.copilotCall) {
             if !copilot.available { notInstalled }
             liveCard
             permissionsCard
             autoStartCard
             personaCard
             notchCard
-            shortcutsCard
             if let result = copilot.lastResult {
                 SettingCard("Last result") {
                     Text(result)
@@ -169,6 +169,26 @@ struct CopilotCallPane: View {
         SettingCard("Start on its own",
                     detail: "A copilot you have to remember to start is one that is off during the question worth answering.") {
             VStack(spacing: 12) {
+                SettingRow("Warm up before a scheduled meeting",
+                           detail: "Two minutes before an event with a call link, the copilot loads its model and opens its connections so the first suggestion is not ten seconds late. Nothing is recorded: the notch shows Join, Start and Not now, and both microphones stay off until you press one.") {
+                    Toggle("", isOn: $preroll).labelsHidden().toggleStyle(.switch)
+                }
+                if preroll {
+                    SettingRow("How early",
+                               detail: "A cold start takes about ten seconds. The rest is slack for a meeting that begins on time.") {
+                        Picker("", selection: $prerollLead) {
+                            Text("1 min").tag(60.0)
+                            Text("2 min").tag(120.0)
+                            Text("5 min").tag(300.0)
+                        }
+                        .labelsHidden()
+                        .frame(width: 120)
+                    }
+                    if let armed = MeetingPreroll.shared.armed {
+                        SettingFact(title: "Armed for", value: armed.title, tint: NotchTint.active)
+                    }
+                }
+                Divider()
                 SettingRow("Start when a meeting starts",
                            detail: "Begins when your microphone goes live and something corroborates it — a conferencing app running, or the speakers live at the same time, which is what a two-way conversation looks like. Ends when the mic goes quiet. Ending a call by hand keeps it off until then.") {
                     Toggle("", isOn: $autoStart).labelsHidden().toggleStyle(.switch)
@@ -223,23 +243,10 @@ struct CopilotCallPane: View {
         }
     }
 
-    private var shortcutsCard: some View {
-        SettingCard("Shortcuts",
-                    detail: "The live panel is read mid-sentence, so it is driven from the keyboard rather than the pointer.") {
-            VStack(spacing: 10) {
-                SettingRow("Start or end a call") {
-                    KeyboardShortcuts.Recorder(for: .copilotToggleCall)
-                }
-                SettingRow("Full panel or pointer only") {
-                    KeyboardShortcuts.Recorder(for: .copilotToggleLayout)
-                }
-                SettingRow("Close the notch",
-                           detail: "The call keeps running; the next pointer brings the panel back.") {
-                    KeyboardShortcuts.Recorder(for: .copilotDismiss)
-                }
-            }
-        }
-    }
+    // The three copilot recorders moved to Settings › Shortcuts, which is now
+    // the only place any of them live. Three panes used to own recorders, so
+    // "what is bound to ⌥⌘C" could not be answered from one screen and nothing
+    // stopped two features claiming the same chord.
 
     private func openPrivacySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else { return }

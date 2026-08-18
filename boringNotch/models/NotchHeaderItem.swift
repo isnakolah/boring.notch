@@ -96,18 +96,29 @@ enum NotchHeaderItem: String, CaseIterable, Identifiable, Codable, Defaults.Seri
         }
     }
 
-    /// Where the reader turns that feature on, named so the layout pane can say
-    /// so rather than silently dropping the item.
-    var featurePane: String? {
+    /// Where the reader turns that feature on.
+    ///
+    /// This was six hand-written strings — `"Tutor › Behavior"`, `"Call copilot"`
+    /// — which is a breadcrumb typed out by hand, and it had already drifted
+    /// from what the sidebar actually said. As a route it cannot drift, and the
+    /// "Off in …" badge becomes something you can press.
+    var featureRoute: SettingsRoute? {
         switch self {
-        case .pomodoro: return "Pomodoro"
-        case .usage: return "Usage"
-        case .shelf: return "Shelf"
-        case .tutor: return "Tutor › Behavior"
-        case .copilot: return "Call copilot"
-        case .mirror: return "Appearance"
+        case .pomodoro: return .init(.pomodoro)
+        case .usage: return .init(.system, [.usage])
+        case .shelf: return .init(.shelf)
+        case .tutor: return .init(.tutor, [.tutorBehavior])
+        case .copilot: return .init(.copilot, [.copilotCall])
+        case .mirror: return .init(.appearance, [.camera])
         default: return nil
         }
+    }
+
+    /// The route's own name, so nothing has to spell it out.
+    var featurePaneName: String? {
+        guard let route = featureRoute else { return nil }
+        guard let leaf = route.leaf else { return String(localized: route.section.title) }
+        return "\(String(localized: route.section.title)) › \(String(localized: leaf.title))"
     }
 
     var isEnabled: Bool {

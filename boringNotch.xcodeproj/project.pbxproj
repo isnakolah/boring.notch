@@ -74,6 +74,7 @@
 		11EFCD702E8E92D600D0B974 /* ShelfItemViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11EFCD6F2E8E92D600D0B974 /* ShelfItemViewModel.swift */; };
 		11F747CE2EC75CEA00F841DB /* DragPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F747CD2EC75CEA00F841DB /* DragPreviewView.swift */; };
 		11F7485B2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 11F7484F2EC9AABA00F841DB /* BoringNotchXPCHelper.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CA11ST030000000000000003 /* IntelligenceStore in Frameworks */ = {isa = PBXBuildFile; productRef = CA11ST020000000000000002 /* IntelligenceStore */; };
 		CA11E0020000000000000002 /* BoringCallaEngine.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = CA11E0010000000000000001 /* BoringCallaEngine.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BA7000020000000000000002 /* SweepService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = BA7000010000000000000001 /* SweepService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		11F748682EC9AC9600F841DB /* BoringNotchXPCHelperProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748652EC9AC9600F841DB /* BoringNotchXPCHelperProtocol.swift */; };
@@ -94,12 +95,74 @@
 		CA110001000000000000A001 /* CallaNotchPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000A002 /* CallaNotchPresentation.swift */; };
 		CA1100010000000000D00501 /* TutorPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00502 /* TutorPane.swift */; };
 		CA1100010000000000D00711 /* NotchLayoutPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00712 /* NotchLayoutPane.swift */; };
-		CA1100010000000000D00401 /* SettingsNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00402 /* SettingsNavigation.swift */; };
 		CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00302 /* NotchPreviewWell.swift */; };
 		CA1100010000000000D00201 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00202 /* SettingsComponents.swift */; };
+		F5DDFF5DBFCA16E29D1F88FF /* SweepFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */; };
+		9422CBA228687C84FCE11044 /* PermissionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */; };
+		7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */; };
+		802CAA563141E472C48CA624 /* SweepConfirmationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */; };
+		02280020F6CA36C63E4592B8 /* PrivacyPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */; };
+		786152D40D7BC0C3115C4020 /* CopilotPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1638998EA958CC94FBDBDD0F /* CopilotPane.swift */; };
+		84E4FCAFD2F34DA4D8DC61DB /* SystemPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */; };
+		C6F6C7B2154DA87D0F271D9E /* KDEConnectPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */; };
+		5EAA5448CC79AD0E906C11F6 /* LocalSendPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8B367B52AA016A8722B37E /* LocalSendPane.swift */; };
+		3F0C145BB1EADE9E288D8F38 /* CalendarSourcesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF20CEF4A3D6066DF4F8D311 /* CalendarSourcesPane.swift */; };
+		72D624BD85518AD7358143EF /* CameraPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB76792F9FD6BACE8EA30C9B /* CameraPane.swift */; };
+		C7228039471C87C8D20B037B /* AccentPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C0F64BE00142F107450433A /* AccentPane.swift */; };
+		4E4D968D005AF05A1912BFC0 /* GesturesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23BE0558742615E7F143661 /* GesturesPane.swift */; };
+		A5F912B1510FEB37FE87B530 /* DisplaysPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F550AFFB8F55DEA8DCB2C9 /* DisplaysPane.swift */; };
+		FBA7EE904B4D554A62892A57 /* SettingsBreadcrumb.swift in Sources */ = {isa = PBXBuildFile; fileRef = 384C3C1DDD9F87848780B08F /* SettingsBreadcrumb.swift */; };
+		E64258BC2F6894F754560956 /* SettingsRoutePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884E34436B0C6F33816184B4 /* SettingsRoutePreview.swift */; };
+		BE3B69B4729CE32A2CB0F57E /* SettingsDestinations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F043A855A0B84AB5876D00C /* SettingsDestinations.swift */; };
+		D71A3F7378463C3051EF5592 /* SettingsSearchIndex.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B799386A470FB8B9FC230B4 /* SettingsSearchIndex.swift */; };
+		321927CDA0DC48183C279885 /* SettingsSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC4F86F509F60A5A2B81619D /* SettingsSidebar.swift */; };
+		95C700C265725F5E36D06E22 /* KnowledgeRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B27E9B7CEE4EF59ACA26CE /* KnowledgeRoute.swift */; };
+		657DF9660D8C273E287BC14A /* SettingsRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B65EBAC9D1AE76AF9789EA9 /* SettingsRouter.swift */; };
+		AF19C00180269201BF910937 /* SettingsRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCEBA4203A25E2142B893449 /* SettingsRoute.swift */; };
+		DD62084CF648FCD4498D91BF /* SettingsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78886468E931404DC5A1D78F /* SettingsPage.swift */; };
+		B484438BB89BD60A61D1077F /* SettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */; };
+		49FF3187F29A719E0AC8ECC4 /* SystemPermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6996C6B3FE39FC624128B92 /* SystemPermission.swift */; };
+		3E16E4AD44E2A80F2FFA3ECD /* SettingsNavigationComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */; };
+		BB0F88C4123D19A0AED59FED /* NotchWash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15964D68EEC7E01160998CD5 /* NotchWash.swift */; };
+		1D904620B824FA448A5C5461 /* NotchMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5351BBF186C1389760606F4 /* NotchMotion.swift */; };
+		942BBB98FA129270158285F3 /* NotchSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */; };
+		B2E2B13C2921E8B3DC718216 /* PromptEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */; };
+		2835061ED696BEA05B3B67F9 /* TutorEnginePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */; };
+		3200C7EB1006CDEC1AA3EFAF /* TutorAccessPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */; };
+		AB8B46C3E2FF2400A2152E5D /* TutorBehaviorPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */; };
+		41695E8965DEF83AE3604EA3 /* TutorCreatePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200575654710E83D0F8AD759 /* TutorCreatePane.swift */; };
+		F0D6260DD8E304886E993DBC /* TutorCoursesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */; };
+		89423149FF42C3CC41EE8377 /* Color+Lighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B22C66AA5CE3C1BAAAFA244E /* Color+Lighter.swift */; };
+		2582E2193F16E9EB0B0FA05B /* AccentCircleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46714B3FFED7510C654122AE /* AccentCircleButton.swift */; };
+		39304423B20E078ABB7A0769 /* SweepPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CAF7087DC2A02E548C86E11 /* SweepPane.swift */; };
+		418AB7C7575219D19CEEB921 /* AppearancePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26DF0CF732E09AF6D0DB1279 /* AppearancePane.swift */; };
+		05FB5A1461715898040771BF /* ShelfPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B69BDE2086F42C610233314 /* ShelfPane.swift */; };
+		B964E5A76B6C10FCED9E5242 /* ShortcutsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4412D914C230215A20D0F20E /* ShortcutsPane.swift */; };
+		6A6B4A89F8337584B5C120B5 /* AboutPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 464C759946DD5B9E4AAEF2A9 /* AboutPane.swift */; };
+		31D4F6A79E3EABA49B4A590E /* CalendarPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B816D619992FD42E9A8E1F93 /* CalendarPane.swift */; };
+		F225492F6D7882259A6EE277 /* MediaPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = D38EC931F5C846E9C2EB53F5 /* MediaPane.swift */; };
+		F85BD8D9AACCC291D0BB9DA3 /* HUDPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = AADAD7E7C581C161D77266FC /* HUDPane.swift */; };
+		EE4454309D2A1C326B6CC17D /* BatteryPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01475ED566ADB6375C9951F9 /* BatteryPane.swift */; };
+		A784B6082EBBE64BA5D28B33 /* AdvancedPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EBB31AB1AC135C1F075D0F9 /* AdvancedPane.swift */; };
+		B408393023BEC1C95DE3E948 /* GeneralPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8F3C5105FA3BB3A2B5A40B6 /* GeneralPane.swift */; };
+		20576116CE7AA9D29D601B50 /* BoringSweepCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B27A25CA0558564E6738F8 /* BoringSweepCoordinator.swift */; };
+		4A0EEABEDDCEEFD81C960383 /* BoringSweepDTO.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3284AD5AC53B5DA4A4D9B4C5 /* BoringSweepDTO.swift */; };
+		90706B2010130E2AFD272494 /* BoringSweepProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F63D49D9D4DCC08D0D6FF90 /* BoringSweepProtocol.swift */; };
 		CA1100010000000000D00101 /* NotchDesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00102 /* NotchDesignSystem.swift */; };
 		CA110001000000000000B101 /* CallaCopilotTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B102 /* CallaCopilotTabView.swift */; };
 		CA1100010000000000E00101 /* CopilotCallPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00102 /* CopilotCallPane.swift */; };
+		CA11KB010000000000000001 /* CopilotKnowledgePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KB010000000000000002 /* CopilotKnowledgePane.swift */; };
+		CA11KB020000000000000001 /* CallaKnowledge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KB020000000000000002 /* CallaKnowledge.swift */; };
+		CA11KB030000000000000001 /* CallaKnowledgeFocus.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KB030000000000000002 /* CallaKnowledgeFocus.swift */; };
+		CA11KB040000000000000001 /* MeetingPreroll.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KB040000000000000002 /* MeetingPreroll.swift */; };
+		CA11KB050000000000000001 /* CopilotNotchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KB050000000000000002 /* CopilotNotchBadge.swift */; };
+		CA11KD010000000000000001 /* KnowledgeDocumentReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KD010000000000000002 /* KnowledgeDocumentReader.swift */; };
+		CA11KD020000000000000001 /* CallaKnowledgeAttach.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KD020000000000000002 /* CallaKnowledgeAttach.swift */; };
+		CA11KD030000000000000001 /* CallaKnowledgeDropView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KD030000000000000002 /* CallaKnowledgeDropView.swift */; };
+		CA11ND010000000000000001 /* NotchDropRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11ND010000000000000002 /* NotchDropRouter.swift */; };
+		CA11ND020000000000000001 /* NotchDropChooserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11ND020000000000000002 /* NotchDropChooserView.swift */; };
+		CA11KL010000000000000001 /* CallaKnowledgeLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */; };
+		CA11KL020000000000000001 /* CopilotKnowledgeDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */; };
 		CA1100010000000000E00201 /* CopilotPromptsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00202 /* CopilotPromptsPane.swift */; };
 		CA1100010000000000900001 /* CopilotIntelligencePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000900002 /* CopilotIntelligencePane.swift */; };
 		CA1100010000000000E00301 /* CopilotTranscriptionPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */; };
@@ -107,13 +170,14 @@
 		CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00502 /* CopilotLiveSession.swift */; };
 		CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00602 /* CallaCopilotLiveView.swift */; };
 		CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000800002 /* CallaCopilotSignInView.swift */; };
+		CA1100010000000000700001 /* CopilotNotchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000700002 /* CopilotNotchBadge.swift */; };
 		CA1100010000000000E00701 /* MeetingDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00702 /* MeetingDetector.swift */; };
 		CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B002 /* CallaCopilotPresentation.swift */; };
 		CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000000008 /* CallaCalendarBindings.swift */; };
 		11F748732EC9DA9300F841DB /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 11F748722EC9DA9300F841DB /* Lottie */; };
 		11F748822ECB07A400F841DB /* MusicControlButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748812ECB07A400F841DB /* MusicControlButton.swift */; };
 		CA1100010000000000D00701 /* NotchHeaderItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00702 /* NotchHeaderItem.swift */; };
-		11F748842ECB27DC00F841DB /* MusicSlotConfigurationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */; };
+		11F748842ECB27DC00F841DB /* MediaSlotsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F748832ECB27DC00F841DB /* MediaSlotsPane.swift */; };
 		14288DDC2C6E015000B9F80C /* AudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14288DD62C6E015000B9F80C /* AudioPlayer.swift */; };
 		14288DE82C6E01C800B9F80C /* ProgressIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14288DE72C6E01C800B9F80C /* ProgressIndicator.swift */; };
 		14288E0C2C6F8EC000B9F80C /* AppIcons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14288E0B2C6F8EC000B9F80C /* AppIcons.swift */; };
@@ -313,12 +377,74 @@
 		CA110001000000000000A002 /* CallaNotchPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaNotchPresentation.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00502 /* TutorPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/TutorPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00712 /* NotchLayoutPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/NotchLayoutPane.swift"; sourceTree = "<group>"; };
-		CA1100010000000000D00402 /* SettingsNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/SettingsNavigation.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00302 /* NotchPreviewWell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchPreviewWell.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00202 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsComponents.swift"; sourceTree = "<group>"; };
+		7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepFormatting.swift"; sourceTree = "<group>"; };
+		E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/PermissionMonitor.swift"; sourceTree = "<group>"; };
+		8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepLifetime.swift"; sourceTree = "<group>"; };
+		E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepConfirmationSheet.swift"; sourceTree = "<group>"; };
+		B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Privacy/PrivacyPane.swift"; sourceTree = "<group>"; };
+		1638998EA958CC94FBDBDD0F /* CopilotPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotPane.swift"; sourceTree = "<group>"; };
+		2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/System/SystemPane.swift"; sourceTree = "<group>"; };
+		B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Shelf/KDEConnectPane.swift"; sourceTree = "<group>"; };
+		3D8B367B52AA016A8722B37E /* LocalSendPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Shelf/LocalSendPane.swift"; sourceTree = "<group>"; };
+		FF20CEF4A3D6066DF4F8D311 /* CalendarSourcesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Calendar/CalendarSourcesPane.swift"; sourceTree = "<group>"; };
+		AB76792F9FD6BACE8EA30C9B /* CameraPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Appearance/CameraPane.swift"; sourceTree = "<group>"; };
+		1C0F64BE00142F107450433A /* AccentPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Appearance/AccentPane.swift"; sourceTree = "<group>"; };
+		B23BE0558742615E7F143661 /* GesturesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/General/GesturesPane.swift"; sourceTree = "<group>"; };
+		17F550AFFB8F55DEA8DCB2C9 /* DisplaysPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/General/DisplaysPane.swift"; sourceTree = "<group>"; };
+		384C3C1DDD9F87848780B08F /* SettingsBreadcrumb.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsBreadcrumb.swift"; sourceTree = "<group>"; };
+		884E34436B0C6F33816184B4 /* SettingsRoutePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsRoutePreview.swift"; sourceTree = "<group>"; };
+		1F043A855A0B84AB5876D00C /* SettingsDestinations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsDestinations.swift"; sourceTree = "<group>"; };
+		4B799386A470FB8B9FC230B4 /* SettingsSearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsSearchIndex.swift"; sourceTree = "<group>"; };
+		EC4F86F509F60A5A2B81619D /* SettingsSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsSidebar.swift"; sourceTree = "<group>"; };
+		01B27E9B7CEE4EF59ACA26CE /* KnowledgeRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/KnowledgeRoute.swift"; sourceTree = "<group>"; };
+		3B65EBAC9D1AE76AF9789EA9 /* SettingsRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsRouter.swift"; sourceTree = "<group>"; };
+		FCEBA4203A25E2142B893449 /* SettingsRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsRoute.swift"; sourceTree = "<group>"; };
+		78886468E931404DC5A1D78F /* SettingsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsPage.swift"; sourceTree = "<group>"; };
+		CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsSection.swift"; sourceTree = "<group>"; };
+		A6996C6B3FE39FC624128B92 /* SystemPermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "models/SystemPermission.swift"; sourceTree = "<group>"; };
+		640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsNavigationComponents.swift"; sourceTree = "<group>"; };
+		15964D68EEC7E01160998CD5 /* NotchWash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchWash.swift"; sourceTree = "<group>"; };
+		F5351BBF186C1389760606F4 /* NotchMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchMotion.swift"; sourceTree = "<group>"; };
+		64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchSpacing.swift"; sourceTree = "<group>"; };
+		4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/PromptEditor.swift"; sourceTree = "<group>"; };
+		589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorEnginePane.swift"; sourceTree = "<group>"; };
+		18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorAccessPane.swift"; sourceTree = "<group>"; };
+		62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorBehaviorPane.swift"; sourceTree = "<group>"; };
+		200575654710E83D0F8AD759 /* TutorCreatePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorCreatePane.swift"; sourceTree = "<group>"; };
+		56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorCoursesPane.swift"; sourceTree = "<group>"; };
+		B22C66AA5CE3C1BAAAFA244E /* Color+Lighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "extensions/Color+Lighter.swift"; sourceTree = "<group>"; };
+		46714B3FFED7510C654122AE /* AccentCircleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/AccentCircleButton.swift"; sourceTree = "<group>"; };
+		4CAF7087DC2A02E548C86E11 /* SweepPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepPane.swift"; sourceTree = "<group>"; };
+		26DF0CF732E09AF6D0DB1279 /* AppearancePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Appearance/AppearancePane.swift"; sourceTree = "<group>"; };
+		5B69BDE2086F42C610233314 /* ShelfPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Shelf/ShelfPane.swift"; sourceTree = "<group>"; };
+		4412D914C230215A20D0F20E /* ShortcutsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/App/ShortcutsPane.swift"; sourceTree = "<group>"; };
+		464C759946DD5B9E4AAEF2A9 /* AboutPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/App/AboutPane.swift"; sourceTree = "<group>"; };
+		B816D619992FD42E9A8E1F93 /* CalendarPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Calendar/CalendarPane.swift"; sourceTree = "<group>"; };
+		D38EC931F5C846E9C2EB53F5 /* MediaPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Media/MediaPane.swift"; sourceTree = "<group>"; };
+		AADAD7E7C581C161D77266FC /* HUDPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/System/HUDPane.swift"; sourceTree = "<group>"; };
+		01475ED566ADB6375C9951F9 /* BatteryPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/System/BatteryPane.swift"; sourceTree = "<group>"; };
+		7EBB31AB1AC135C1F075D0F9 /* AdvancedPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/General/AdvancedPane.swift"; sourceTree = "<group>"; };
+		B8F3C5105FA3BB3A2B5A40B6 /* GeneralPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/General/GeneralPane.swift"; sourceTree = "<group>"; };
+		F6B27A25CA0558564E6738F8 /* BoringSweepCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XPCHelperClient/Sweep/BoringSweepCoordinator.swift"; sourceTree = "<group>"; };
+		3284AD5AC53B5DA4A4D9B4C5 /* BoringSweepDTO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XPCHelperClient/Sweep/BoringSweepDTO.swift"; sourceTree = "<group>"; };
+		3F63D49D9D4DCC08D0D6FF90 /* BoringSweepProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "XPCHelperClient/Sweep/BoringSweepProtocol.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00102 /* NotchDesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchDesignSystem.swift"; sourceTree = "<group>"; };
 		CA110001000000000000B102 /* CallaCopilotTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotTabView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00102 /* CopilotCallPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotCallPane.swift"; sourceTree = "<group>"; };
+		CA11KB010000000000000002 /* CopilotKnowledgePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotKnowledgePane.swift"; sourceTree = "<group>"; };
+		CA11KB020000000000000002 /* CallaKnowledge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledge.swift"; sourceTree = "<group>"; };
+		CA11KB030000000000000002 /* CallaKnowledgeFocus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledgeFocus.swift"; sourceTree = "<group>"; };
+		CA11KB040000000000000002 /* MeetingPreroll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/MeetingPreroll.swift"; sourceTree = "<group>"; };
+		CA11KB050000000000000002 /* CopilotNotchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotNotchBadge.swift"; sourceTree = "<group>"; };
+		CA11KD010000000000000002 /* KnowledgeDocumentReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/KnowledgeDocumentReader.swift"; sourceTree = "<group>"; };
+		CA11KD020000000000000002 /* CallaKnowledgeAttach.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledgeAttach.swift"; sourceTree = "<group>"; };
+		CA11KD030000000000000002 /* CallaKnowledgeDropView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledgeDropView.swift"; sourceTree = "<group>"; };
+		CA11ND010000000000000002 /* NotchDropRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/NotchDropRouter.swift"; sourceTree = "<group>"; };
+		CA11ND020000000000000002 /* NotchDropChooserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/NotchDropChooserView.swift"; sourceTree = "<group>"; };
+		CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledgeLibrary.swift"; sourceTree = "<group>"; };
+		CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotKnowledgeDetailPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00202 /* CopilotPromptsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotPromptsPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000900002 /* CopilotIntelligencePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotIntelligencePane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotTranscriptionPane.swift"; sourceTree = "<group>"; };
@@ -326,12 +452,13 @@
 		CA1100010000000000E00502 /* CopilotLiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotLiveSession.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00602 /* CallaCopilotLiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotLiveView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000800002 /* CallaCopilotSignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotSignInView.swift"; sourceTree = "<group>"; };
+		CA1100010000000000700002 /* CopilotNotchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotNotchBadge.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00702 /* MeetingDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/MeetingDetector.swift"; sourceTree = "<group>"; };
 		CA110001000000000000B002 /* CallaCopilotPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotPresentation.swift"; sourceTree = "<group>"; };
 		CA1100010000000000000008 /* CallaCalendarBindings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCalendarBindings.swift"; sourceTree = "<group>"; };
 		11F748812ECB07A400F841DB /* MusicControlButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicControlButton.swift; sourceTree = "<group>"; };
 		CA1100010000000000D00702 /* NotchHeaderItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotchHeaderItem.swift"; sourceTree = "<group>"; };
-		11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSlotConfigurationView.swift; sourceTree = "<group>"; };
+		11F748832ECB27DC00F841DB /* MediaSlotsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Panes/Media/MediaSlotsPane.swift"; sourceTree = "<group>"; };
 		14288DD62C6E015000B9F80C /* AudioPlayer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AudioPlayer.swift; sourceTree = "<group>"; };
 		14288DE72C6E01C800B9F80C /* ProgressIndicator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ProgressIndicator.swift; sourceTree = "<group>"; };
 		14288E0B2C6F8EC000B9F80C /* AppIcons.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIcons.swift; sourceTree = "<group>"; };
@@ -427,7 +554,9 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		CA11E0090000000000000009 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		CA11E0090000000000000009 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (
+				CA11ST030000000000000003 /* IntelligenceStore in Frameworks */,
+			); runOnlyForDeploymentPostprocessing = 0; };
 		BA7000070000000000000007 /* Frameworks */ = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 		11F7484C2EC9AABA00F841DB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -727,12 +856,74 @@
 				CA110001000000000000A002 /* CallaNotchPresentation.swift */,
 				CA1100010000000000D00502 /* TutorPane.swift */,
 				CA1100010000000000D00712 /* NotchLayoutPane.swift */,
-				CA1100010000000000D00402 /* SettingsNavigation.swift */,
 				CA1100010000000000D00302 /* NotchPreviewWell.swift */,
 				CA1100010000000000D00202 /* SettingsComponents.swift */,
+				7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */,
+				E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */,
+				8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */,
+				E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */,
+				B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */,
+				1638998EA958CC94FBDBDD0F /* CopilotPane.swift */,
+				2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */,
+				B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */,
+				3D8B367B52AA016A8722B37E /* LocalSendPane.swift */,
+				FF20CEF4A3D6066DF4F8D311 /* CalendarSourcesPane.swift */,
+				AB76792F9FD6BACE8EA30C9B /* CameraPane.swift */,
+				1C0F64BE00142F107450433A /* AccentPane.swift */,
+				B23BE0558742615E7F143661 /* GesturesPane.swift */,
+				17F550AFFB8F55DEA8DCB2C9 /* DisplaysPane.swift */,
+				384C3C1DDD9F87848780B08F /* SettingsBreadcrumb.swift */,
+				884E34436B0C6F33816184B4 /* SettingsRoutePreview.swift */,
+				1F043A855A0B84AB5876D00C /* SettingsDestinations.swift */,
+				4B799386A470FB8B9FC230B4 /* SettingsSearchIndex.swift */,
+				EC4F86F509F60A5A2B81619D /* SettingsSidebar.swift */,
+				01B27E9B7CEE4EF59ACA26CE /* KnowledgeRoute.swift */,
+				3B65EBAC9D1AE76AF9789EA9 /* SettingsRouter.swift */,
+				FCEBA4203A25E2142B893449 /* SettingsRoute.swift */,
+				78886468E931404DC5A1D78F /* SettingsPage.swift */,
+				CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */,
+				A6996C6B3FE39FC624128B92 /* SystemPermission.swift */,
+				640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */,
+				15964D68EEC7E01160998CD5 /* NotchWash.swift */,
+				F5351BBF186C1389760606F4 /* NotchMotion.swift */,
+				64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */,
+				4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */,
+				589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */,
+				18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */,
+				62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */,
+				200575654710E83D0F8AD759 /* TutorCreatePane.swift */,
+				56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */,
+				B22C66AA5CE3C1BAAAFA244E /* Color+Lighter.swift */,
+				46714B3FFED7510C654122AE /* AccentCircleButton.swift */,
+				4CAF7087DC2A02E548C86E11 /* SweepPane.swift */,
+				26DF0CF732E09AF6D0DB1279 /* AppearancePane.swift */,
+				5B69BDE2086F42C610233314 /* ShelfPane.swift */,
+				4412D914C230215A20D0F20E /* ShortcutsPane.swift */,
+				464C759946DD5B9E4AAEF2A9 /* AboutPane.swift */,
+				B816D619992FD42E9A8E1F93 /* CalendarPane.swift */,
+				D38EC931F5C846E9C2EB53F5 /* MediaPane.swift */,
+				AADAD7E7C581C161D77266FC /* HUDPane.swift */,
+				01475ED566ADB6375C9951F9 /* BatteryPane.swift */,
+				7EBB31AB1AC135C1F075D0F9 /* AdvancedPane.swift */,
+				B8F3C5105FA3BB3A2B5A40B6 /* GeneralPane.swift */,
+				F6B27A25CA0558564E6738F8 /* BoringSweepCoordinator.swift */,
+				3284AD5AC53B5DA4A4D9B4C5 /* BoringSweepDTO.swift */,
+				3F63D49D9D4DCC08D0D6FF90 /* BoringSweepProtocol.swift */,
 				CA1100010000000000D00102 /* NotchDesignSystem.swift */,
 				CA110001000000000000B102 /* CallaCopilotTabView.swift */,
 				CA1100010000000000E00102 /* CopilotCallPane.swift */,
+				CA11KB010000000000000002 /* CopilotKnowledgePane.swift */,
+				CA11KB020000000000000002 /* CallaKnowledge.swift */,
+				CA11KB030000000000000002 /* CallaKnowledgeFocus.swift */,
+				CA11KB040000000000000002 /* MeetingPreroll.swift */,
+				CA11KB050000000000000002 /* CopilotNotchBadge.swift */,
+				CA11KD010000000000000002 /* KnowledgeDocumentReader.swift */,
+				CA11KD020000000000000002 /* CallaKnowledgeAttach.swift */,
+				CA11KD030000000000000002 /* CallaKnowledgeDropView.swift */,
+				CA11ND010000000000000002 /* NotchDropRouter.swift */,
+				CA11ND020000000000000002 /* NotchDropChooserView.swift */,
+				CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */,
+				CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */,
 				CA1100010000000000E00202 /* CopilotPromptsPane.swift */,
 				CA1100010000000000900002 /* CopilotIntelligencePane.swift */,
 				CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */,
@@ -740,6 +931,7 @@
 				CA1100010000000000E00502 /* CopilotLiveSession.swift */,
 				CA1100010000000000E00602 /* CallaCopilotLiveView.swift */,
 				CA1100010000000000800002 /* CallaCopilotSignInView.swift */,
+				CA1100010000000000700002 /* CopilotNotchBadge.swift */,
 				CA1100010000000000E00702 /* MeetingDetector.swift */,
 				CA110001000000000000B002 /* CallaCopilotPresentation.swift */,
 				CA1100010000000000000008 /* CallaCalendarBindings.swift */,
@@ -877,7 +1069,7 @@
 		B18654302C6F4590000B926A /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				11F748832ECB27DC00F841DB /* MusicSlotConfigurationView.swift */,
+				11F748832ECB27DC00F841DB /* MediaSlotsPane.swift */,
 				11C5E3152DFE88510065821E /* SettingsView.swift */,
 				DDDD00010000000000000051 /* UsageMonitorSettings.swift */,
 				DDDD000100000000000000D1 /* PomodoroSettings.swift */,
@@ -958,7 +1150,9 @@
 			dependencies = ();
 			fileSystemSynchronizedGroups = (CA11E0060000000000000006 /* BoringCallaEngine */);
 			name = BoringCallaEngine;
-			packageProductDependencies = ();
+			packageProductDependencies = (
+				CA11ST020000000000000002 /* IntelligenceStore */,
+			);
 			productName = BoringCallaEngine;
 			productReference = CA11E0010000000000000001 /* BoringCallaEngine.xpc */;
 			productType = "com.apple.product-type.xpc-service";
@@ -1051,6 +1245,7 @@
 			);
 			mainGroup = 14CEF4092C5CAED200855D72;
 			packageReferences = (
+				CA11ST010000000000000001 /* XCLocalSwiftPackageReference "Intelligence" */,
 				A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */,
 				14D032182C68F32E0096E6A1 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
 				14D0321B2C68F3350096E6A1 /* XCRemoteSwiftPackageReference "Sparkle" */,
@@ -1268,7 +1463,7 @@
 				DDDD000100000000000000D2 /* PomodoroSettings.swift in Sources */,
 				118EBE2D2E97165600D54B5A /* Bookmark.swift in Sources */,
 				B1FEB4992C7686630066EBBC /* PanGesture.swift in Sources */,
-				11F748842ECB27DC00F841DB /* MusicSlotConfigurationView.swift in Sources */,
+				11F748842ECB27DC00F841DB /* MediaSlotsPane.swift in Sources */,
 				9A0887352C7AFF8E00C160EA /* TabSelectionView.swift in Sources */,
 				112FB7352CCF16F70015238C /* NotchSpaceManager.swift in Sources */,
 				14FC6E502C7DED5600C7BEA5 /* DataTypes+Extensions.swift in Sources */,
@@ -1291,12 +1486,74 @@
 				CA110001000000000000A001 /* CallaNotchPresentation.swift in Sources */,
 				CA1100010000000000D00501 /* TutorPane.swift in Sources */,
 				CA1100010000000000D00711 /* NotchLayoutPane.swift in Sources */,
-				CA1100010000000000D00401 /* SettingsNavigation.swift in Sources */,
 				CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */,
 				CA1100010000000000D00201 /* SettingsComponents.swift in Sources */,
+				F5DDFF5DBFCA16E29D1F88FF /* SweepFormatting.swift in Sources */,
+				9422CBA228687C84FCE11044 /* PermissionMonitor.swift in Sources */,
+				7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */,
+				802CAA563141E472C48CA624 /* SweepConfirmationSheet.swift in Sources */,
+				02280020F6CA36C63E4592B8 /* PrivacyPane.swift in Sources */,
+				786152D40D7BC0C3115C4020 /* CopilotPane.swift in Sources */,
+				84E4FCAFD2F34DA4D8DC61DB /* SystemPane.swift in Sources */,
+				C6F6C7B2154DA87D0F271D9E /* KDEConnectPane.swift in Sources */,
+				5EAA5448CC79AD0E906C11F6 /* LocalSendPane.swift in Sources */,
+				3F0C145BB1EADE9E288D8F38 /* CalendarSourcesPane.swift in Sources */,
+				72D624BD85518AD7358143EF /* CameraPane.swift in Sources */,
+				C7228039471C87C8D20B037B /* AccentPane.swift in Sources */,
+				4E4D968D005AF05A1912BFC0 /* GesturesPane.swift in Sources */,
+				A5F912B1510FEB37FE87B530 /* DisplaysPane.swift in Sources */,
+				FBA7EE904B4D554A62892A57 /* SettingsBreadcrumb.swift in Sources */,
+				E64258BC2F6894F754560956 /* SettingsRoutePreview.swift in Sources */,
+				BE3B69B4729CE32A2CB0F57E /* SettingsDestinations.swift in Sources */,
+				D71A3F7378463C3051EF5592 /* SettingsSearchIndex.swift in Sources */,
+				321927CDA0DC48183C279885 /* SettingsSidebar.swift in Sources */,
+				95C700C265725F5E36D06E22 /* KnowledgeRoute.swift in Sources */,
+				657DF9660D8C273E287BC14A /* SettingsRouter.swift in Sources */,
+				AF19C00180269201BF910937 /* SettingsRoute.swift in Sources */,
+				DD62084CF648FCD4498D91BF /* SettingsPage.swift in Sources */,
+				B484438BB89BD60A61D1077F /* SettingsSection.swift in Sources */,
+				49FF3187F29A719E0AC8ECC4 /* SystemPermission.swift in Sources */,
+				3E16E4AD44E2A80F2FFA3ECD /* SettingsNavigationComponents.swift in Sources */,
+				BB0F88C4123D19A0AED59FED /* NotchWash.swift in Sources */,
+				1D904620B824FA448A5C5461 /* NotchMotion.swift in Sources */,
+				942BBB98FA129270158285F3 /* NotchSpacing.swift in Sources */,
+				B2E2B13C2921E8B3DC718216 /* PromptEditor.swift in Sources */,
+				2835061ED696BEA05B3B67F9 /* TutorEnginePane.swift in Sources */,
+				3200C7EB1006CDEC1AA3EFAF /* TutorAccessPane.swift in Sources */,
+				AB8B46C3E2FF2400A2152E5D /* TutorBehaviorPane.swift in Sources */,
+				41695E8965DEF83AE3604EA3 /* TutorCreatePane.swift in Sources */,
+				F0D6260DD8E304886E993DBC /* TutorCoursesPane.swift in Sources */,
+				89423149FF42C3CC41EE8377 /* Color+Lighter.swift in Sources */,
+				2582E2193F16E9EB0B0FA05B /* AccentCircleButton.swift in Sources */,
+				39304423B20E078ABB7A0769 /* SweepPane.swift in Sources */,
+				418AB7C7575219D19CEEB921 /* AppearancePane.swift in Sources */,
+				05FB5A1461715898040771BF /* ShelfPane.swift in Sources */,
+				B964E5A76B6C10FCED9E5242 /* ShortcutsPane.swift in Sources */,
+				6A6B4A89F8337584B5C120B5 /* AboutPane.swift in Sources */,
+				31D4F6A79E3EABA49B4A590E /* CalendarPane.swift in Sources */,
+				F225492F6D7882259A6EE277 /* MediaPane.swift in Sources */,
+				F85BD8D9AACCC291D0BB9DA3 /* HUDPane.swift in Sources */,
+				EE4454309D2A1C326B6CC17D /* BatteryPane.swift in Sources */,
+				A784B6082EBBE64BA5D28B33 /* AdvancedPane.swift in Sources */,
+				B408393023BEC1C95DE3E948 /* GeneralPane.swift in Sources */,
+				20576116CE7AA9D29D601B50 /* BoringSweepCoordinator.swift in Sources */,
+				4A0EEABEDDCEEFD81C960383 /* BoringSweepDTO.swift in Sources */,
+				90706B2010130E2AFD272494 /* BoringSweepProtocol.swift in Sources */,
 				CA1100010000000000D00101 /* NotchDesignSystem.swift in Sources */,
 				CA110001000000000000B101 /* CallaCopilotTabView.swift in Sources */,
 				CA1100010000000000E00101 /* CopilotCallPane.swift in Sources */,
+				CA11KB010000000000000001 /* CopilotKnowledgePane.swift in Sources */,
+				CA11KB020000000000000001 /* CallaKnowledge.swift in Sources */,
+				CA11KB030000000000000001 /* CallaKnowledgeFocus.swift in Sources */,
+				CA11KB040000000000000001 /* MeetingPreroll.swift in Sources */,
+				CA11KB050000000000000001 /* CopilotNotchBadge.swift in Sources */,
+				CA11KD010000000000000001 /* KnowledgeDocumentReader.swift in Sources */,
+				CA11KD020000000000000001 /* CallaKnowledgeAttach.swift in Sources */,
+				CA11KD030000000000000001 /* CallaKnowledgeDropView.swift in Sources */,
+				CA11ND010000000000000001 /* NotchDropRouter.swift in Sources */,
+				CA11ND020000000000000001 /* NotchDropChooserView.swift in Sources */,
+				CA11KL010000000000000001 /* CallaKnowledgeLibrary.swift in Sources */,
+				CA11KL020000000000000001 /* CopilotKnowledgeDetailPane.swift in Sources */,
 				CA1100010000000000E00201 /* CopilotPromptsPane.swift in Sources */,
 				CA1100010000000000900001 /* CopilotIntelligencePane.swift in Sources */,
 				CA1100010000000000E00301 /* CopilotTranscriptionPane.swift in Sources */,
@@ -1304,6 +1561,7 @@
 				CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */,
 				CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */,
 				CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */,
+				CA1100010000000000700001 /* CopilotNotchBadge.swift in Sources */,
 				CA1100010000000000E00701 /* MeetingDetector.swift in Sources */,
 				CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */,
 				CA1100010000000000000007 /* CallaCalendarBindings.swift in Sources */,
@@ -1740,6 +1998,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		CA11ST010000000000000001 /* XCLocalSwiftPackageReference "Intelligence" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Intelligence;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -1848,6 +2113,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		CA11ST020000000000000002 /* IntelligenceStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CA11ST010000000000000001 /* XCLocalSwiftPackageReference "Intelligence" */;
+			productName = IntelligenceStore;
+		};
 		A1B2C3D4E5F6000000000007 /* OpenSSL */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = A1B2C3D4E5F6000000000006 /* XCRemoteSwiftPackageReference "OpenSSL" */;

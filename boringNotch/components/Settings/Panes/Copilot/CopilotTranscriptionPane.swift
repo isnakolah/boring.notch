@@ -16,8 +16,7 @@ struct CopilotTranscriptionPane: View {
     private var copilot: CallaCopilotStatus { engine.status.copilot }
 
     var body: some View {
-        SettingsPane(eyebrow: "Call copilot", title: "Transcription",
-                     detail: "Speech becomes text on this Mac. Only the text ever reaches the gateway.") {
+        SettingsPane(SettingsPage.copilotTranscription) {
             liveModelCard
             downloadCard
             archiveCard

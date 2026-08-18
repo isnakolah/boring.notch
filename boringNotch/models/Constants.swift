@@ -174,6 +174,14 @@ extension Defaults.Keys {
     static let localSendIdentity = Key<String>("localSendIdentity", default: "")
     static let shelfShareTransport = Key<String>("shelfShareTransport", default: ShelfShareTransport.localSend.rawValue)
     static let kdeConnectBindings = Key<String>("kdeConnectBindings", default: "[]")
+    // A send provider that is off opens no listener, publishes no Bonjour
+    // service and touches no Keychain identity, so macOS never asks for the
+    // local network permission on its behalf. KDE Connect starts off for that
+    // reason; anyone who had already paired a device keeps it (see
+    // `KDEConnectService.migrateEnabledFlagIfNeeded`).
+    static let localSendEnabled = Key<Bool>("localSendEnabled", default: true)
+    static let kdeConnectEnabled = Key<Bool>("kdeConnectEnabled", default: false)
+    static let didMigrateKDEConnectEnabled = Key<Bool>("didMigrateKDEConnectEnabled", default: false)
     static let copyOnDrag = Key<Bool>("copyOnDrag", default: false)
     static let autoRemoveShelfItems = Key<Bool>("autoRemoveShelfItems", default: false)
     static let shelfRemoveAfterSend = Key<Bool>("shelfRemoveAfterSend", default: false)
@@ -211,6 +219,21 @@ extension Defaults.Keys {
     /// Start the copilot on its own when a meeting starts, and stop it when the
     /// meeting does.
     static let callaCopilotAutoStartOnMeeting = Key<Bool>("callaCopilotAutoStartOnMeeting", default: true)
+    /// Warm the copilot up before a meeting on the calendar starts.
+    ///
+    /// Separate from the microphone detector above, and it does something the
+    /// detector cannot: the first suggestion of a call costs ~10s of cold `agy`
+    /// boot plus the whisper model load, which lands in the opening minutes —
+    /// exactly where the questions worth answering are. Warming ahead moves that
+    /// cost to a moment when nobody is talking.
+    static let callaCopilotPrerollEnabled = Key<Bool>("callaCopilotPrerollEnabled", default: true)
+    /// How long before a meeting starts to warm up, in seconds.
+    ///
+    /// Two minutes covers a cold boot with room to spare. Nothing is recorded
+    /// during it — the capture legs do not start until the user presses Join.
+    static let callaCopilotPrerollLead = Key<Double>("callaCopilotPrerollLead", default: 120)
+    /// Events the user has told the pre-roll to leave alone, by event id.
+    static let callaCopilotPrerollExcluded = Key<[String]>("callaCopilotPrerollExcluded", default: [])
     /// How much of the desktop shows through the live panel. 0 is the opaque
     /// slab every other tab uses.
     /// Default deliberately low. At 0.45 the desktop behind the notch showed
@@ -227,12 +250,13 @@ extension Defaults.Keys {
     /// Replacement for the gateway's base guidance block. Empty means "use the
     /// gateway's own", which is what almost everyone should do.
     static let callaCopilotBaseGuidance = Key<String>("callaCopilotBaseGuidance", default: "")
-    /// What the live panel carries. Two independent switches rather than one
-    /// three-way control, because the useful states are not on a line: answers
-    /// alone mid-sentence, summary alone when you are being asked to catch up, and
-    /// both when there is room.
-    static let callaCopilotShowAnswers = Key<Bool>("callaCopilotShowAnswers", default: true)
-    static let callaCopilotShowRollingSummary = Key<Bool>("callaCopilotShowRollingSummary", default: true)
+    /// Which surface the live panel shows: `summary` or `answers`.
+    ///
+    /// One choice rather than two switches, because both jobs now run the whole time
+    /// — questions get answered and the account keeps building regardless — so this
+    /// only decides what is on screen. Summary is the resting state; an arriving
+    /// answer takes the panel briefly whichever is selected.
+    static let callaCopilotPanelSurface = Key<String>("callaCopilotPanelSurface", default: "summary")
 
     // MARK: Calla Intelligence
     /// Which brain answers: "local" (the Antigravity CLI on this Mac) or
@@ -315,4 +339,9 @@ extension Defaults.Keys {
     }
 
     static let didClearLegacyURLCacheV1 = Key<Bool>("didClearLegacyURLCache_v1", default: false)
+
+    /// Sweep's helper-process lifetime. The string key and the raw values are
+    /// unchanged from when this was read straight out of `UserDefaults`, so an
+    /// existing choice survives the move.
+    static let sweepServiceLifetime = Key<SweepProcessLifetime>("sweep.serviceLifetime", default: .tab)
 }

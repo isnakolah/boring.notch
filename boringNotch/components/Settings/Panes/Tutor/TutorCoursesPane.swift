@@ -1,0 +1,152 @@
+//
+//  TutorCoursesPane.swift
+//  boringNotch
+//
+//  Split out of TutorPane.swift, which held a router and four sibling panes in
+//  one 564-line file.
+//
+
+import Defaults
+import SwiftUI
+
+struct TutorCoursesPane: View {
+    @ObservedObject private var engine = CallaEngineClient.shared
+    @Default(.callaHiddenCourseIDs) private var hiddenCourseIDs
+    @State private var selectedCourseID = ""
+
+    private var courses: [CallaCourseSnapshot] { engine.status.courses }
+    private var selectedCourse: CallaCourseSnapshot? {
+        courses.first { $0.id == selectedCourseID } ?? courses.first
+    }
+
+    var body: some View {
+        SettingsPane(SettingsPage.tutorCourses) {
+            if courses.isEmpty {
+                SettingCard {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No courses yet").font(NotchType.cardTitle)
+                        Text("Build one in Create, or start the engine if it is stopped.")
+                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                courseList
+                if let course = selectedCourse { courseDetail(course) }
+            }
+        }
+        .onChange(of: courses.map(\.id)) { _, ids in
+            if !ids.contains(selectedCourseID) { selectedCourseID = ids.first ?? "" }
+        }
+        .onChange(of: hiddenCourseIDs) { _, _ in engine.applyCurrentPreferences() }
+    }
+
+    private var courseList: some View {
+        SettingCard("Library", detail: "Hidden courses stay installed; they just leave the notch.") {
+            VStack(spacing: 8) {
+                ForEach(courses) { course in
+                    courseRow(course)
+                }
+            }
+        }
+    }
+
+    private func courseRow(_ course: CallaCourseSnapshot) -> some View {
+        let isHidden = hiddenCourseIDs.contains(course.id)
+        return HStack(spacing: 10) {
+            Image(systemName: course.icon.isEmpty ? "books.vertical.fill" : course.icon)
+                .font(.system(size: 13))
+                .foregroundStyle(isHidden ? Color.secondary : NotchTint.active)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(course.title).font(NotchType.rowTitle)
+                    if course.dueForReview { SettingBadge("Review due", tint: NotchTint.attention) }
+                }
+                SettingProgressBar(done: course.completedCount, total: course.lessonCount,
+                                   active: course.id == selectedCourseID)
+                    .frame(maxWidth: 220)
+            }
+            Spacer(minLength: 8)
+            // Course visibility lives here because docs/calla-migration.md says
+            // Tutor Settings owns it. It had no control anywhere until now: the
+            // preference was bound, observed, and pushed over XPC by a pane that
+            // never drew it.
+            Toggle("", isOn: Binding(
+                get: { !isHidden },
+                set: { visible in
+                    if visible { hiddenCourseIDs.removeAll { $0 == course.id } }
+                    else if !hiddenCourseIDs.contains(course.id) { hiddenCourseIDs.append(course.id) }
+                }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .help(isHidden ? "Show in the notch" : "Hide from the notch")
+        }
+        .padding(8)
+        .background(course.id == selectedCourseID ? NotchTint.active.opacity(0.10) : .clear,
+                    in: RoundedRectangle(cornerRadius: NotchRadius.control, style: .continuous))
+        .contentShape(Rectangle())
+        .onTapGesture { selectedCourseID = course.id }
+    }
+
+    private func courseDetail(_ course: CallaCourseSnapshot) -> some View {
+        VStack(spacing: 16) {
+            SettingCard(course.title, detail: course.summary.isEmpty ? nil : course.summary,
+                        tint: course.lifecyclePhase == "failed" ? NotchTint.stuck : nil) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingFact(title: "Teaches", value: course.targetApp ?? "No target app")
+                    if let checkpoint = course.checkpointLessonID {
+                        SettingFact(title: "Checkpoint", value: checkpoint)
+                    }
+                    if course.runtimeBlocked {
+                        Label("The running app is not the version this course targets.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .font(NotchType.rowDetail)
+                            .foregroundStyle(NotchTint.attention)
+                    }
+                    HStack {
+                        Button("Resume") { engine.resumeCourse() }.buttonStyle(.borderedProminent)
+                        Button("Start again") { engine.startAgain(courseID: course.id) }
+                        if course.lifecyclePhase == "published" {
+                            Button("Archive") { engine.courseControl(.init(action: "archive", courseID: course.id)) }
+                        }
+                        if course.lifecyclePhase == "archived" {
+                            Button("Restore") { engine.courseControl(.init(action: "restore", courseID: course.id)) }
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+            SettingCard("Lessons") {
+                VStack(spacing: 6) {
+                    ForEach(course.lessons) { lesson in
+                        HStack(spacing: 10) {
+                            Image(systemName: lesson.completed ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(lesson.dueForReview ? NotchTint.attention
+                                                 : lesson.completed ? NotchTint.healthy : .secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(lesson.title).font(NotchType.rowTitle)
+                                // Two separate Text values rather than one
+                                // interpolated string: a hand-built
+                                // "1 step"/"n steps" cannot be translated,
+                                // and `inflect:` needs the count in the key.
+                                HStack(spacing: 4) {
+                                    Text("^[\(lesson.stepCount) step](inflect: true)")
+                                    if lesson.dueForReview { Text("· review due") }
+                                }
+                                .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            Button(lesson.completed ? "Again" : "Start") {
+                                engine.startLesson(courseID: course.id, lessonID: lesson.id)
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
