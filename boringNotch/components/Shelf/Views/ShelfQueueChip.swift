@@ -34,9 +34,18 @@ struct ShelfQueueChip: View {
 
     private static let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
 
+    /// The width this chip actually got, for the passthrough rects above.
+    @State private var measuredWidth: CGFloat = ShelfQueueChip.size.width
+
     var body: some View {
         rowContent
             .frame(maxWidth: .infinity)
+            .background {
+                GeometryReader { geo in
+                    Color.clear
+                        .task(id: geo.size.width) { measuredWidth = geo.size.width }
+                }
+            }
             .frame(height: Self.size.height)
             .background { background }
             .overlay(alignment: .bottom) { progressBar }
@@ -87,7 +96,7 @@ struct ShelfQueueChip: View {
             item: item,
             viewModel: viewModel,
             dragPreviewImage: viewModel.thumbnail,
-            passthroughRects: isHovering ? Self.actionHitRects : [],
+            passthroughRects: isHovering ? actionHitRects(width: measuredWidth) : [],
             onRightClick: { event, view in viewModel.handleRightClick(event: event, view: view) },
             onClick: { event, view in viewModel.handleClick(event: event, view: view) }
         )
@@ -95,10 +104,16 @@ struct ShelfQueueChip: View {
 
     /// Kept in sync with the layout below so the AppKit drag overlay lets these
     /// two clicks through.
-    private static let actionHitRects: [CGRect] = [
-        CGRect(x: 4, y: 1, width: 22, height: 20),                  // Quick Look, over the thumbnail
-        CGRect(x: size.width - 24, y: 1, width: 22, height: 20)     // remove
-    ]
+    ///
+    /// Measured rather than assumed: the chip fills whatever column it is given
+    /// now, so pinning the trailing rect to a fixed width left it pointing at
+    /// empty space and the overlay ate every click on the x.
+    private func actionHitRects(width: CGFloat) -> [CGRect] {
+        [
+            CGRect(x: 4, y: 1, width: 22, height: 20),              // Quick Look, over the thumbnail
+            CGRect(x: max(26, width - 24), y: 1, width: 22, height: 20)  // remove
+        ]
+    }
 
     // MARK: - Pieces
 

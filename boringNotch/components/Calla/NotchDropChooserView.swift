@@ -27,16 +27,16 @@ struct NotchDropChooserView: View {
             HStack(spacing: 10) {
                 half(
                     side: .shelf,
-                    symbol: "tray.and.arrow.down.fill",
-                    title: "Keep and send",
-                    detail: "Lands in the Shelf and goes to your phone",
+                    symbol: "paperplane.fill",
+                    title: "Send",
+                    detail: "Keeps it on the Shelf and sends it to your phone",
                     tint: .white)
                 half(
                     side: .meeting,
-                    symbol: "paperclip",
-                    title: "Add to a meeting",
-                    detail: "The copilot can read it during the call",
-                    tint: Color.accentColor)
+                    symbol: "brain",
+                    title: "Remember",
+                    detail: "Attaches it to a meeting for the copilot to read",
+                    tint: Color.effectiveAccent)
             }
         }
         .padding(.horizontal, 16)

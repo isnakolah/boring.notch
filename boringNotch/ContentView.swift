@@ -526,9 +526,19 @@ struct ContentView: View {
             delegate: GeneralDropTargetDelegate(isTargeted: $vm.generalDropTargeting) { providers in
                 // Root drop target covers closed notch. It must accept instead
                 // of cancelling, otherwise it shadows the background detector.
-                coordinator.currentView = .shelf
                 vm.dropEvent = true
                 doOpen()
+                // This path used to go straight to Shelf *and* start the
+                // transfer, so a file dropped anywhere but the two dedicated
+                // targets was sent to a phone without being asked. It is the
+                // same question as everywhere else, so it gets the same answer.
+                if NotchDropRouter.shared.isSplitAvailable {
+                    NotchDropRouter.shared.beginChoosing()
+                    NotchDropRouter.shared.hold(providers)
+                    coordinator.currentView = .dropChooser
+                    return
+                }
+                coordinator.currentView = .shelf
                 ShelfStateViewModel.shared.load(providers)
                 Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
             }
@@ -789,14 +799,20 @@ struct ContentView: View {
             NotchFileDropTarget(
                 enabled: Defaults[.boringShelf],
                 onEntered: {
-                    guard vm.notchState == .closed else { return }
                     // With the copilot on, a drop is ambiguous — Shelf-and-send or
                     // give it to a meeting — so the notch opens onto the choice
                     // rather than committing to one behind the user's back.
+                    //
+                    // Asked on an open notch as well as a closed one. The guard
+                    // used to be `notchState == .closed`, which meant dragging
+                    // onto a notch that happened to be open skipped the question
+                    // entirely and sent the file.
+                    guard !NotchDropRouter.shared.isChoosing else { return }
+                    if coordinator.currentView == .shelf { return }
                     if NotchDropRouter.shared.isSplitAvailable {
                         NotchDropRouter.shared.beginChoosing()
                         coordinator.currentView = .dropChooser
-                    } else {
+                    } else if vm.notchState == .closed {
                         coordinator.currentView = .shelf
                     }
                     doOpen()
