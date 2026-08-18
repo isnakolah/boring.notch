@@ -25,6 +25,8 @@ struct NotchDropChooserView: View {
     var onSpringLoad: (NotchDropSide) -> Void
 
     @State private var springTask: Task<Void, Never>?
+    /// Width of the two halves together, for the midpoint split.
+    @State private var halvesWidth: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -43,6 +45,20 @@ struct NotchDropChooserView: View {
                     detail: "Attaches it to a meeting for the copilot to read",
                     tint: Color.effectiveAccent)
             }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { halvesWidth = proxy.size.width }
+                        .onChange(of: proxy.size.width) { _, width in halvesWidth = width }
+                })
+            // One target across both halves rather than one each. Two adjacent
+            // targets race on the crossing — both can read as entered — and the
+            // gap between them was a dead zone where a release fell through to
+            // the notch's outer target and only re-asked the question.
+            .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: SplitDelegate(
+                width: { halvesWidth },
+                onHover: { router.hover($0) },
+                onDrop: { side, providers in deliver(side, providers: providers) }))
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
@@ -54,10 +70,14 @@ struct NotchDropChooserView: View {
         // to aim a file at a particular meeting mid-drag.
         .onChange(of: router.hovering) { _, side in
             springTask?.cancel()
-            guard let side else { return }
+            // Only a held *drag* springs a half open. With the files already in
+            // hand the halves are buttons, and resting the pointer on one is
+            // not the same as choosing it.
+            guard let side, router.pending.isEmpty else { return }
             springTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(420))
                 guard !Task.isCancelled, router.hovering == side else { return }
+                NotchDropRouter.log.info("springLoad \(String(describing: side), privacy: .public)")
                 onSpringLoad(side)
             }
         }
@@ -124,15 +144,30 @@ struct NotchDropChooserView: View {
         .scaleEffect(active ? 1.02 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: active)
         .contentShape(Rectangle())
+        // Pointer hover, not drag hover. Once the files have already landed the
+        // chooser is a pair of buttons waiting for a click, and no drag session
+        // is left to light a half up — so the only feedback for "this one" was
+        // the click itself, after the choice had already been made.
+        .onHover { inside in
+            guard !router.pending.isEmpty else { return }
+            // Only clear what this half lit. Leaving one half is reported after
+            // entering the next, so clearing unconditionally would blank the
+            // highlight the neighbour just set.
+            if inside { router.hover(side) } else if router.hovering == side { router.hover(nil) }
+        }
         .onTapGesture { deliver(side, providers: router.deliverableProviders) }
-        .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: HalfDelegate(
-            side: side,
-            onHover: { router.hover($0) },
-            onDrop: { providers in deliver(side, providers: providers) }))
     }
 
     private func deliver(_ side: NotchDropSide, providers: [NSItemProvider]) {
-        guard !providers.isEmpty else { return }
+        NotchDropRouter.log.info("deliver \(String(describing: side), privacy: .public) with \(providers.count) provider(s)")
+        guard !providers.isEmpty else {
+            NotchDropRouter.log.error("deliver aborted: no providers")
+            return
+        }
+        // Claimed before `finish()` clears `isChoosing`, so the guards on
+        // `close()` and the close debounce stay armed across the Remember
+        // path's awaits. The destination releases it.
+        router.beginDelivering()
         router.finish()
         switch side {
         case .shelf: onShelf(providers)
@@ -140,18 +175,24 @@ struct NotchDropChooserView: View {
         }
     }
 
-    /// A delegate rather than `isTargeted:` so entering and leaving can be told
-    /// apart per half — with two adjacent targets, `isTargeted` bindings race and
-    /// both can read as true while the pointer crosses between them.
-    private struct HalfDelegate: DropDelegate {
-        let side: NotchDropSide
+    /// One target over both halves, splitting on the midpoint.
+    ///
+    /// A delegate rather than `isTargeted:` because the side has to come from
+    /// where the pointer is, which only `DropInfo.location` knows.
+    private struct SplitDelegate: DropDelegate {
+        let width: () -> CGFloat
         let onHover: (NotchDropSide?) -> Void
-        let onDrop: ([NSItemProvider]) -> Void
+        let onDrop: (NotchDropSide, [NSItemProvider]) -> Void
 
-        func dropEntered(info: DropInfo) { onHover(side) }
+        @MainActor
+        private func side(at info: DropInfo) -> NotchDropSide {
+            NotchDropRouter.shared.side(forX: info.location.x, width: width())
+        }
+
+        func dropEntered(info: DropInfo) { onHover(side(at: info)) }
         func dropExited(info: DropInfo) { onHover(nil) }
         func dropUpdated(info: DropInfo) -> DropProposal? {
-            onHover(side)
+            onHover(side(at: info))
             return DropProposal(operation: .copy)
         }
 
@@ -159,7 +200,7 @@ struct NotchDropChooserView: View {
             let providers = info.itemProviders(
                 for: [.fileURL, .url, .utf8PlainText, .plainText, .data])
             guard !providers.isEmpty else { return false }
-            onDrop(providers)
+            onDrop(side(at: info), providers)
             return true
         }
     }

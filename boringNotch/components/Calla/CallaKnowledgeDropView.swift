@@ -18,6 +18,7 @@ import UniformTypeIdentifiers
 struct CallaKnowledgeDropView: View {
     @ObservedObject private var attach = CallaKnowledgeAttach.shared
     @EnvironmentObject var coordinator: BoringViewCoordinator
+    @EnvironmentObject var vm: BoringViewModel
 
     @State private var isTargeted = false
     @State private var paneTargeted = false
@@ -86,6 +87,13 @@ struct CallaKnowledgeDropView: View {
             Button("Done") {
                 attach.cancelPending()
                 coordinator.currentView = .home
+                // Done means "finished filing", not "go away". Without the
+                // resize the notch keeps this pane's frame while showing a
+                // shorter one, the pointer ends up outside it, and the hover
+                // watcher closes the notch a tenth of a second later.
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                    vm.open()
+                }
             }
             .buttonStyle(.plain)
             .font(.system(size: 10, weight: .medium))
@@ -242,65 +250,54 @@ struct CallaKnowledgeDropView: View {
 
     // MARK: - Mode B — meeting known, add files
 
-    /// Left: drop. Right: pick from disk, and what is already there.
+    /// Left: bring a file in. Right: what is already there.
+    ///
+    /// Dragging and choosing are the same intention — "this file" — so they are
+    /// the same control rather than a target beside a button: the tile takes a
+    /// drop and opens the picker on a click. That also gives the panel back the
+    /// height it was spending on a second way to say the same thing, which is
+    /// what pushed the list and the typing row off the bottom of a normal tab.
     private func attachColumns(_ target: KnowledgeTarget) -> some View {
         HStack(alignment: .top, spacing: 10) {
             column(header: "DRAG IN") {
                 dropZone(target)
+                Spacer(minLength: 0)
             }
-            .frame(width: 210)
+            .frame(width: 200)
 
-            column(header: attach.attached.isEmpty ? "OR CHOOSE" : "ALREADY ADDED") {
-                VStack(spacing: 5) {
-                    Button { attach.attachChosenFiles(to: target) } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10, weight: .semibold))
-                            Text("Choose a file…")
-                                .font(.system(size: 10.5, weight: .semibold))
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(Color.white.opacity(0.10)))
-                        .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(attach.isWorking)
-
-                    if attach.attached.isEmpty {
-                        hint("Nothing attached to this meeting yet.")
-                        Spacer(minLength: 0)
-                    } else {
-                        attachedList
-                    }
+            column(header: attach.attached.isEmpty ? "ALREADY ADDED" : "ALREADY ADDED") {
+                if attach.attached.isEmpty {
+                    hint("Nothing attached to this meeting yet.")
+                    Spacer(minLength: 0)
+                } else {
+                    attachedList
                 }
             }
         }
     }
 
     private func dropZone(_ target: KnowledgeTarget) -> some View {
-        VStack(spacing: 5) {
+        HStack(spacing: 8) {
             Image(systemName: attach.isWorking ? "hourglass" : "doc.badge.plus")
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(isTargeted ? Color.accentColor : Color.white.opacity(0.5))
-            Text(attach.isWorking ? "Reading…" : "Drop a PDF, deck or document")
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-            Text(attach.isWorking
-                 ? "Scanned pages take a moment longer."
-                 : "Searched during the call, when a question needs it.")
-                .font(.system(size: 9))
-                .foregroundStyle(Color.white.opacity(0.45))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(attach.isWorking ? "Reading…" : "Drop a file, or click to choose")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(attach.isWorking
+                     ? "Scanned pages take a moment longer."
+                     : "PDF, deck or document.")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Color.white.opacity(0.45))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 9, style: .continuous)
                 .fill(isTargeted ? Color.accentColor.opacity(0.14) : Color.white.opacity(0.05)))
@@ -309,6 +306,8 @@ struct CallaKnowledgeDropView: View {
                 .strokeBorder(
                     isTargeted ? Color.accentColor : Color.white.opacity(0.16),
                     style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        .contentShape(Rectangle())
+        .onTapGesture { attach.attachChosenFiles(to: target) }
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             Task {
                 guard await attach.accept(providers) else {

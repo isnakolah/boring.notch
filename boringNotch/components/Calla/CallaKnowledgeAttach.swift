@@ -318,25 +318,11 @@ final class CallaKnowledgeAttach: ObservableObject {
 
     /// Pulls file URLs out of a drop.
     ///
-    /// `loadItem` rather than the newer `loadTransferable`: the Shelf's own drop
-    /// path uses the same call and this has to behave identically for a drop the
-    /// two of them share.
+    /// The router's resolver, not a second copy: it is the one that learned a
+    /// Finder drag can arrive registered as `public.url` rather than
+    /// `public.file-url`, and a drop must read the same here as it does there.
     private static func fileURLs(from providers: [NSItemProvider]) async -> [URL] {
-        var urls: [URL] = []
-        for provider in providers {
-            guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { continue }
-            let url: URL? = await withCheckedContinuation { continuation in
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier) { item, _ in
-                    if let data = item as? Data {
-                        continuation.resume(returning: URL(dataRepresentation: data, relativeTo: nil))
-                    } else {
-                        continuation.resume(returning: item as? URL)
-                    }
-                }
-            }
-            if let url, url.isFileURL { urls.append(url) }
-        }
-        return urls
+        await NotchDropRouter.resolveFileURLs(providers)
     }
 }
 
