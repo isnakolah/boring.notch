@@ -37,6 +37,8 @@ extension SettingsRoute {
             // A detail page is only reachable through the page it details.
             if case let .copilotKnowledgeDetail(route) = page {
                 self.init(.copilot, [.copilotKnowledge, .copilotKnowledgeDetail(route)])
+            } else if case let .copilotCallDetail(id) = page {
+                self.init(.copilot, [.copilotHistory, .copilotCallDetail(id: id)])
             } else {
                 self.init(page.section, [page])
             }

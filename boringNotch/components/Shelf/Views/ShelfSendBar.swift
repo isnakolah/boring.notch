@@ -59,7 +59,7 @@ struct ShelfSendBar: View {
     // MARK: - State
 
     private var isEnabled: Bool {
-        !shelfShare.isSending && (itemCount == 0 || shelfShare.selectedDestinationReady)
+        !shelfShare.isSending && (itemCount == 0 || (shelfShare.isAvailable && shelfShare.selectedDestinationReady))
     }
 
     private var symbolName: String {
@@ -75,6 +75,7 @@ struct ShelfSendBar: View {
             return "Sending \(shelfShare.completedFileCount) of \(shelfShare.totalFileCount) · \(percent)%"
         }
         if itemCount == 0 { return "Add files to queue" }
+        guard shelfShare.isAvailable else { return "Turn on a send provider in Shelf settings" }
         guard shelfShare.selectedDestinationReady else { return "Pair \(destination) in Shelf settings" }
         return itemCount == 1 ? "Send 1 item to \(destination)" : "Send \(itemCount) items to \(destination)"
     }

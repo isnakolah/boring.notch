@@ -48,8 +48,11 @@ struct SettingsPane<Content: View>: View {
         var trail: [SettingsBreadcrumb.Crumb] = [
             .init(title: String(localized: section.title), depth: 0)
         ]
-        if case let .copilotKnowledgeDetail(_) = page {
+        if case .copilotKnowledgeDetail = page {
             trail.append(.init(title: String(localized: SettingsPage.copilotKnowledge.title), depth: 1))
+            trail.append(.init(title: titleOverride ?? String(localized: page.title), depth: 2))
+        } else if case .copilotCallDetail = page {
+            trail.append(.init(title: String(localized: SettingsPage.copilotHistory.title), depth: 1))
             trail.append(.init(title: titleOverride ?? String(localized: page.title), depth: 2))
         } else {
             trail.append(.init(title: titleOverride ?? String(localized: page.title), depth: 1))

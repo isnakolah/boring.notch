@@ -23,6 +23,12 @@ import Defaults
     func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void)
     func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
     func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void)
+    /// Create, edit, delete or list knowledge notes. Replies with the resulting
+    /// list every time, because this app is sandboxed and cannot read the store
+    /// to check what happened.
+    func knowledgeControl(_ command: Data, with reply: @escaping (Data) -> Void)
+    /// Calls recorded against a calendar event, or its whole recurring series.
+    func copilotCallsForEvent(_ query: Data, with reply: @escaping (Data) -> Void)
 }
 
 struct CallaEnginePreferences: Codable, Equatable {
@@ -104,6 +110,29 @@ struct CallaCopilotStatus: Codable, Equatable {
     /// Raised and unresolved, likeliest to come back to you first.
     var openQuestions: [String] = []
     var suggestionAfterSeq: Int? = nil
+    /// Who is speaking right now: `me`, `them`, or nobody.
+    var speaking: String? = nil
+    /// A request is in flight.
+    var thinking = false
+    /// Which job is in flight: `answer` or `summary`.
+    var working: String? = nil
+    /// The newest pointer answers a question, rather than remarking on a statement.
+    var answering = false
+    /// Warm and ready, but deliberately not recording — the pre-roll before a
+    /// scheduled meeting. `micActive` and `systemAudioActive` are both false while
+    /// this is true, which is exactly the claim the pre-roll card makes.
+    var prewarming = false
+    /// The meeting this call was armed for.
+    var meetingTitle: String? = nil
+    var meetingStartsAt: Date? = nil
+
+    /// A call that is actually capturing.
+    ///
+    /// `running` means only that a host process exists, which is also true
+    /// throughout the pre-roll — so anything that draws "you are in a call" must
+    /// ask this instead, or the notch will claim to be listening while both
+    /// microphones are stopped.
+    var isRecording: Bool { running && !prewarming }
     /// Which brain answered this call: "local" or "gateway". Shown in the notch,
     /// because a failover the user cannot see looks exactly like a broken copilot.
     var activeProvider: String? = nil
@@ -249,12 +278,15 @@ struct CallaCopilotCommand: Codable {
     let summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     let fallback: Bool?
-    /// Answer only when asked.
-    let answersOnly: Bool?
+    /// The calendar event this call is for.
+    ///
+    /// Only the identity and the event's own fields travel. The knowledge itself
+    /// is composed by the engine, which is the only process that can open the
+    /// store — this one is sandboxed and the file is not in its container.
+    let meeting: CallaMeeting?
 
     enum CodingKeys: String, CodingKey {
-        case action, persona, model, profile, provider, tier, fallback
-        case answersOnly = "answers_only"
+        case action, persona, model, profile, provider, tier, fallback, meeting
         case summaryModel = "summary_model"
         case callID = "call_id"
     }
@@ -268,7 +300,7 @@ struct CallaCopilotCommand: Codable {
          tier: String? = nil,
          summaryModel: String? = nil,
          fallback: Bool? = nil,
-         answersOnly: Bool? = nil) {
+         meeting: CallaMeeting? = nil) {
         self.action = action
         self.persona = persona
         self.model = model
@@ -278,7 +310,41 @@ struct CallaCopilotCommand: Codable {
         self.tier = tier
         self.summaryModel = summaryModel
         self.fallback = fallback
-        self.answersOnly = answersOnly
+        self.meeting = meeting
+    }
+}
+
+/// A calendar event, on its way to the copilot.
+struct CallaMeeting: Codable, Equatable {
+    var eventID: String?
+    var seriesID: String?
+    var title: String?
+    var startsAt: Double?
+    var endsAt: Double?
+    var location: String?
+    var attendees: [String]
+    var notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case title, location, attendees, notes
+        case eventID = "event_id"
+        case seriesID = "series_id"
+        case startsAt = "starts_at"
+        case endsAt = "ends_at"
+    }
+
+    /// Everything about an event that is worth telling a copilot, and nothing
+    /// that is not. Attendee names rather than addresses where the calendar has
+    /// them: a first name is what gets said out loud on the call.
+    init(_ event: EventModel) {
+        eventID = event.id
+        seriesID = event.seriesID
+        title = event.title
+        startsAt = event.start.timeIntervalSince1970
+        endsAt = event.end.timeIntervalSince1970
+        location = event.location
+        attendees = event.participants.map(\.name).filter { !$0.isEmpty }
+        notes = event.notes
     }
 }
 
@@ -465,7 +531,12 @@ final class CallaEngineClient: ObservableObject {
                 // At the idle cadence the UI looks dead and a step can come and go
                 // between polls, so it is worth the extra chatter while it lasts.
                 let signingIn = self.status.copilot.isSigningIn
-                let interval: Double = signingIn ? 0.5 : (teaching ? 2 : 4)
+                // A live call is the one case where this poll *is* the latency. The
+                // host answers a question in ~2s and writes it to a file; at the idle
+                // cadence it then sat there for up to 4s more, which is longer than
+                // the answer took and long enough for the moment to pass.
+                let onACall = self.status.copilot.running
+                let interval: Double = signingIn ? 0.5 : (onACall ? 0.6 : (teaching ? 2 : 4))
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
@@ -612,7 +683,7 @@ final class CallaEngineClient: ObservableObject {
 
     // MARK: - Live call copilot
 
-    func startCall(persona: String, model: String) {
+    func startCall(persona: String, model: String, meeting: CallaMeeting? = nil) {
         // Starting a call on the local brain without credentials used to mean a
         // browser popping open mid-meeting with nowhere to put the code. Sign in
         // first, and let the notch show the field.
@@ -623,15 +694,47 @@ final class CallaEngineClient: ObservableObject {
             loginAgy()
             return
         }
-        send(CallaCopilotCommand(
-            action: "start",
+        send(callCommand("start", persona: persona, model: model, meeting: meeting))
+    }
+
+    /// Boots everything a call needs — the model, both `agy` lanes, the knowledge —
+    /// without starting either capture leg.
+    ///
+    /// The two-minute pre-roll. Nothing is recorded until `releaseCall()`, which is
+    /// the whole reason this is a separate action rather than a flag on `start`:
+    /// "warm" and "recording" are different states and the notch says which one it
+    /// is in.
+    func prewarmCall(persona: String, model: String, meeting: CallaMeeting) {
+        // Deliberately no sign-in diversion here. A pre-roll is unattended — it
+        // fires two minutes before a meeting, possibly while the Mac is locked —
+        // and opening a browser for an OAuth code at that moment is exactly the
+        // thing the sign-in path was built to avoid.
+        guard Defaults[.callaIntelligenceProvider] != "local"
+            || !status.copilot.agyAvailable
+            || status.copilot.agyLoggedIn
+        else { return }
+        send(callCommand("prewarm", persona: persona, model: model, meeting: meeting))
+    }
+
+    /// Promotes a warmed-up copilot to a recording one. This is the moment capture
+    /// starts, and it only ever happens because the user pressed something.
+    func releaseCall() {
+        send(CallaCopilotCommand(action: "release"))
+    }
+
+    private func callCommand(
+        _ action: String, persona: String, model: String, meeting: CallaMeeting?
+    ) -> CallaCopilotCommand {
+        CallaCopilotCommand(
+            action: action,
             persona: persona,
             model: model,
             profile: CallaCopilotProfile.current,
             provider: Defaults[.callaIntelligenceProvider],
             tier: Defaults[.callaIntelligenceLiveTier],
             summaryModel: Defaults[.callaIntelligenceSummaryModel],
-            fallback: Defaults[.callaIntelligenceFallback]))
+            fallback: Defaults[.callaIntelligenceFallback],
+            meeting: meeting)
     }
 
     /// Changes which brain answers. Takes effect on the next call: the capture
@@ -682,6 +785,82 @@ final class CallaEngineClient: ObservableObject {
             Task { @MainActor in completion(turns) }
         }
     }
+
+    // MARK: - Knowledge
+
+    /// Everything the copilot has been told, or the subset that applies to one
+    /// meeting.
+    ///
+    /// Every one of these round-trips to the engine. The store lives in the
+    /// unsandboxed runtime directory and this app cannot open it, which is also
+    /// why each mutation replies with the resulting list rather than a status —
+    /// there is no second way to find out what the store now holds.
+    func fetchKnowledge(
+        eventID: String? = nil,
+        seriesID: String? = nil,
+        completion: @escaping ([CallaKnowledgeNote]) -> Void
+    ) {
+        knowledge(CallaKnowledgeCommand(action: "list", eventID: eventID, seriesID: seriesID),
+                  completion: completion)
+    }
+
+    func saveKnowledge(_ note: CallaKnowledgeNote, completion: @escaping ([CallaKnowledgeNote]) -> Void) {
+        knowledge(CallaKnowledgeCommand(
+            action: "upsert", id: note.id, title: note.title, body: note.body,
+            scope: note.scope, scopeKey: note.scopeKey,
+            source: note.source,
+            originName: note.originName, originKind: note.originKind,
+            byteSize: note.byteSize, pageCount: note.pageCount), completion: completion)
+    }
+
+    func deleteKnowledge(id: String, completion: @escaping ([CallaKnowledgeNote]) -> Void) {
+        knowledge(CallaKnowledgeCommand(action: "delete", id: id), completion: completion)
+    }
+
+    private func knowledge(
+        _ command: CallaKnowledgeCommand,
+        completion: @escaping ([CallaKnowledgeNote]) -> Void
+    ) {
+        guard let payload = try? JSONEncoder().encode(command) else {
+            completion([]); return
+        }
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            NSLog("[CallaEngine] knowledge unavailable: %@", error.localizedDescription)
+            Task { @MainActor in completion([]) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.knowledgeControl(payload) { data in
+            let notes = (try? Self.decoder.decode([CallaKnowledgeNote].self, from: data)) ?? []
+            Task { @MainActor in completion(notes) }
+        }
+    }
+
+    /// Previous calls for a meeting — the same series where there is one, so a
+    /// recurring standup shows every instance rather than only today's.
+    func fetchCalls(
+        forEvent eventID: String?,
+        seriesID: String?,
+        completion: @escaping ([CallaCallRecord]) -> Void
+    ) {
+        let query = CallaKnowledgeCommand(action: "list", eventID: eventID, seriesID: seriesID)
+        guard let payload = try? JSONEncoder().encode(query) else { completion([]); return }
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ error in
+            NSLog("[CallaEngine] call list unavailable: %@", error.localizedDescription)
+            Task { @MainActor in completion([]) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotCallsForEvent(payload) { data in
+            let calls = (try? Self.decoder.decode([CallaCallRecord].self, from: data)) ?? []
+            Task { @MainActor in completion(calls) }
+        }
+    }
+
+    /// The engine encodes dates as ISO-8601, matching every other reply it sends.
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
 
     /// Lists the calls this Mac has archived, newest first.
     func fetchCalls(completion: @escaping ([CallaCallSummary]) -> Void) {
@@ -755,14 +934,6 @@ final class CallaEngineClient: ObservableObject {
     /// signing out, and signing out is what broke things once already.
     func testSignInFlow() {
         send(CallaCopilotCommand(action: "test_login"))
-    }
-
-    /// Tells a running call whether to answer only when asked.
-    ///
-    /// The panel filters what it shows immediately; this is the half that changes
-    /// what the copilot is *asked*, so an interview stops being narrated.
-    func setAnswersOnly(_ answersOnly: Bool) {
-        send(CallaCopilotCommand(action: "set_detail", answersOnly: answersOnly))
     }
 
     /// Clears the stored Google credential so the next sign-in starts fresh.

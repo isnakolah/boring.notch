@@ -360,6 +360,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             CallaEngineClient.shared.start()
             CallaEngineClient.shared.startMonitoring()
             MeetingDetector.shared.start()
+            MeetingPreroll.shared.start()
         }
 
         NotificationCenter.default.addObserver(

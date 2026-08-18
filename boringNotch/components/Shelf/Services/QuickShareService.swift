@@ -97,6 +97,9 @@ final class QuickShareService: NSObject, ObservableObject {
     @Published private(set) var totalFileCount = 0
     @Published private(set) var transfers: [UUID: ShelfTransferState] = [:]
     @Published var lastError: String?
+    /// Off means off: no listener, no multicast socket, no subnet probing, and
+    /// so nothing that makes macOS ask for the local network permission.
+    @Published private(set) var isEnabled = true
 
     private var transferClearTask: Task<Void, Never>?
 
@@ -108,16 +111,17 @@ final class QuickShareService: NSObject, ObservableObject {
     private var registrationResponse = Data()
     private var discoveryTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
+    private var enabledObserver: AnyCancellable?
 
     private override init() {
         super.init()
         selectedDestination = LocalSendDestination(rawValue: Defaults[.localSendDestination]) ?? .phone
         loadBindings()
         registrationResponse = makeRegistrationResponse()
-        startRegistrationListener()
-        startDiscovery()
-        startDiscoveryPolling()
-        startNetworkScan()
+        isEnabled = Defaults[.localSendEnabled]
+        observeEnabled()
+        guard isEnabled else { return }
+        startNetworking()
     }
 
     deinit {
@@ -180,6 +184,7 @@ final class QuickShareService: NSObject, ObservableObject {
     }
 
     func refreshDiscovery() {
+        guard isEnabled else { return }
         lastError = nil
         pruneExpiredDevices()
         beginRefreshWindow()
@@ -187,6 +192,50 @@ final class QuickShareService: NSObject, ObservableObject {
         startDiscovery()
         announce()
         startNetworkScan()
+    }
+
+    // MARK: Enablement
+
+    private func observeEnabled() {
+        enabledObserver = Defaults.publisher(.localSendEnabled)
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                Task { @MainActor [weak self] in self?.setEnabled(enabled) }
+            }
+    }
+
+    private func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
+        lastError = nil
+        if enabled {
+            startNetworking()
+        } else {
+            stopNetworking()
+        }
+    }
+
+    private func startNetworking() {
+        startRegistrationListener()
+        startDiscovery()
+        startDiscoveryPolling()
+        startNetworkScan()
+    }
+
+    /// Bindings survive: turning the provider off is not unpairing, and coming
+    /// back on should find the same devices where they were left.
+    private func stopNetworking() {
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        connectionGroup?.cancel()
+        connectionGroup = nil
+        registrationListener?.cancel()
+        registrationListener = nil
+        availableDevices.removeAll()
+        isDiscovering = false
     }
 
     // MARK: Discovery
@@ -1045,6 +1094,10 @@ final class ShelfShareService: ObservableObject {
 
     @Published private(set) var selectedTransport: ShelfShareTransport
     @Published private(set) var selectedDestination: LocalSendDestination
+    /// False when every provider is switched off. Shelf still holds files and
+    /// still hands them to the macOS Share sheet; it just has nowhere of its
+    /// own to send them.
+    @Published private(set) var isAvailable = false
 
     let localSend = QuickShareService.shared
     let kdeConnect = KDEConnectService.shared
@@ -1063,6 +1116,31 @@ final class ShelfShareService: ObservableObject {
         kdeConnect.objectWillChange
             .sink { [weak self] in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        Defaults.publisher(keys: .localSendEnabled, .kdeConnectEnabled)
+            .sink { [weak self] in
+                Task { @MainActor [weak self] in self?.syncTransport() }
+            }
+            .store(in: &cancellables)
+        syncTransport()
+    }
+
+    /// Read from the setting rather than the service, so routing is correct on
+    /// the same tick the switch flips regardless of which observer ran first.
+    func isEnabled(_ transport: ShelfShareTransport) -> Bool {
+        switch transport {
+        case .localSend: Defaults[.localSendEnabled]
+        case .kdeConnect: Defaults[.kdeConnectEnabled]
+        }
+    }
+
+    /// Keeps the routed transport on a provider that is actually running, so
+    /// switching one off moves Shelf to the other rather than sending into a
+    /// service that no longer has a socket open.
+    private func syncTransport() {
+        let enabled = ShelfShareTransport.allCases.filter(isEnabled)
+        isAvailable = !enabled.isEmpty
+        guard let fallback = enabled.first, !isEnabled(selectedTransport) else { return }
+        select(fallback)
     }
 
     var transfers: [UUID: ShelfTransferState] {
@@ -1153,6 +1231,7 @@ final class ShelfShareService: ObservableObject {
     }
 
     func refreshDiscovery() {
+        guard isAvailable else { return }
         switch selectedTransport {
         case .localSend: localSend.refreshDiscovery()
         case .kdeConnect: kdeConnect.refreshDiscovery()
@@ -1160,6 +1239,7 @@ final class ShelfShareService: ObservableObject {
     }
 
     func showFilePicker() async {
+        guard isAvailable else { return }
         switch selectedTransport {
         case .localSend:
             localSend.select(selectedDestination)
@@ -1171,6 +1251,7 @@ final class ShelfShareService: ObservableObject {
     }
 
     func shareDroppedFiles(_ providers: [NSItemProvider]) async {
+        guard isAvailable else { return }
         switch selectedTransport {
         case .localSend:
             localSend.select(selectedDestination)
@@ -1182,6 +1263,7 @@ final class ShelfShareService: ObservableObject {
     }
 
     func shareShelfItems(_ items: [ShelfItem], to destination: LocalSendDestination? = nil) async {
+        guard isAvailable else { return }
         let destination = destination ?? selectedDestination
         switch selectedTransport {
         case .localSend:
@@ -1415,10 +1497,15 @@ final class KDEConnectService: NSObject, ObservableObject {
     @Published private(set) var totalFileCount = 0
     @Published private(set) var transfers: [UUID: ShelfTransferState] = [:]
     @Published var lastError: String?
+    /// Off means off: no TLS identity, no UDP or control listener, no Bonjour
+    /// publish or browse — so no local network prompt on this provider's behalf.
+    @Published private(set) var isEnabled = false
 
     private var transferClearTask: Task<Void, Never>?
 
-    private let identity = KDECertificateIdentity.shared
+    /// Lazy on purpose: reading it creates the Keychain identity, and a
+    /// disabled provider must not do that.
+    private lazy var identity = KDECertificateIdentity.shared
     private var udpListener: NWListener?
     private var controlListener: NWListener?
     private var links: [String: KDEControlLink] = [:]
@@ -1428,17 +1515,26 @@ final class KDEConnectService: NSObject, ObservableObject {
     private var netService: NetService?
     private var bonjourBrowser: NWBrowser?
     private var bonjourConnections: [UUID: NWConnection] = [:]
+    private var enabledObserver: AnyCancellable?
 
     private override init() {
         super.init()
         selectedDestination = LocalSendDestination(rawValue: Defaults[.localSendDestination]) ?? .phone
         loadBindings()
-        guard identity.identity != nil else {
-            lastError = "KDE Connect identity unavailable. Open Shelf settings after restarting app."
-            return
-        }
-        startListeners()
-        startDiscovery()
+        Self.migrateEnabledFlagIfNeeded(hasBindings: !bindings.isEmpty)
+        isEnabled = Defaults[.kdeConnectEnabled]
+        observeEnabled()
+        guard isEnabled else { return }
+        startNetworking()
+    }
+
+    /// KDE Connect used to run unconditionally, so anyone with a paired device
+    /// gets the new switch already on. Everyone else starts opt-in and is never
+    /// asked for the local network permission until they ask for the provider.
+    private static func migrateEnabledFlagIfNeeded(hasBindings: Bool) {
+        guard !Defaults[.didMigrateKDEConnectEnabled] else { return }
+        Defaults[.didMigrateKDEConnectEnabled] = true
+        if hasBindings { Defaults[.kdeConnectEnabled] = true }
     }
 
     deinit {
@@ -1490,6 +1586,7 @@ final class KDEConnectService: NSObject, ObservableObject {
     func isOnline(_ destination: LocalSendDestination) -> Bool { device(for: destination) != nil && links[bindings[destination]?.device.deviceID ?? ""] != nil }
 
     func refreshDiscovery() {
+        guard isEnabled else { return }
         lastError = nil
         pruneExpiredDevices()
         isDiscovering = true
@@ -1502,7 +1599,61 @@ final class KDEConnectService: NSObject, ObservableObject {
         announceIdentity()
     }
 
+    private func observeEnabled() {
+        enabledObserver = Defaults.publisher(.kdeConnectEnabled)
+            .map(\.newValue)
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                Task { @MainActor [weak self] in self?.setEnabled(enabled) }
+            }
+    }
+
+    private func setEnabled(_ enabled: Bool) {
+        guard enabled != isEnabled else { return }
+        isEnabled = enabled
+        lastError = nil
+        if enabled {
+            startNetworking()
+        } else {
+            stopNetworking()
+        }
+    }
+
+    private func startNetworking() {
+        guard identity.identity != nil else {
+            lastError = "KDE Connect identity unavailable. Open Shelf settings after restarting app."
+            return
+        }
+        startListeners()
+        startDiscovery()
+    }
+
+    /// Pairings survive being switched off — they are certificate pins, and
+    /// throwing them away would mean re-verifying a code on the phone.
+    private func stopNetworking() {
+        discoveryTask?.cancel()
+        discoveryTask = nil
+        refreshTask?.cancel()
+        refreshTask = nil
+        udpListener?.cancel()
+        udpListener = nil
+        controlListener?.cancel()
+        controlListener = nil
+        netService?.stop()
+        netService = nil
+        bonjourBrowser?.cancel()
+        bonjourBrowser = nil
+        bonjourConnections.values.forEach { $0.cancel() }
+        bonjourConnections.removeAll()
+        links.values.forEach { $0.cancel() }
+        links.removeAll()
+        pendingPairs.removeAll()
+        availableDevices.removeAll()
+        isDiscovering = false
+    }
+
     func beginPair(_ device: KDEConnectDevice, to destination: LocalSendDestination) {
+        guard isEnabled else { return }
         guard !device.certificateDER.isEmpty else {
             lastError = "KDE Connect TLS identity unavailable for \(device.name). Refresh then try again."
             return

@@ -9,6 +9,7 @@ import Cocoa
 import SkyLightWindow
 import Defaults
 import Combine
+import UniformTypeIdentifiers
 
 extension SkyLightOperator {
     func undelegateWindow(_ window: NSWindow) {
@@ -54,6 +55,7 @@ class BoringNotchSkyLightWindow: NSPanel {
 
     deinit {
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
+        buttonPollTimer?.invalidate()
     }
     
     private func configureWindow() {
@@ -101,6 +103,32 @@ class BoringNotchSkyLightWindow: NSPanel {
 
     private var mouseMonitor: Any?
 
+    /// Runs only while a mouse button is held, and only to watch for a drag.
+    ///
+    /// A drag is tracked inside the *source* app's own drag loop, so the events
+    /// a global monitor sees during one are not something to rely on. Polling
+    /// the pressed buttons and the drag pasteboard is; it stops on mouse-up, so
+    /// an idle Mac pays nothing for it.
+    private var buttonPollTimer: Timer?
+
+    private let dragPasteboard = NSPasteboard(name: .drag)
+    private var dragPasteboardChangeCount = -1
+
+    /// A drag carrying something droppable is in flight somewhere on screen.
+    ///
+    /// Click-through is suspended for its whole duration. Proximity is not
+    /// enough here: AppKit decides which windows are drag destinations as the
+    /// session runs, and a panel that was ignoring mouse events when the drag
+    /// reached it is simply not one — the notch never sees the drag, so it
+    /// never opens. The window has to be droppable *before* the pointer
+    /// arrives, which means before we know where the pointer is headed.
+    private var dragSessionActive = false {
+        didSet {
+            guard dragSessionActive != oldValue else { return }
+            applyClickThrough()
+        }
+    }
+
     /// How far outside `interactiveRect` still counts as a hit.
     ///
     /// The flag is flipped from a mouse-moved monitor, so it is always at least
@@ -129,14 +157,70 @@ class BoringNotchSkyLightWindow: NSPanel {
         // A *global* monitor, because once the window ignores mouse events it
         // stops receiving the very move that would hand them back.
         mouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged]
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.applyClickThrough() }
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseDown]
+        ) { [weak self] event in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if event.type == .leftMouseDown {
+                    // Recorded before any drag begins: the pasteboard advancing
+                    // past this is what tells us one did.
+                    self.dragPasteboardChangeCount = self.dragPasteboard.changeCount
+                    self.startButtonPolling()
+                }
+                self.updateDragSession()
+                self.applyClickThrough()
+            }
         }
         applyClickThrough()
     }
 
+    private func startButtonPolling() {
+        guard buttonPollTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.updateDragSession()
+                self.applyClickThrough()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        buttonPollTimer = timer
+    }
+
+    private func stopButtonPolling() {
+        buttonPollTimer?.invalidate()
+        buttonPollTimer = nil
+    }
+
+    private func updateDragSession() {
+        guard NSEvent.pressedMouseButtons != 0 else {
+            dragSessionActive = false
+            dragPasteboardChangeCount = -1
+            stopButtonPolling()
+            return
+        }
+        guard !dragSessionActive,
+              dragPasteboard.changeCount != dragPasteboardChangeCount,
+              hasDroppableDragContent else { return }
+        dragSessionActive = true
+    }
+
+    /// Only content the notch has somewhere to put counts. A window drag or a
+    /// text selection should still fall straight through.
+    private var hasDroppableDragContent: Bool {
+        let droppable: [NSPasteboard.PasteboardType] = [
+            .fileURL,
+            NSPasteboard.PasteboardType(UTType.url.identifier),
+            .string
+        ]
+        return dragPasteboard.types?.contains(where: droppable.contains) ?? false
+    }
+
     private func applyClickThrough() {
+        guard !dragSessionActive else {
+            ignoresMouseEvents = false
+            return
+        }
         guard !interactiveRect.isEmpty else {
             ignoresMouseEvents = false
             return

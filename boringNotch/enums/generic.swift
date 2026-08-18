@@ -27,6 +27,10 @@ public enum NotchState {
 public enum NotchViews {
     case home
     case shelf
+    /// A file was dropped and is waiting to be filed against a meeting.
+    case knowledgeDrop
+    /// A file is over the notch and has not been aimed at a half yet.
+    case dropChooser
     case tutor
     case copilot
     case usage

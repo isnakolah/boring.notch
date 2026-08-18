@@ -18,7 +18,8 @@ final class CopilotLiveSession: ObservableObject {
     enum Layout {
         /// Transcript beside the pointer, at `copilotNotchSize`.
         case full
-        /// Pointer only, back at `openNotchSize` — still listening, out of the way.
+        /// Pointer or account alone, at `copilotCompactNotchSize` — still
+        /// listening, out of the way.
         case compact
     }
 
@@ -32,6 +33,18 @@ final class CopilotLiveSession: ObservableObject {
     /// `dismiss()` without ending the call.
     @Published private(set) var pinned = false
 
+    /// A meeting is about to start and the copilot is warm but not recording.
+    ///
+    /// Deliberately its own state alongside `signInActive` rather than a variant of
+    /// `isLive`: a call does not exist yet, nothing is being captured, and the
+    /// panel's job is to say both of those things and offer the three buttons. If
+    /// this were folded into `isLive` the notch would claim a call was running
+    /// while the microphones were off, which is the one lie this feature cannot
+    /// afford to tell.
+    @Published private(set) var prerollActive = false
+    @Published private(set) var prerollTitle: String?
+    @Published private(set) var prerollStartsAt: Date?
+
     /// A sign-in is waiting for the user, so the notch shows a field for the code
     /// instead of a call.
     ///
@@ -42,21 +55,29 @@ final class CopilotLiveSession: ObservableObject {
 
     /// The single question `BoringViewModel.close()` and the panel's sharing
     /// type both ask.
-    var pinsNotchOpen: Bool { (isLive || signInActive) && pinned }
+    var pinsNotchOpen: Bool { (isLive || signInActive || prerollActive) && pinned }
 
     /// The size the notch should open to right now.
     var preferredOpenSize: CGSize {
         // A sign-in needs a line of text and a field, so it uses the compact size
-        // whatever the call layout happens to be.
-        if signInActive { return openNotchSize }
-        return isLive && layout == .full ? copilotNotchSize : openNotchSize
+        // whatever the call layout happens to be. The pre-roll card is the same
+        // shape: a title, a line of state, and three buttons.
+        // Filing a document outranks the rest: it is a two-column surface and at
+        // a normal tab's height its own drop target falls off the bottom.
+        if NotchDropRouter.shared.isChoosing { return dropChooserNotchSize }
+        if CallaKnowledgeAttach.shared.isPresenting { return knowledgeNotchSize }
+        if signInActive || prerollActive { return openNotchSize }
+        guard isLive else { return openNotchSize }
+        return layout == .full ? copilotNotchSize : copilotCompactNotchSize
     }
 
     private var cancellables: Set<AnyCancellable> = []
 
     private init() {
         CallaEngineClient.shared.$status
-            .map(\.copilot.running)
+            // Recording, not merely running: a prewarmed host exists but captures
+            // nothing, and the live panel must not appear for it.
+            .map(\.copilot.isRecording)
             .removeDuplicates()
             .sink { [weak self] running in
                 self?.apply(running: running)
@@ -70,6 +91,35 @@ final class CopilotLiveSession: ObservableObject {
                 self?.apply(signingIn: signingIn)
             }
             .store(in: &cancellables)
+    }
+
+    /// Arms the pre-roll card and brings the notch to the copilot tab.
+    ///
+    /// Called by `MeetingPreroll` at the lead time, before the engine has spawned
+    /// anything — so the card appears at the moment the user was promised it,
+    /// rather than whenever the host finishes booting.
+    func beginPreroll(title: String, startsAt: Date) {
+        guard Defaults[.callaCopilotEnabled] else { return }
+        prerollTitle = title
+        prerollStartsAt = startsAt
+        guard !prerollActive else { return }
+        prerollActive = true
+        layout = .compact
+        pinned = true
+        reveal()
+    }
+
+    func endPreroll() {
+        guard prerollActive else { return }
+        prerollActive = false
+        prerollTitle = nil
+        prerollStartsAt = nil
+        // Hands the notch back to whatever the call is doing rather than closing
+        // it out from under a call that just started, which is the same rule the
+        // sign-in path follows when it finishes.
+        pinned = isLive
+        layout = isLive ? .full : .compact
+        NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
     }
 
     private func apply(signingIn: Bool) {
@@ -96,6 +146,11 @@ final class CopilotLiveSession: ObservableObject {
 
         if running {
             guard Defaults[.callaCopilotEnabled] else { return }
+            // Recording has started, so the card's central claim — that nothing is
+            // being captured — has stopped being true. The live panel takes over.
+            prerollActive = false
+            prerollTitle = nil
+            prerollStartsAt = nil
             layout = .full
             pinned = true
             reveal()

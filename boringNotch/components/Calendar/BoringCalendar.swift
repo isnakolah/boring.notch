@@ -275,6 +275,7 @@ struct EventListView: View {
     @Default(.pomodoroCalendarIcon) private var pomodoroCalendarIcon
     @Default(.callaTutorEnabled) private var callaTutorEnabled
     @Default(.callaCalendarEnabled) private var callaCalendarEnabled
+    @Default(.callaCopilotEnabled) private var callaCopilotEnabled
     @ObservedObject private var callaEngine = CallaEngineClient.shared
 
 
@@ -326,6 +327,7 @@ struct EventListView: View {
                         eventRow(event)
                             .contentShape(Rectangle())
                             .onTapGesture { openEvent(event) }
+                            .contextMenu { rowActions(event) }
                             .id(event.id)
                     }
                 }
@@ -334,6 +336,7 @@ struct EventListView: View {
             .scrollIndicators(.never)
             .scrollContentBackground(.hidden)
             .background(Color.clear)
+
             .onAppear {
                 scrollToRelevantEvent(proxy: proxy)
                 callaEngine.refresh()
@@ -362,15 +365,27 @@ struct EventListView: View {
         // Joining from here is the clearest statement of intent the copilot
         // ever gets — clearer than the microphone detector, which has to infer
         // it. Start now rather than waiting out the detector's dwell.
-        if event.videoCallURL != nil { startCopilotForMeeting() }
+        if event.videoCallURL != nil { startCopilotForMeeting(event) }
     }
 
-    private func startCopilotForMeeting() {
+    private func startCopilotForMeeting(_ event: EventModel) {
         guard Defaults[.callaCopilotEnabled], Defaults[.callaCopilotAutoStartOnMeeting] else { return }
         let engine = CallaEngineClient.shared
-        guard engine.status.copilot.available, !engine.status.copilot.running else { return }
+        guard engine.status.copilot.available else { return }
+        // The pre-roll already warmed a host for this meeting; joining is the
+        // release it was waiting for, not a reason to spawn a second one.
+        if engine.status.copilot.prewarming {
+            MeetingPreroll.shared.release()
+            return
+        }
+        guard !engine.status.copilot.running else { return }
+        // The meeting travels with the call now. It links the recording to the
+        // calendar event, scopes the knowledge that gets retrieved, and is what
+        // the end-of-call account is filed under so the next occurrence of a
+        // recurring meeting can read it.
         engine.startCall(persona: Defaults[.callaCopilotPersona],
-                         model: Defaults[.callaCopilotLiveModel])
+                         model: Defaults[.callaCopilotLiveModel],
+                         meeting: CallaMeeting(event))
     }
 
     /// Turns the event's remaining time window into a Pomodoro plan and starts
@@ -390,6 +405,50 @@ struct EventListView: View {
 
     private func canStartPomodoro(for event: EventModel) -> Bool {
         pomodoroTab && pomodoroCalendarIcon && !event.isAllDay && event.eventStatus != .ended
+    }
+
+    /// The actions that used to be glyphs on the row.
+    ///
+    /// Moved into a right-click rather than deleted: each is still the fastest way
+    /// to do its thing from here, and none of them was worth the width. A menu that
+    /// comes out empty for an event none of them apply to is fine — macOS shows
+    /// nothing rather than an empty box.
+    @ViewBuilder
+    private func rowActions(_ event: EventModel) -> some View {
+        if canPrepCopilot(for: event) {
+            Button(hasPrep(for: event) ? "Edit what the copilot knows…" : "Add knowledge…") {
+                // Same surface a drop onto the notch lands on, already pointed at
+                // this meeting. Two ways in, one place to learn.
+                CallaKnowledgeAttach.shared.begin(for: event)
+                BoringViewCoordinator.shared.currentView = .knowledgeDrop
+                NotificationCenter.default.post(name: .callaKnowledgeWantsNotch, object: nil)
+            }
+        }
+        if canStartPomodoro(for: event) {
+            Button("Start a focus timer") { startPomodoro(for: event) }
+        }
+        if canStartTutor(for: event) {
+            if let courseID = CallaCalendarBindings.courseID(for: event.id) {
+                Button("Resume the Calla lesson") { startTutor(for: event, courseID: courseID) }
+            } else if !callaEngine.status.courses.isEmpty {
+                Menu("Start a Calla course") {
+                    ForEach(callaEngine.status.courses) { course in
+                        Button(course.title) { startTutor(for: event, courseID: course.id) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func canPrepCopilot(for event: EventModel) -> Bool {
+        callaCopilotEnabled && event.videoCallURL != nil && !event.isAllDay
+    }
+
+    /// Whether anything has been written for this meeting yet, so the menu can say
+    /// "edit" rather than "prep". Read from the app's own cache rather than asked
+    /// over XPC per row — the calendar list redraws constantly.
+    private func hasPrep(for event: EventModel) -> Bool {
+        CallaKnowledgeFocus.shared.hasNotes(eventID: event.id, seriesID: event.seriesID)
     }
 
     private func canStartTutor(for event: EventModel) -> Bool {
@@ -528,59 +587,30 @@ struct EventListView: View {
                         .font(.system(size: 9))
                     }
                     Spacer(minLength: 0)
-                    // Affordance hinting that tapping this event joins its video call.
+                    // The row's one control.
+                    //
+                    // The trailing edge used to carry four: a video glyph, a focus
+                    // timer and a Calla course picker. At this row height that reads
+                    // as a toolbar rather than a list, and the other three are for
+                    // things nobody reaches for while scanning what is next — they
+                    // are a right-click away instead. Joining the call is what this
+                    // row is for, so it is the only thing that gets a button.
+                    //
+                    // A real Button rather than the glyph it used to be: it is the
+                    // primary action of the row, and the row-wide tap gesture is
+                    // easy to trigger by accident while scrolling.
                     if videoCallURL != nil {
-                        Image(systemName: "video.fill")
-                            .font(.system(size: 9.5))
-                            .foregroundColor(barColor)
-                    }
-                    // Its own hit target — unlike the video glyph, this does
-                    // something different from tapping the row.
-                    if canStartPomodoro(for: event) {
                         Button {
-                            startPomodoro(for: event)
+                            openEvent(event)
                         } label: {
-                            Image(systemName: "timer")
+                            Image(systemName: "video.fill")
                                 .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.55))
-                                .frame(width: 16, height: 16)
+                                .foregroundColor(barColor)
+                                .frame(width: 18, height: 18)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help("Start a focus timer for this event")
-                    }
-                    if canStartTutor(for: event) {
-                        if let courseID = CallaCalendarBindings.courseID(for: event.id) {
-                            Button {
-                                startTutor(for: event, courseID: courseID)
-                            } label: {
-                                Image(systemName: "graduationcap.fill")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.55))
-                                    .frame(width: 16, height: 16)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .help("Resume Calla lesson for this event")
-                        } else {
-                            Menu {
-                                if callaEngine.status.courses.isEmpty {
-                                    Text("No published Calla courses")
-                                } else {
-                                    ForEach(callaEngine.status.courses) { course in
-                                        Button(course.title) { startTutor(for: event, courseID: course.id) }
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "graduationcap")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundColor(.white.opacity(0.55))
-                                    .frame(width: 16, height: 16)
-                                    .contentShape(Rectangle())
-                            }
-                            .menuStyle(.borderlessButton)
-                            .help("Choose Calla course for this event")
-                        }
+                        .help("Join this call and start the copilot")
                     }
                 }
                 .padding(.horizontal, 8)

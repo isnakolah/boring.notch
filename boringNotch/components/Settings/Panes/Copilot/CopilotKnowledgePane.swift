@@ -16,6 +16,8 @@ struct CopilotKnowledgePane: View {
 
     @Environment(\.settingsRouter) private var router
     @State private var search = ""
+    @State private var month = Calendar.current.startOfDay(for: Date())
+    @State private var selectedDay: Date?
     @State private var loaded = false
 
     var body: some View {
@@ -93,16 +95,37 @@ struct CopilotKnowledgePane: View {
     // MARK: - Meetings
 
     private var meetingsCard: some View {
-        SettingCard(
-            "Meetings",
-            detail: library.events.isEmpty
-                ? "No meetings in the last week or the next month."
-                : "The last week and the next month. A repeating meeting shares whatever is attached to the series."
-        ) {
+        SettingCard("Meetings", detail: meetingsDetail) {
+            KnowledgeCalendar(month: $month,
+                              selectedDay: $selectedDay,
+                              index: library.dayIndex(for: month))
+                .task(id: month) { await library.ensureLoaded(month: month) }
+
+            Divider().opacity(0.35).padding(.vertical, NotchSpace.tight)
+
             if library.isLoading && library.events.isEmpty {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text("Reading your calendar…").font(NotchType.rowDetail).foregroundStyle(.secondary)
+                }
+            } else if let day = selectedDay {
+                let events = library.events(on: day)
+                if events.isEmpty {
+                    SettingsEmptyState(
+                        symbol: "calendar.badge.minus",
+                        title: "Nothing on \(day.formatted(.dateTime.weekday(.wide).day().month(.wide)))",
+                        detail: "Pick another day, or clear the selection to see the whole range.",
+                        actionTitle: "Show everything",
+                        action: { withAnimation(NotchMotion.settle) { selectedDay = nil } })
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+                            eventRow(event)
+                            if index < events.count - 1 {
+                                Divider().padding(.leading, 32)
+                            }
+                        }
+                    }
                 }
             } else {
                 let groups = library.groupedByDay(matching: search)
@@ -137,6 +160,16 @@ struct CopilotKnowledgePane: View {
                 }
             }
         }
+    }
+
+    /// What the card says it is showing, which changes with the selection.
+    private var meetingsDetail: String {
+        if let day = selectedDay {
+            return day.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+        }
+        return library.events.isEmpty
+            ? "No meetings in the last week or the next month."
+            : "The last week and the next month, or pick a day above. A repeating meeting shares whatever is attached to the series."
     }
 
     private func eventRow(_ event: EventModel) -> some View {

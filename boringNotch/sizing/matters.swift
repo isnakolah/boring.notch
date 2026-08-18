@@ -21,6 +21,27 @@ let openNotchSize: CGSize = .init(width: 512, height: 168)
 /// beside the pointer, and a transcript that only shows two turns is not one.
 let copilotNotchSize: CGSize = .init(width: 600, height: 340)
 
+/// The notch for the compact call panel — pointer or account alone, no transcript.
+///
+/// Taller than a normal tab's `openNotchSize` and deliberately not shared with
+/// one: this is the layout a call spends most of its time in, and at 168pt it
+/// showed about three lines of an account that is worth reading five of.
+let copilotCompactNotchSize: CGSize = .init(width: openNotchSize.width, height: 260)
+
+/// The notch while a file is being filed against a meeting.
+///
+/// Two columns — drop on one side, choose on the other — so it needs the copilot's
+/// width rather than a normal tab's. At `openNotchSize`'s 168pt the drop target
+/// and the list of what is already attached could not both be on screen, and the
+/// whole point of the surface is seeing the second while you use the first.
+let knowledgeNotchSize: CGSize = .init(width: copilotNotchSize.width, height: 300)
+
+/// The notch while a dragged file is being aimed at one half or the other.
+///
+/// Two tiles side by side need width more than height; taller than a normal tab
+/// only because each tile says what it will do rather than just naming itself.
+let dropChooserNotchSize: CGSize = .init(width: openNotchSize.width, height: 200)
+
 /// The largest the open notch can ever be.
 ///
 /// The panel is created once at this size and never resized — the notch shape
@@ -28,8 +49,10 @@ let copilotNotchSize: CGSize = .init(width: 600, height: 340)
 /// mode does not use stays transparent. That is already how the 185pt closed
 /// notch lives inside a 512pt window; growing the ceiling just extends it.
 let maxOpenNotchSize: CGSize = .init(
-    width: max(openNotchSize.width, copilotNotchSize.width),
-    height: max(openNotchSize.height, copilotNotchSize.height))
+    width: max(openNotchSize.width, max(copilotNotchSize.width, knowledgeNotchSize.width)),
+    height: max(
+        max(openNotchSize.height, dropChooserNotchSize.height),
+        max(copilotCompactNotchSize.height, max(copilotNotchSize.height, knowledgeNotchSize.height))))
 
 let windowSize: CGSize = .init(width: maxOpenNotchSize.width, height: maxOpenNotchSize.height + shadowPadding)
 let cornerRadiusInsets: (opened: (top: CGFloat, bottom: CGFloat), closed: (top: CGFloat, bottom: CGFloat)) = (opened: (top: 19, bottom: 24), closed: (top: 6, bottom: 14))

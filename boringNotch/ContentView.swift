@@ -26,6 +26,10 @@ struct ContentView: View {
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var pomodoro = PomodoroManager.shared
     @ObservedObject var copilotSession = CopilotLiveSession.shared
+    /// Through the wrapper, not `Defaults[...]` inline: a bare subscript read
+    /// inside a computed property registers no dependency, so the slider moved and
+    /// the panel never redrew.
+    @Default(.callaCopilotGlassLevel) private var copilotGlassLevel
     @State private var hoverTask: Task<Void, Never>?
     @State private var pomodoroAutoCloseTask: Task<Void, Never>?
     @State private var lessonAutoCloseTask: Task<Void, Never>?
@@ -83,7 +87,7 @@ struct ContentView: View {
                 // text survives that. The frost is what makes the panel a surface
                 // rather than a window.
                 Rectangle().fill(.regularMaterial)
-                Color.black.opacity(1 - Defaults[.callaCopilotGlassLevel])
+                Color.black.opacity(1 - copilotGlassLevel)
             }
         } else {
             Color.black
@@ -97,6 +101,9 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
+        } else if copilotSession.isLive && vm.notchState == .closed && !vm.hideOnClosed {
+            // Room for the activity glyph and the call clock.
+            chinWidth += 150
         } else if pomodoro.isActive && vm.notchState == .closed && !vm.hideOnClosed {
             // Room for the phase ring and the "20m 15s" countdown.
             chinWidth += 150
@@ -365,6 +372,18 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if copilotSession.isLive && vm.notchState == .closed && !vm.hideOnClosed {
+                          // A live call takes this slot from the timer and the usage
+                          // badges: a Pomodoro can wait, a conversation cannot.
+                          CopilotNotchBadge(
+                              notchWidth: vm.closedNotchSize.width - 20,
+                              height: vm.effectiveClosedNotchHeight,
+                              onBadgeHover: {
+                                  coordinator.currentView = .copilot
+                                  doOpen()
+                              }
+                          )
+                          .transition(.opacity)
                       } else if pomodoro.isActive && vm.notchState == .closed && !vm.hideOnClosed {
                           // A live session owns this slot; the usage badges come
                           // back the moment it ends.
@@ -459,6 +478,15 @@ struct ContentView: View {
                     switch coordinator.currentView {
                     case .home:
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
+                    case .dropChooser:
+                        NotchDropChooserView(
+                            onShelf: { providers in
+                                coordinator.currentView = .shelf
+                                acceptIntoShelf(providers)
+                            },
+                            onMeeting: { providers in routeToKnowledge(providers) })
+                    case .knowledgeDrop:
+                        CallaKnowledgeDropView()
                     case .shelf:
                         ShelfView()
                     case .tutor:
@@ -513,6 +541,11 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .callaCopilotSuggestion)) { _ in
             showCopilotSuggestion()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .callaKnowledgeWantsNotch)) { _ in
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                vm.open(size: knowledgeNotchSize)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .copilotLiveDidChange)) { _ in
             syncCopilotLiveNotch()
@@ -757,15 +790,30 @@ struct ContentView: View {
                 enabled: Defaults[.boringShelf],
                 onEntered: {
                     guard vm.notchState == .closed else { return }
-                    coordinator.currentView = .shelf
+                    // With the copilot on, a drop is ambiguous — Shelf-and-send or
+                    // give it to a meeting — so the notch opens onto the choice
+                    // rather than committing to one behind the user's back.
+                    if NotchDropRouter.shared.isSplitAvailable {
+                        NotchDropRouter.shared.beginChoosing()
+                        coordinator.currentView = .dropChooser
+                    } else {
+                        coordinator.currentView = .shelf
+                    }
                     doOpen()
                 },
                 onDrop: { providers in
-                    coordinator.currentView = .shelf
                     vm.dropEvent = true
                     doOpen()
-                    ShelfStateViewModel.shared.load(providers)
-                    Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
+                    // Caught by the closed-notch target before either half saw it.
+                    // Hold the files and leave the question up, rather than
+                    // guessing — guessing is what made this confusing.
+                    if NotchDropRouter.shared.isChoosing {
+                        NotchDropRouter.shared.hold(providers)
+                        coordinator.currentView = .dropChooser
+                        return
+                    }
+                    coordinator.currentView = .shelf
+                    acceptIntoShelf(providers)
                 }
             )
         }
@@ -815,15 +863,47 @@ struct ContentView: View {
             // A completed drop is authoritative. Open Shelf here rather than
             // relying on `isTargeted`, which becomes false before providers
             // finish loading and used to leave a closed notch behind.
-            coordinator.currentView = .shelf
             vm.dropEvent = true
             doOpen()
-            ShelfStateViewModel.shared.load(providers)
-            Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
+            if NotchDropRouter.shared.isSplitAvailable {
+                NotchDropRouter.shared.beginChoosing()
+                NotchDropRouter.shared.hold(providers)
+                coordinator.currentView = .dropChooser
+                return true
+            }
+            coordinator.currentView = .shelf
+            acceptIntoShelf(providers)
             return true
         }
         } else {
             EmptyView()
+        }
+    }
+
+    /// What dropping has always done: keep it, and send it on.
+    ///
+    /// Untouched on purpose. The transfer to a paired device is surprising if you
+    /// did not expect it, which is exactly why it now only happens on the half
+    /// that says so.
+    private func acceptIntoShelf(_ providers: [NSItemProvider]) {
+        ShelfStateViewModel.shared.load(providers)
+        Task { await ShelfShareService.shared.shareDroppedFiles(providers) }
+    }
+
+    /// Hands the files to the copilot. Nothing is sent anywhere.
+    private func routeToKnowledge(_ providers: [NSItemProvider]) {
+        Task { @MainActor in
+            guard await CallaKnowledgeAttach.shared.accept(providers) else {
+                // Nothing readable in the drop — a zip or a video. Fall back to
+                // the Shelf rather than dropping it on the floor.
+                coordinator.currentView = .shelf
+                acceptIntoShelf(providers)
+                return
+            }
+            coordinator.currentView = .knowledgeDrop
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                vm.open(size: knowledgeNotchSize)
+            }
         }
     }
 

@@ -97,6 +97,9 @@
 		CA1100010000000000D00711 /* NotchLayoutPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00712 /* NotchLayoutPane.swift */; };
 		CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00302 /* NotchPreviewWell.swift */; };
 		CA1100010000000000D00201 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000D00202 /* SettingsComponents.swift */; };
+		FEA04E2958FDEB3EC579A459 /* CallFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2515AFF9AAAB6EAFF940C43C /* CallFormatting.swift */; };
+		0903CC2B76C557DDBCAFDB6F /* CopilotCallDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84ACD1DFF0D38F15E6B68B82 /* CopilotCallDetailPane.swift */; };
+		A9E6D68BA59729BCF7D33909 /* KnowledgeCalendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38E4A65F515E03600E71A66 /* KnowledgeCalendar.swift */; };
 		F5DDFF5DBFCA16E29D1F88FF /* SweepFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */; };
 		9422CBA228687C84FCE11044 /* PermissionMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */; };
 		7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */; };
@@ -379,6 +382,9 @@
 		CA1100010000000000D00712 /* NotchLayoutPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/NotchLayoutPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00302 /* NotchPreviewWell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchPreviewWell.swift"; sourceTree = "<group>"; };
 		CA1100010000000000D00202 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsComponents.swift"; sourceTree = "<group>"; };
+		2515AFF9AAAB6EAFF940C43C /* CallFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CallFormatting.swift"; sourceTree = "<group>"; };
+		84ACD1DFF0D38F15E6B68B82 /* CopilotCallDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotCallDetailPane.swift"; sourceTree = "<group>"; };
+		A38E4A65F515E03600E71A66 /* KnowledgeCalendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/KnowledgeCalendar.swift"; sourceTree = "<group>"; };
 		7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepFormatting.swift"; sourceTree = "<group>"; };
 		E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/PermissionMonitor.swift"; sourceTree = "<group>"; };
 		8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepLifetime.swift"; sourceTree = "<group>"; };
@@ -858,6 +864,9 @@
 				CA1100010000000000D00712 /* NotchLayoutPane.swift */,
 				CA1100010000000000D00302 /* NotchPreviewWell.swift */,
 				CA1100010000000000D00202 /* SettingsComponents.swift */,
+				2515AFF9AAAB6EAFF940C43C /* CallFormatting.swift */,
+				84ACD1DFF0D38F15E6B68B82 /* CopilotCallDetailPane.swift */,
+				A38E4A65F515E03600E71A66 /* KnowledgeCalendar.swift */,
 				7C3EBB5F0620489431A68B56 /* SweepFormatting.swift */,
 				E3B6CB907120B6FE0E3F9EC4 /* PermissionMonitor.swift */,
 				8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */,
@@ -1488,6 +1497,9 @@
 				CA1100010000000000D00711 /* NotchLayoutPane.swift in Sources */,
 				CA1100010000000000D00301 /* NotchPreviewWell.swift in Sources */,
 				CA1100010000000000D00201 /* SettingsComponents.swift in Sources */,
+				FEA04E2958FDEB3EC579A459 /* CallFormatting.swift in Sources */,
+				0903CC2B76C557DDBCAFDB6F /* CopilotCallDetailPane.swift in Sources */,
+				A9E6D68BA59729BCF7D33909 /* KnowledgeCalendar.swift in Sources */,
 				F5DDFF5DBFCA16E29D1F88FF /* SweepFormatting.swift in Sources */,
 				9422CBA228687C84FCE11044 /* PermissionMonitor.swift in Sources */,
 				7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */,

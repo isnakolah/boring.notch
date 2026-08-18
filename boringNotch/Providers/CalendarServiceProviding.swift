@@ -14,6 +14,13 @@ protocol CalendarServiceProviding {
     func requestAccess(to type: EKEntityType) async throws -> Bool
     func calendars() async -> [CalendarModel]
     func events(from start: Date, to end: Date, calendars: [String]) async -> [EventModel]
+    /// Timed events starting within the next `window`, regardless of what date the
+    /// calendar UI happens to be showing.
+    ///
+    /// `events(from:to:)` is anchored to the date the user is browsing, which makes
+    /// it useless as a schedule source — walking forward a week would arm the
+    /// copilot for meetings a week away. This is its own query for that reason.
+    func upcoming(within window: TimeInterval, calendars: [String]) async -> [EventModel]
 }
 
 class CalendarService: CalendarServiceProviding {
@@ -81,6 +88,36 @@ class CalendarService: CalendarServiceProviding {
         return events.sorted { $0.start < $1.start }
     }
     
+    /// Events only — no reminders, no all-day blocks.
+    ///
+    /// The one caller is the copilot's pre-roll, which arms a meeting two minutes
+    /// before it starts. A reminder has no attendees to talk to and an all-day
+    /// entry has no start time to count down to, so neither is a meeting in the
+    /// sense that matters here.
+    ///
+    /// The window reaches slightly backwards as well as forwards: a meeting that
+    /// started ninety seconds ago is one the user is about to join late, and it is
+    /// still worth arming for.
+    func upcoming(within window: TimeInterval, calendars ids: [String]) async -> [EventModel] {
+        guard hasAccess(to: .event) else { return [] }
+        let allCalendars = await self.calendars()
+        let filtered = allCalendars.filter { ids.isEmpty || ids.contains($0.id) }
+        let ekCalendars = filtered.compactMap { model in
+            store.calendars(for: .event).first { $0.calendarIdentifier == model.id }
+        }
+        guard !ekCalendars.isEmpty else { return [] }
+
+        let now = Date()
+        let predicate = store.predicateForEvents(
+            withStart: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(window),
+            calendars: ekCalendars)
+        return store.events(matching: predicate)
+            .compactMap { EventModel(from: $0) }
+            .filter { !$0.isAllDay && !$0.type.isReminder }
+            .sorted { $0.start < $1.start }
+    }
+
     private func fetchReminders(from start: Date, to end: Date, calendars: [EKCalendar]) async -> [EventModel] {
         return await withCheckedContinuation { continuation in
             // Create predicate for reminders with due dates in the specified range
@@ -151,7 +188,8 @@ extension EventModel {
             participants: .init(from: event),
             timeZone: calendar.isSubscribed || calendar.isDelegate ? nil : event.timeZone,
             hasRecurrenceRules: event.hasRecurrenceRules || event.isDetached,
-            priority: nil
+            priority: nil,
+            seriesID: event.calendarItemExternalIdentifier
         )
     }
     

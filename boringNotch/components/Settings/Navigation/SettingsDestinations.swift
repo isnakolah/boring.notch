@@ -53,6 +53,7 @@ extension SettingsPage {
         case .copilotTranscription: CopilotTranscriptionPane()
         case .copilotHistory: CopilotHistoryPane()
         case let .copilotKnowledgeDetail(route): CopilotKnowledgeDetailPane(route: route)
+        case let .copilotCallDetail(id): CopilotCallDetailPane(callID: id)
         case .tutorCourses: TutorCoursesPane()
         case .tutorCreate: TutorCreatePane()
         case .tutorBehavior: TutorBehaviorPane()

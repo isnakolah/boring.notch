@@ -19,8 +19,10 @@ struct CallaCopilotLiveView: View {
     @State private var turns: [CallaCallTurn] = []
     @State private var now = Date()
 
-    @Default(.callaCopilotShowAnswers) private var showAnswers
-    @Default(.callaCopilotShowRollingSummary) private var showRollingSummary
+    /// Controls appear under the pointer. See the overlay in `body`.
+    @State private var showsControls = false
+
+    @Default(.callaCopilotPanelSurface) private var surface
 
     /// Answers as they arrive, newest last.
     ///
@@ -29,6 +31,9 @@ struct CallaCopilotLiveView: View {
     /// is what makes the compact panel a stream rather than a single line that
     /// silently replaces itself.
     @State private var answers: [LiveAnswer] = []
+    /// When the newest answer arrived, which decides whether it still earns the
+    /// space or the rolling account should have it back.
+    @State private var lastAnswerAt: Date?
 
     struct LiveAnswer: Identifiable, Equatable {
         let id: Int
@@ -69,7 +74,10 @@ struct CallaCopilotLiveView: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 2)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.16)) { showsControls = hovering }
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onReceive(clockTick) { value in now = value }
         .onChange(of: copilot.suggestionAfterSeq) { _, seq in
@@ -77,6 +85,7 @@ struct CallaCopilotLiveView: View {
                   !headline.isEmpty, answers.last?.id != seq
             else { return }
             answers.append(LiveAnswer(id: seq, headline: headline, angles: copilot.angles))
+            lastAnswerAt = Date()
             // A long call would otherwise grow this without bound.
             if answers.count > 30 { answers.removeFirst(answers.count - 30) }
         }
@@ -125,7 +134,7 @@ struct CallaCopilotLiveView: View {
                     // — but on its own it fired before the new row had laid
                     // out, so the view stopped a turn short of the end and the
                     // newest line was the one you could not read.
-                    .defaultScrollAnchor(.bottom)
+                    .defaultScrollAnchor(.top)
                     .onChange(of: turns.last?.seq) { _, seq in
                         guard let seq else { return }
                         Task { @MainActor in
@@ -174,25 +183,43 @@ struct CallaCopilotLiveView: View {
 
     private var pointer: some View {
         VStack(alignment: .leading, spacing: 7) {
+            // Both layouts carry it. In the two-column view it sits over the pointer
+            // column, where the eye already goes to read the answer.
+            activityChip
             switch mode {
-            case .suggesting where showAnswers:
+            case .suggesting:
                 suggestion
             case .halfDeaf:
                 note("Mic only", detail: "Grant Screen Recording so the other side of the call is transcribed.", tint: .orange)
-            case .suggesting, .listening, .ready, .unavailable:
+            case .listening, .ready, .unavailable:
                 // No question on the table is not the same as nothing to say.
                 // A rolling account of where the conversation has got to is
                 // worth the space between questions — it is what you need when
                 // you are asked "what do you think?" about the last two
                 // minutes. A real pointer always outranks it.
-                if showRollingSummary, let summary = copilot.summary, !summary.isEmpty {
+                // The account holds this column between questions, which is most of
+                // a call.
+                if let summary = copilot.summary, !summary.isEmpty {
+                    let account = splitSummary(summary)
                     VStack(alignment: .leading, spacing: 6) {
-                        label("SO FAR")
-                        Text(summary)
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(Color.white.opacity(0.9))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .textSelection(.enabled)
+                        tintedLabel("SO FAR", tint: Surface.summary.tint)
+                        // The standing paragraph is the earlier part of the call,
+                        // folded once it stopped being what anyone is discussing. It
+                        // sits above the points as background, not as a headline.
+                        if !account.standing.isEmpty {
+                            Text(account.standing)
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        // Appended at the bottom, and the last line reads loudest:
+                        // it is what is being discussed now, the ones above are
+                        // what led there. Only the tail fits this column, which
+                        // has no room to scroll beside the transcript.
+                        let recent = Array(account.points.suffix(5))
+                        ForEach(Array(recent.enumerated()), id: \.offset) { index, point in
+                            bullet(point, tint: index == recent.count - 1 ? .white : .secondary)
+                        }
                         if !copilot.openQuestions.isEmpty {
                             label("OPEN")
                             ForEach(Array(copilot.openQuestions.prefix(3).enumerated()), id: \.offset) { _, item in
@@ -217,60 +244,324 @@ struct CallaCopilotLiveView: View {
     /// Compact used to show the same single pointer as the full panel, which meant
     /// the previous answer vanished the moment the next one arrived — unreadable on a
     /// call that is still moving.
-    private var compactStream: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showRollingSummary, let summary = copilot.summary, !summary.isEmpty {
-                Text(summary)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Color.white.opacity(0.95))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        Color.black.opacity(0.5),
-                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    )
-            }
+    /// What the copilot is doing, right now.
+    ///
+    /// Three states that look identical without it: hearing you, hearing them, and
+    /// working on an answer. Colour carries the distinction at a glance — blue is
+    /// the other side, white is you, accent is the copilot itself — and the icon
+    /// carries it for anyone who cannot rely on colour.
+    private var activityChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: activity.symbol)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(activity.tint)
+                .symbolEffect(.variableColor.iterative, isActive: activity.animates)
+            Text(activity.label)
+                .font(.system(size: 9, weight: .semibold))
+                .tracking(0.4)
+                .foregroundStyle(activity.tint)
+                .fixedSize()
+            Spacer(minLength: 0)
+        }
+    }
 
-            if !showAnswers, !showRollingSummary {
-                note("Nothing selected",
-                     detail: "Turn on Answers or Summary below to see the copilot again.",
-                     tint: .orange)
-            } else if !showAnswers {
-                // Summary-only: the block above is the whole panel.
-                EmptyView()
-            } else if answers.isEmpty {
-                note("Listening…",
-                     detail: showRollingSummary
-                        ? "Answers and a running summary appear here."
-                        : "Answers appear here as they arrive.",
-                     tint: .secondary)
-            } else {
-                ScrollViewReader { proxy in
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            ForEach(showAnswers ? answers : []) { answer in
-                                answerRow(answer, isNewest: answer.id == answers.last?.id)
-                                    .id(answer.id)
-                            }
-                        }
-                        .padding(.vertical, 1)
-                    }
-                    .defaultScrollAnchor(.bottom)
-                    .onChange(of: answers.last?.id) { _, id in
-                        guard let id else { return }
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .bottom) }
+    private enum Activity {
+        case them, you, answering, summarising, idle
+
+        var label: String {
+            switch self {
+            case .them: "THEM SPEAKING"
+            case .you: "YOU SPEAKING"
+            case .answering: "FINDING AN ANSWER"
+            // Named differently because it takes longer: four seconds labelled
+            // "finding an answer" reads as a stall; the same wait labelled "catching
+            // up" reads as work.
+            case .summarising: "CATCHING UP"
+            case .idle: "LISTENING"
+            }
+        }
+
+        var symbol: String {
+            switch self {
+            case .them: "waveform"
+            case .you: "mic.fill"
+            case .answering: "sparkles"
+            case .summarising: "text.append"
+            case .idle: "ear"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .them: .blue
+            case .you: Color.white.opacity(0.8)
+            // The copilot's own colour, used nowhere else in the panel.
+            case .answering: .accentColor
+            // Quieter than answering: background work, not the thing being waited on
+            // mid-sentence.
+            case .summarising: Color.accentColor.opacity(0.65)
+            case .idle: Color.white.opacity(0.4)
+            }
+        }
+
+        /// Only the working states animate. A panel where everything moves tells you
+        /// nothing about which thing is moving.
+        var animates: Bool { self == .answering || self == .summarising }
+    }
+
+    private var activity: Activity {
+        switch copilot.working {
+        case "answer": return .answering
+        case "summary": return .summarising
+        default: break
+        }
+        switch copilot.speaking {
+        case "them": return .them
+        case "me": return .you
+        default: return .idle
+        }
+    }
+
+    /// Whether an answer is what the panel should be showing.
+    ///
+    /// A pointer is worth the space while it is still about the question on the
+    /// table. After that the rolling account is the more useful thing, and going
+    /// back to it is how the panel stops showing a stale answer to a question that
+    /// was settled two minutes ago.
+    private var answerIsCurrent: Bool {
+        guard copilot.answering, !answers.isEmpty else { return false }
+        guard let arrived = lastAnswerAt else { return false }
+        return Date().timeIntervalSince(arrived) < 45
+    }
+
+    /// The two things the panel can be showing, and the colour that says which.
+    ///
+    /// An answer takes the panel on its own whenever a question is live, so the
+    /// switcher is not a reliable read of what is currently on screen — you can
+    /// have Summary selected and be looking at an answer. One colour per kind,
+    /// carried by the rail, the heading and the bullets, answers the question
+    /// "which am I reading" without anything having to be read.
+    private enum Surface {
+        case answers, summary
+
+        /// Green speaks, blue records. Neither collides with the orange this panel
+        /// already uses for things that need checking.
+        var tint: Color {
+            switch self {
+            case .answers: Color(red: 0.36, green: 0.86, blue: 0.62)
+            case .summary: Color(red: 0.42, green: 0.68, blue: 1)
+            }
+        }
+
+        var heading: String {
+            switch self {
+            case .answers: "SAY THIS"
+            case .summary: "SO FAR"
+            }
+        }
+    }
+
+    /// What the compact panel is actually showing. Mirrors the fallthrough in
+    /// `compactStream`, and is the single place either can be changed.
+    private var shownSurface: Surface {
+        if answerIsCurrent, !answers.isEmpty { return .answers }
+        if surface == "answers", !answers.isEmpty { return .answers }
+        return .summary
+    }
+
+    /// The small panel: everything the big one has, minus the transcript column.
+    ///
+    /// Its rule is that it is never blank. A call panel showing nothing is
+    /// indistinguishable from a broken one, and the earlier version managed exactly
+    /// that — before the first brief was compiled and before anything had been
+    /// asked, both surfaces were empty and the panel showed an empty box for the
+    /// first minute of every call.
+    ///
+    /// So it falls through, most useful first: an answer while a question is live,
+    /// the compiled account once there is one, and what was just said until then.
+    private var compactStream: some View {
+        let showing = shownSurface
+        return VStack(alignment: .leading, spacing: 6) {
+            activityChip
+
+            HStack(alignment: .top, spacing: 8) {
+                // A rail down the side, in the surface's colour. Cheaper to read
+                // than a heading — it is in peripheral vision before the eye has
+                // landed on any word.
+                Capsule()
+                    .fill(showing.tint.opacity(0.55))
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    // An answer takes the panel while it is still about the question
+                    // on the table, whichever surface is selected — that is the whole
+                    // point of the thing. After that, the selection decides, and the
+                    // account gives way to plain speech only until it exists.
+                    let hasAccount = !(copilot.summary ?? "").isEmpty
+                    Text(showing == .summary && !hasAccount ? "JUST SAID" : showing.heading)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(showing.tint.opacity(0.9))
+
+                    if showing == .answers {
+                        answerScroller
+                    } else if let summary = copilot.summary, !summary.isEmpty {
+                        summaryBlock(summary)
+                    } else {
+                        recentSpeech
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .animation(.easeOut(duration: 0.18), value: showing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func pushDetailMode() {
-        engine.setAnswersOnly(showAnswers && !showRollingSummary)
+    /// The compiled account, given the whole panel because between questions it is
+    /// the whole point.
+    private func summaryBlock(_ summary: String) -> some View {
+        let account = splitSummary(summary)
+        // A log that follows its own bottom, like the transcript beside it. New
+        // points are appended below; what is already on screen never moves, so a
+        // glance costs one line of reading rather than re-finding your place.
+        return ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 5) {
+                    if !account.standing.isEmpty {
+                        Text(account.standing)
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(Color.white.opacity(0.45))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                            .padding(.bottom, 2)
+                    }
+                    ForEach(Array(account.points.enumerated()), id: \.offset) { index, point in
+                        let isNewest = index == account.points.count - 1
+                        HStack(alignment: .top, spacing: 6) {
+                            Circle()
+                                .fill(isNewest
+                                      ? Surface.summary.tint.opacity(0.9)
+                                      : Color.white.opacity(0.35))
+                                .frame(width: 3.5, height: 3.5)
+                                .padding(.top, isNewest ? 6 : 5)
+                            Text(point)
+                                .font(.system(size: isNewest ? 12 : 11, weight: isNewest ? .medium : .regular))
+                                .foregroundStyle(Color.white.opacity(isNewest ? 0.97 : 0.72))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                        .id(index)
+                        .transition(.opacity.combined(with: .offset(y: 6)))
+                    }
+                    if !copilot.openQuestions.isEmpty {
+                        label("STILL OPEN")
+                        ForEach(Array(copilot.openQuestions.prefix(2).enumerated()), id: \.offset) { _, item in
+                            bullet(item, tint: .blue)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 2)
+            }
+            // Same reasoning as the transcript: the anchor keeps the view pinned as
+            // content grows, and the explicit scroll lands the animation once the
+            // new row has actually laid out.
+            .defaultScrollAnchor(.bottom)
+            .onChange(of: account.points.count) { _, count in
+                Task { @MainActor in
+                    await Task.yield()
+                    withAnimation(.easeOut(duration: 0.22)) {
+                        proxy.scrollTo(count - 1, anchor: .bottom)
+                    }
+                }
+            }
+            .onAppear { proxy.scrollTo(account.points.count - 1, anchor: .bottom) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
+    /// The resting state: what was actually just said.
+    ///
+    /// Available from the first turn, which is what makes the blank minute
+    /// impossible — and it is genuinely useful, because the thing you most want
+    /// after glancing away is the sentence you missed.
+    @ViewBuilder
+    private var recentSpeech: some View {
+        if turns.isEmpty {
+            note("Listening…",
+                 detail: "What is said appears here, then a running account, then answers when you are asked something.",
+                 tint: .secondary)
+        } else {
+            // No heading of its own: the surface rail above already names it, and
+            // two labels in a panel this small is one too many.
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(turns.suffix(2)) { turn in
+                    HStack(alignment: .top, spacing: 6) {
+                        Text(turn.isRemote ? "THEM" : "YOU")
+                            .font(.system(size: 8.5, weight: .bold))
+                            .tracking(0.6)
+                            .foregroundStyle(turn.isRemote ? Color.blue : Color.white.opacity(0.5))
+                            .frame(width: 34, alignment: .leading)
+                            .padding(.top, 2)
+                        Text(turn.text)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Color.white.opacity(turn.seq == turns.last?.seq ? 0.95 : 0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var answerScroller: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(answers) { answer in
+                        answerRow(answer, isNewest: answer.id == answers.last?.id)
+                            .id(answer.id)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+            .defaultScrollAnchor(.top)
+            .onChange(of: answers.last?.id) { _, id in
+                guard let id else { return }
+                // `.top`, so a wrapped headline starts at its first line instead of
+                // being clipped by the panel's edge.
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .top) }
+            }
+        }
+    }
+
+    /// One point per line, as the brief writes them.
+    ///
+    /// Strips any bullet character a model added despite being asked not to, because
+    /// the alternative is a stray "-" sitting in the panel.
+    private func summaryPoints(_ summary: String) -> [String] {
+        summary
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: " \t-•*·")) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// The account arrives as one string: the standing paragraph, a blank line,
+    /// then the points. One field rather than two because the gateway writes this
+    /// same frame and knows nothing about a fold — with no blank line, everything
+    /// is points, which is exactly what it used to be.
+    private func splitSummary(_ summary: String) -> (standing: String, points: [String]) {
+        guard let gap = summary.range(of: "\n\n") else {
+            return ("", summaryPoints(summary))
+        }
+        return (
+            String(summary[summary.startIndex ..< gap.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            summaryPoints(String(summary[gap.upperBound...]))
+        )
     }
 
     private func answerRow(_ answer: LiveAnswer, isNewest: Bool) -> some View {
@@ -286,24 +577,11 @@ struct CallaCopilotLiveView: View {
             // Only the newest answer earns its alternatives; older ones are context.
             if isNewest, !answer.angles.isEmpty {
                 ForEach(Array(CallaCopilotPresentation.angleLines(answer.angles, limit: 2, characters: 70).enumerated()), id: \.offset) { _, angle in
-                    bullet(angle, tint: .white)
+                    bullet(angle, tint: Surface.answers.tint)
                 }
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        // A backing plate, for the same reason the transcript rows have one: text
-        // on bare glass is legible over a dark window and invisible over a bright
-        // one, and a call panel cannot be a coin toss.
-        .background(
-            Color.black.opacity(isNewest ? 0.62 : 0.5),
-            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(isNewest ? 0.22 : 0.12), lineWidth: 0.5)
-        )
     }
 
     private var suggestion: some View {
@@ -316,9 +594,9 @@ struct CallaCopilotLiveView: View {
             }
             if !copilot.angles.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
-                    label("ANSWER")
+                    tintedLabel("SAY THIS", tint: Surface.answers.tint)
                     ForEach(Array(CallaCopilotPresentation.angleLines(copilot.angles, limit: 3, characters: 140).enumerated()), id: \.offset) { _, angle in
-                        bullet(angle, tint: .blue)
+                        bullet(angle, tint: Surface.answers.tint)
                     }
                 }
             }
@@ -354,6 +632,15 @@ struct CallaCopilotLiveView: View {
             .foregroundStyle(Color.white.opacity(0.55))
     }
 
+    /// The same heading in a surface's colour, for the two-column layout where
+    /// both surfaces are on screen at once and only the colour tells them apart.
+    private func tintedLabel(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(tint.opacity(0.9))
+    }
+
     private func bullet(_ text: String, tint: Color) -> some View {
         HStack(alignment: .top, spacing: 6) {
             Circle()
@@ -370,41 +657,49 @@ struct CallaCopilotLiveView: View {
 
     // MARK: - Footer
 
+    /// One slim row, and only while the pointer is in the panel.
+    ///
+    /// Between glances there is nothing here worth a line of a panel this small —
+    /// the account should have it. Note what this is *not*: an overlay that appears
+    /// on hover. That was tried, and it covered the text and swallowed the first
+    /// click, because hit testing only switched on once the pointer was already over
+    /// a button. This keeps the row in the layout and collapses it, and hover is the
+    /// whole panel rather than the row, so the controls are already up and hittable
+    /// long before the pointer arrives at them.
     private var footer: some View {
-        HStack(spacing: 8) {
-            Button("End call") { engine.endCall() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(.red)
+        HStack(spacing: 6) {
+            controlButton(
+                "xmark.circle.fill",
+                label: "End call",
+                tint: .red,
+                help: "End the call"
+            ) { engine.endCall() }
+
             // Two independent switches: either, both, or neither. Cheap to flip
             // because every suggestion already carries both fields — this chooses
-            // what is worth the space, not what gets asked for. `.button` style so a
-            // pressed-in button *is* the on state, rather than a label that has to
-            // be read.
-            Toggle(isOn: $showAnswers) {
-                Label("Answers", systemImage: "bubble.left.fill")
-                    .font(.system(size: 9))
-            }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .help("Show what to say next")
-            // Answers without the summary means "answer when asked": the copilot
-            // stops remarking on every statement, which is what an interview wants.
-            .onChange(of: showAnswers) { _, _ in pushDetailMode() }
+            // what is worth the space, not what gets asked for.
+            // A choice, not two switches: both jobs run either way.
+            // The selected button carries its surface's own colour, so the switcher
+            // and the thing on screen say the same thing in the same hue.
+            controlButton(
+                "bubble.left.fill",
+                label: "Answers",
+                tint: surface == "answers" ? Surface.answers.tint : Color.white.opacity(0.45),
+                help: "Show what to say next. Questions are answered either way."
+            ) { surface = "answers" }
 
-            Toggle(isOn: $showRollingSummary) {
-                Label("Summary", systemImage: "text.alignleft")
-                    .font(.system(size: 9))
-            }
-            .toggleStyle(.button)
-            .controlSize(.small)
-            .help("Show the running account of where the call has got to")
-            .onChange(of: showRollingSummary) { _, _ in pushDetailMode() }
+            controlButton(
+                "text.alignleft",
+                label: "Summary",
+                tint: surface == "summary" ? Surface.summary.tint : Color.white.opacity(0.45),
+                help: "Show the running account. It keeps building either way."
+            ) { surface = "summary" }
 
             if !copilot.gatewayConnected {
-                Label("Gateway offline", systemImage: "wifi.slash")
+                Image(systemName: "wifi.slash")
                     .font(.system(size: 9))
                     .foregroundStyle(.orange)
+                    .help("The gateway is unreachable")
             }
             Spacer(minLength: 0)
             Text(CallaCopilotPresentation.subtitle(
@@ -412,8 +707,38 @@ struct CallaCopilotLiveView: View {
                 elapsed: nil,
                 gatewayConnected: copilot.gatewayConnected))
                 .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Color.white.opacity(0.45))
         }
+        .frame(height: showsControls ? 18 : 0, alignment: .top)
+        .opacity(showsControls ? 1 : 0)
+        .allowsHitTesting(showsControls)
+        .clipped()
+    }
+
+    private func controlButton(
+        _ symbol: String,
+        label: String,
+        tint: Color,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11))
+                if showsControls {
+                    Text(label)
+                        .font(.system(size: 9, weight: .medium))
+                        .fixedSize()
+                }
+            }
+            .foregroundStyle(tint)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     @ViewBuilder
@@ -459,7 +784,8 @@ struct CallaCopilotLiveView: View {
 }
 
 /// A recording dot that breathes while both legs are being captured.
-private struct LivePulse: View {
+/// Shared with the idle panel, which shows the same armed/idle dot.
+struct LivePulse: View {
     let active: Bool
     @State private var expanded = false
 

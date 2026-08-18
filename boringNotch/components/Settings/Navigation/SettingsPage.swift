@@ -31,6 +31,7 @@ enum SettingsPage: Hashable {
     case copilotCall, copilotIntelligence, copilotPrompts
     case copilotKnowledge, copilotTranscription, copilotHistory
     case copilotKnowledgeDetail(KnowledgeRoute)
+    case copilotCallDetail(id: String)
     // Tutor
     case tutorCourses, tutorCreate, tutorBehavior, tutorAccess, tutorEngine
     // Sweep
@@ -47,7 +48,7 @@ enum SettingsPage: Hashable {
         case .battery, .huds, .usage: return .system
         case .localSend, .kdeConnect: return .shelf
         case .copilotCall, .copilotIntelligence, .copilotPrompts, .copilotKnowledge,
-             .copilotTranscription, .copilotHistory, .copilotKnowledgeDetail:
+             .copilotTranscription, .copilotHistory, .copilotKnowledgeDetail, .copilotCallDetail:
             return .copilot
         case .tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine:
             return .tutor
@@ -77,6 +78,7 @@ enum SettingsPage: Hashable {
         case .copilotTranscription: return "Transcription"
         case .copilotHistory: return "History"
         case .copilotKnowledgeDetail: return "Details"
+        case .copilotCallDetail: return "Call"
         case .tutorCourses: return "Courses"
         case .tutorCreate: return "Create"
         case .tutorBehavior: return "Behavior"
@@ -110,6 +112,7 @@ enum SettingsPage: Hashable {
         case .copilotTranscription: return "waveform"
         case .copilotHistory: return "clock.arrow.circlepath"
         case .copilotKnowledgeDetail: return "doc.text"
+        case .copilotCallDetail: return "waveform"
         case .tutorCourses: return "books.vertical.fill"
         case .tutorCreate: return "wand.and.stars"
         case .tutorBehavior: return "slider.horizontal.3"
@@ -145,6 +148,7 @@ enum SettingsPage: Hashable {
         case .copilotTranscription: return "The speech model, and what happens after a call."
         case .copilotHistory: return "Past calls, their transcripts and what was suggested."
         case .copilotKnowledgeDetail: return nil
+        case .copilotCallDetail: return nil
         case .tutorCourses: return "Everything installed, and where you left off."
         case .tutorCreate: return "Building a new course or revising one."
         case .tutorBehavior: return "What the tutor watches, and how it points."
@@ -181,6 +185,7 @@ enum SettingsPage: Hashable {
         case .copilotTranscription: return ["whisper", "speech", "transcript", "download"]
         case .copilotHistory: return ["archive", "past calls", "export"]
         case .copilotKnowledgeDetail: return []
+        case .copilotCallDetail: return []
         case .tutorCourses: return ["lessons", "library", "resume"]
         case .tutorCreate: return ["author", "outline", "scene", "build"]
         case .tutorBehavior: return ["tooltip", "cursor", "capture", "watch"]
@@ -223,10 +228,17 @@ extension SettingsPage {
         if case let .copilotKnowledgeDetail(route) = self {
             return "copilot.knowledge.\(route.identifier)"
         }
+        if case let .copilotCallDetail(id) = self {
+            return "copilot.history.call:\(id)"
+        }
         return "\(section.rawValue).\(Self.stems[self] ?? "")"
     }
 
     init?(identifier: String) {
+        if identifier.hasPrefix("copilot.history.call:") {
+            self = .copilotCallDetail(id: String(identifier.dropFirst("copilot.history.call:".count)))
+            return
+        }
         if identifier.hasPrefix("copilot.knowledge."),
            let route = KnowledgeRoute(identifier: String(identifier.dropFirst("copilot.knowledge.".count))) {
             self = .copilotKnowledgeDetail(route)
