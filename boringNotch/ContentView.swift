@@ -510,6 +510,19 @@ struct ContentView: View {
                             onMeeting: { providers in
                                 vm.dropEvent = true
                                 routeToKnowledge(providers)
+                            },
+                            onSpringLoad: { side in
+                                vm.dropEvent = true
+                                NotchDropRouter.shared.finish()
+                                switch side {
+                                case .shelf:
+                                    coordinator.currentView = .shelf
+                                case .meeting:
+                                    coordinator.currentView = .knowledgeDrop
+                                    withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+                                        vm.open(size: knowledgeNotchSize)
+                                    }
+                                }
                             })
                     case .knowledgeDrop:
                         CallaKnowledgeDropView()

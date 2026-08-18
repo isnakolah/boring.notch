@@ -20,6 +20,11 @@ struct NotchDropChooserView: View {
     var onShelf: ([NSItemProvider]) -> Void
     /// Hands the files to the copilot. Nothing is sent anywhere.
     var onMeeting: ([NSItemProvider]) -> Void
+    /// Dwelling on a half opens that half's own pane, so the file can be dropped
+    /// straight into it — onto a particular meeting, or onto the Shelf queue.
+    var onSpringLoad: (NotchDropSide) -> Void
+
+    @State private var springTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -43,6 +48,20 @@ struct NotchDropChooserView: View {
         .padding(.top, 4)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Spring-loading, the way a Finder folder opens if you hold a drag over
+        // it. Holding still is the gesture for "this one, show me inside" —
+        // which for Remember means the meeting list, and there is no other way
+        // to aim a file at a particular meeting mid-drag.
+        .onChange(of: router.hovering) { _, side in
+            springTask?.cancel()
+            guard let side else { return }
+            springTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(420))
+                guard !Task.isCancelled, router.hovering == side else { return }
+                onSpringLoad(side)
+            }
+        }
+        .onDisappear { springTask?.cancel() }
     }
 
     private var header: some View {
@@ -105,7 +124,7 @@ struct NotchDropChooserView: View {
         .scaleEffect(active ? 1.02 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: active)
         .contentShape(Rectangle())
-        .onTapGesture { deliver(side, providers: router.pending) }
+        .onTapGesture { deliver(side, providers: router.deliverableProviders) }
         .onDrop(of: [.fileURL, .url, .utf8PlainText, .plainText, .data], delegate: HalfDelegate(
             side: side,
             onHover: { router.hover($0) },

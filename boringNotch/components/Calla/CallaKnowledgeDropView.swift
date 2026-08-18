@@ -20,6 +20,7 @@ struct CallaKnowledgeDropView: View {
     @EnvironmentObject var coordinator: BoringViewCoordinator
 
     @State private var isTargeted = false
+    @State private var paneTargeted = false
     @State private var draft = ""
 
     var body: some View {
@@ -36,6 +37,25 @@ struct CallaKnowledgeDropView: View {
         .padding(.top, 4)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // In picker mode the only drop target was the one that appears once a
+        // meeting is already chosen, so arriving here mid-drag — which is what
+        // holding over Remember now does — left the file with nowhere to land.
+        // The whole pane takes it, and the meeting is chosen afterwards.
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(paneTargeted ? Color.accentColor.opacity(0.10) : Color.clear)
+                .padding(4)
+        )
+        .onDrop(of: [.fileURL], isTargeted: $paneTargeted) { providers in
+            guard attach.presetTarget == nil else { return false }
+            Task {
+                guard await attach.accept(providers) else {
+                    attach.failure = "That is not a kind of file the copilot can read."
+                    return
+                }
+            }
+            return true
+        }
     }
 
     // MARK: - Header
