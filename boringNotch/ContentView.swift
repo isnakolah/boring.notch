@@ -304,7 +304,17 @@ struct ContentView: View {
 
             if isTargeted {
                 if vm.notchState == .closed {
-                    coordinator.currentView = .shelf
+                    // This fires the moment a drag enters, ahead of every other
+                    // drop path, and it used to hard-code the Shelf. That is why
+                    // the choice was never seen: by the time the chooser had an
+                    // opinion, the Shelf was already on screen and the answer had
+                    // been given for you.
+                    if NotchDropRouter.shared.isSplitAvailable {
+                        NotchDropRouter.shared.beginChoosing()
+                        coordinator.currentView = .dropChooser
+                    } else {
+                        coordinator.currentView = .shelf
+                    }
                     doOpen()
                 }
                 return
@@ -808,7 +818,6 @@ struct ContentView: View {
                     // onto a notch that happened to be open skipped the question
                     // entirely and sent the file.
                     guard !NotchDropRouter.shared.isChoosing else { return }
-                    if coordinator.currentView == .shelf { return }
                     if NotchDropRouter.shared.isSplitAvailable {
                         NotchDropRouter.shared.beginChoosing()
                         coordinator.currentView = .dropChooser
@@ -823,7 +832,11 @@ struct ContentView: View {
                     // Caught by the closed-notch target before either half saw it.
                     // Hold the files and leave the question up, rather than
                     // guessing — guessing is what made this confusing.
-                    if NotchDropRouter.shared.isChoosing {
+                    // A drop that outran the drag-enter — fast enough that the
+                    // choice never got on screen. Start it now and hold the
+                    // files, rather than answering it for them.
+                    if NotchDropRouter.shared.isChoosing || NotchDropRouter.shared.isSplitAvailable {
+                        NotchDropRouter.shared.beginChoosing()
                         NotchDropRouter.shared.hold(providers)
                         coordinator.currentView = .dropChooser
                         return
