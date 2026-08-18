@@ -65,10 +65,19 @@ final class CopilotLiveSession: ObservableObject {
         // Filing a document outranks the rest: it is a two-column surface and at
         // a normal tab's height its own drop target falls off the bottom.
         if NotchDropRouter.shared.isChoosing { return dropChooserNotchSize }
-        if CallaKnowledgeAttach.shared.isPresenting { return knowledgeNotchSize }
+        if CallaKnowledgeAttach.shared.isPresenting {
+            // Only the drop needs the taller surface: it still has to show what
+            // was dropped *and* the meetings it could go to. Arriving from the
+            // calendar the meeting is already settled, so it is one column and
+            // a line to type — a normal tab, like every other pane.
+            return CallaKnowledgeAttach.shared.presetTarget == nil ? knowledgeNotchSize : openNotchSize
+        }
         if signInActive || prerollActive { return openNotchSize }
         guard isLive else { return openNotchSize }
-        return layout == .full ? copilotNotchSize : copilotCompactNotchSize
+        // A call keeps the full slab whichever layout it is in: compact drops
+        // the transcript, not the panel, and shrinking the notch under a live
+        // call reads as the call having ended.
+        return copilotNotchSize
     }
 
     private var cancellables: Set<AnyCancellable> = []
