@@ -52,7 +52,15 @@ struct SettingsView: View {
         } detail: {
             NavigationStack(path: router.path) {
                 router.route.section.landingPane
-                    .navigationDestination(for: SettingsPage.self) { $0.view }
+                    .navigationDestination(for: SettingsPage.self) { page in
+                        page.view
+                            // The stack installs its own back chevron in the
+                            // titlebar strip. The breadcrumb already carries one,
+                            // in the pane where the trail is — two back buttons
+                            // for one path, and the stack's sits in a titlebar
+                            // this window otherwise keeps empty.
+                            .navigationBarBackButtonHidden(true)
+                    }
             }
             // A section change replaces the stack rather than animating a pop
             // through pages the reader never chose.

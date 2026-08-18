@@ -24,6 +24,13 @@ struct EventModel: Equatable, Identifiable {
     let timeZone: TimeZone?
     let hasRecurrenceRules: Bool
     let priority: Priority?
+    /// The recurring series this occurrence belongs to.
+    ///
+    /// `id` is `calendarItemIdentifier`, which differs for every occurrence — so a
+    /// note attached to it is lost by next week's instance of the same standup.
+    /// This is `calendarItemExternalIdentifier`, which every occurrence shares, and
+    /// it is what the copilot's knowledge and call history are keyed on.
+    var seriesID: String? = nil
 }
 
 enum AttendanceStatus: Comparable {

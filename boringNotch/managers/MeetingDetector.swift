@@ -206,6 +206,13 @@ final class MeetingDetector: ObservableObject {
         guard engine.status.copilot.available else { return }
 
         if started {
+            // A prewarmed host is already the right host for this meeting; the
+            // microphone going live is the user joining it by some other route.
+            // Releasing beats refusing, and beats spawning a second host.
+            if engine.status.copilot.prewarming {
+                MeetingPreroll.shared.release()
+                return
+            }
             guard !engine.status.copilot.running else { return }
             engine.startCall(persona: Defaults[.callaCopilotPersona],
                              model: Defaults[.callaCopilotLiveModel])

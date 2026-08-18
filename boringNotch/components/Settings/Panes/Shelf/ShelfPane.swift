@@ -7,6 +7,8 @@ import Defaults
 import SwiftUI
 
 struct Shelf: View {
+    @ObservedObject var coordinator = BoringViewCoordinator.shared
+
     
     @Default(.shelfTapToOpen) var shelfTapToOpen: Bool
     @Default(.expandedDragDetection) var expandedDragDetection: Bool
@@ -31,6 +33,10 @@ struct Shelf: View {
                     }
                     SettingRow("Open when it has items") {
                         Toggle("", isOn: $openShelfByDefault).labelsHidden().toggleStyle(.switch)
+                    }
+                    SettingRow("Always show the Shelf tab",
+                               detail: "Off hides it in the notch until the shelf has something in it.") {
+                        Toggle("", isOn: $coordinator.alwaysShowTabs).labelsHidden().toggleStyle(.switch)
                     }
                     SettingRow("Expanded drag target",
                                detail: "A larger area around the notch accepts a drop.") {

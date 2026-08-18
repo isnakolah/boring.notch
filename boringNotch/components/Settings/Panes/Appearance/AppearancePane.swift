@@ -13,22 +13,14 @@ import SwiftUI
 
 /// What the notch looks like.
 ///
-/// The Music card left for Media. Whether the spectrogram takes its colour from
-/// the album art is a fact about how music is drawn, and it was sitting two
-/// panes away from every other music setting.
+/// Mostly a way in to the three pages below it now. The Music card left for
+/// Media, and "Always show tabs" left for Shelf — it decides whether the Shelf
+/// tab is visible before the shelf has anything in it, which is a fact about the
+/// shelf and was filed under the colour of things.
 struct Appearance: View {
-    @ObservedObject var coordinator = BoringViewCoordinator.shared
 
     var body: some View {
         SettingsPane(.appearance) {
-            SettingCard("Notch") {
-                VStack(spacing: 12) {
-                    SettingRow("Always show tabs",
-                               detail: "Off hides the Shelf tab until the shelf has something in it.") {
-                        Toggle("", isOn: $coordinator.alwaysShowTabs).labelsHidden().toggleStyle(.switch)
-                    }
-                }
-            }
 
             SettingsSubpageList(section: .appearance)
         }
