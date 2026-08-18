@@ -255,8 +255,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let uuid = screen.displayUUID else { return }
         
         let screenFrame = screen.frame
-        let notchHeight = openNotchSize.height
-        let notchWidth = openNotchSize.width
+        // The largest the notch can ever be, not a normal tab's size. The drop
+        // chooser is taller than `openNotchSize`, so its lower half sat outside
+        // this rect — moving the pointer down onto a half read as leaving the
+        // notch, and moving back up re-fired the entry handler mid-drag.
+        let notchHeight = maxOpenNotchSize.height
+        let notchWidth = maxOpenNotchSize.width
         
         // Create notch region at the top-center of the screen where an open notch would occupy
         let notchRegion = CGRect(
@@ -280,13 +284,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleDragEntersNotchRegion(onScreen screen: NSScreen) {
         guard let uuid = screen.displayUUID else { return }
-        
+
+        // This runs off a global mouse monitor, outside every drop target, and
+        // it used to hard-code the Shelf. That answered the Send/Remember
+        // question on the reader's behalf — and re-answered it every time the
+        // pointer crossed back into the region, wiping the chooser mid-drag.
+        guard !NotchDropRouter.shared.ownsCurrentView else { return }
+        let destination: NotchViews
+        if NotchDropRouter.shared.isSplitAvailable {
+            NotchDropRouter.shared.beginChoosing()
+            destination = .dropChooser
+        } else {
+            destination = .shelf
+        }
+
         if Defaults[.showOnAllDisplays], let viewModel = viewModels[uuid] {
             viewModel.open()
-            coordinator.currentView = .shelf
+            coordinator.currentView = destination
         } else if !Defaults[.showOnAllDisplays], let windowScreen = window?.screen, screen == windowScreen {
             vm.open()
-            coordinator.currentView = .shelf
+            coordinator.currentView = destination
         }
     }
 

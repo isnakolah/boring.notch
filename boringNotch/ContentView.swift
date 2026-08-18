@@ -334,7 +334,7 @@ struct ContentView: View {
                 // which reads as the outer target being exited — so this timer
                 // starts while the reader is still deciding, and the notch shuts
                 // under the pointer half a second later.
-                if NotchDropRouter.shared.isChoosing { return }
+                if NotchDropRouter.shared.ownsCurrentView { return }
 
                 vm.dropEvent = false
                 if !SharingStateManager.shared.preventNotchClose {
@@ -506,6 +506,7 @@ struct ContentView: View {
                                 vm.dropEvent = true
                                 coordinator.currentView = .shelf
                                 acceptIntoShelf(providers)
+                                NotchDropRouter.shared.endDelivering()
                             },
                             onMeeting: { providers in
                                 vm.dropEvent = true
@@ -513,6 +514,7 @@ struct ContentView: View {
                             },
                             onSpringLoad: { side in
                                 vm.dropEvent = true
+                                NotchDropRouter.shared.beginDelivering()
                                 NotchDropRouter.shared.finish()
                                 switch side {
                                 case .shelf:
@@ -523,6 +525,7 @@ struct ContentView: View {
                                         vm.open(size: knowledgeNotchSize)
                                     }
                                 }
+                                NotchDropRouter.shared.endDelivering()
                             })
                     case .knowledgeDrop:
                         CallaKnowledgeDropView()
@@ -572,9 +575,7 @@ struct ContentView: View {
                 // targets was sent to a phone without being asked. It is the
                 // same question as everywhere else, so it gets the same answer.
                 if NotchDropRouter.shared.isSplitAvailable {
-                    NotchDropRouter.shared.beginChoosing()
-                    NotchDropRouter.shared.hold(providers)
-                    coordinator.currentView = .dropChooser
+                    routeDrop(providers)
                     return
                 }
                 coordinator.currentView = .shelf
@@ -592,8 +593,10 @@ struct ContentView: View {
             showCopilotSuggestion()
         }
         .onReceive(NotificationCenter.default.publisher(for: .callaKnowledgeWantsNotch)) { _ in
+            // No explicit size: the surface itself knows whether it arrived from
+            // a drop or from the calendar, and those want different heights.
             withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
-                vm.open(size: knowledgeNotchSize)
+                vm.open()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .copilotLiveDidChange)) { _ in
@@ -846,7 +849,7 @@ struct ContentView: View {
                     // used to be `notchState == .closed`, which meant dragging
                     // onto a notch that happened to be open skipped the question
                     // entirely and sent the file.
-                    guard !NotchDropRouter.shared.isChoosing else { return }
+                    guard !NotchDropRouter.shared.ownsCurrentView else { return }
                     if NotchDropRouter.shared.isSplitAvailable {
                         NotchDropRouter.shared.beginChoosing()
                         coordinator.currentView = .dropChooser
@@ -865,9 +868,7 @@ struct ContentView: View {
                     // choice never got on screen. Start it now and hold the
                     // files, rather than answering it for them.
                     if NotchDropRouter.shared.isChoosing || NotchDropRouter.shared.isSplitAvailable {
-                        NotchDropRouter.shared.beginChoosing()
-                        NotchDropRouter.shared.hold(providers)
-                        coordinator.currentView = .dropChooser
+                        routeDrop(providers)
                         return
                     }
                     coordinator.currentView = .shelf
@@ -924,9 +925,7 @@ struct ContentView: View {
             vm.dropEvent = true
             doOpen()
             if NotchDropRouter.shared.isSplitAvailable {
-                NotchDropRouter.shared.beginChoosing()
-                NotchDropRouter.shared.hold(providers)
-                coordinator.currentView = .dropChooser
+                routeDrop(providers)
                 return true
             }
             coordinator.currentView = .shelf
@@ -935,6 +934,36 @@ struct ContentView: View {
         }
         } else {
             EmptyView()
+        }
+    }
+
+    /// Sends a drop to the half it was released over.
+    ///
+    /// The chooser's own target is not the only thing that can catch a release:
+    /// the notch's outer target and the AppKit one both sit under it, and
+    /// whichever wins used to `hold` the files and ask the question a second
+    /// time — with the answer already on screen, highlighted, under the
+    /// pointer. If a side is lit, that *is* the answer.
+    private func routeDrop(_ providers: [NSItemProvider]) {
+        let router = NotchDropRouter.shared
+        guard let side = router.hovering else {
+            NotchDropRouter.log.info("routeDrop with no side — holding")
+            router.beginChoosing()
+            router.hold(providers)
+            coordinator.currentView = .dropChooser
+            return
+        }
+
+        NotchDropRouter.log.info("routeDrop \(String(describing: side), privacy: .public)")
+        router.beginDelivering()
+        router.finish()
+        switch side {
+        case .shelf:
+            coordinator.currentView = .shelf
+            acceptIntoShelf(providers)
+            router.endDelivering()
+        case .meeting:
+            routeToKnowledge(providers)
         }
     }
 
@@ -951,17 +980,22 @@ struct ContentView: View {
     /// Hands the files to the copilot. Nothing is sent anywhere.
     private func routeToKnowledge(_ providers: [NSItemProvider]) {
         Task { @MainActor in
-            guard await CallaKnowledgeAttach.shared.accept(providers) else {
-                // Nothing readable in the drop — a zip or a video. Fall back to
-                // the Shelf rather than dropping it on the floor.
-                coordinator.currentView = .shelf
-                acceptIntoShelf(providers)
-                return
+            NotchDropRouter.log.info("routeToKnowledge with \(providers.count) provider(s)")
+            let accepted = await CallaKnowledgeAttach.shared.accept(providers)
+            NotchDropRouter.log.info("accept -> \(accepted)")
+            // Asked for Remember, so show Remember. This used to fall through to
+            // the Shelf when nothing readable was found, which meant every
+            // failure — including one caused by a stale provider — looked like
+            // the Shelf having been chosen, and the actual reason never surfaced.
+            if !accepted {
+                CallaKnowledgeAttach.shared.failure =
+                    "Nothing here the copilot can read. PDFs, documents, text and images work."
             }
             coordinator.currentView = .knowledgeDrop
             withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
                 vm.open(size: knowledgeNotchSize)
             }
+            NotchDropRouter.shared.endDelivering()
         }
     }
 
