@@ -1,9 +1,23 @@
+//
+//  CallaTabView.swift
+//  boringNotch
+//
+//  Tutor's notch tab.
+//
+//  One card, two columns — the lesson on the left, how far through the course
+//  you are on the right — split the way the Usage tab splits its providers. The
+//  surface never scrolls: the open notch gives 512x168pt and cannot be pushed
+//  upward, so this shows what matters now and defers the catalogue, lifecycle
+//  and diagnostics to Tutor Settings. `CallaNotchPresentation` still owns the
+//  "what matters" call.
+//
+//  There is no row naming the tab. The reader clicked Tutor to get here; the
+//  header line inside the card says only what state it is in, and carries the
+//  two controls that belong to it.
+//
+
 import SwiftUI
 
-/// Notch tab for Tutor. The open notch gives roughly 488x130pt and cannot be
-/// scrolled upward, so this surface never scrolls: it shows only what matters
-/// at the current moment and defers the catalogue, lifecycle, and diagnostics
-/// to Tutor Settings. `CallaNotchPresentation` owns the "what matters" call.
 struct CallaTabView: View {
     @ObservedObject private var engine = CallaEngineClient.shared
     @State private var selectedCourseID = ""
@@ -30,26 +44,20 @@ struct CallaTabView: View {
     }
 
     var body: some View {
-        // Spacing and the bottom inset are load-bearing: the notch's lower
-        // corners curve inward, so a control row flush with the frame is drawn
-        // half outside the shape. Keep the last row above that curve.
-        VStack(alignment: .leading, spacing: 6) {
-            switch mode {
-            case .teaching:
-                teaching
-            // Degraded still teaches: courses are cached locally and the fast
-            // lesson path needs no Gateway, so it gets the same controls as
-            // idle. The pill is what says the Gateway is missing.
-            case .idle, .degraded:
-                if let course = selectedCourse { idle(course) } else { placeholder }
-            case .offline, .empty:
-                placeholder
+        HStack(spacing: 0) {
+            main
+                .frame(maxWidth: .infinity)
+            if let course = selectedCourse, mode != .offline, mode != .empty {
+                NotchColumnDivider()
+                progressColumn(course)
+                    .frame(width: 116)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 2)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .notchCard()
+        .notchTabInsets()
         .task {
             engine.start()
             engine.startMonitoring()
@@ -68,92 +76,134 @@ struct CallaTabView: View {
         )
     }
 
+    @ViewBuilder private var main: some View {
+        switch mode {
+        case .teaching:
+            teaching
+        // Degraded still teaches: courses are cached locally and the fast lesson
+        // path needs no Gateway, so it gets the same controls as idle. The state
+        // caps are what say the Gateway is missing.
+        case .idle, .degraded:
+            if let course = selectedCourse { idle(course) } else { placeholder }
+        case .offline, .empty:
+            placeholder
+        }
+    }
+
     // MARK: - Teaching
 
-    /// A running lesson owns the slab: which step is live, one line of what the
-    /// tutor last said, and the two controls a learner reaches for mid-lesson.
+    /// A running lesson owns the card: which step is live, what it belongs to,
+    /// and the two controls a learner reaches for mid-lesson.
     @ViewBuilder private var teaching: some View {
         let lesson = engine.status.activeLesson
         let course = courses.first { $0.id == lesson?.courseID }
         let snapshot = course?.lessons.first { $0.id == lesson?.lessonID }
 
-        HStack(spacing: 8) {
-            statusPill
+        VStack(alignment: .leading, spacing: NotchGlassSpace.snug) {
+            NotchCardHeader(state: CallaNotchPresentation.pill(for: mode).text,
+                            live: true,
+                            tint: tint(CallaNotchPresentation.pill(for: mode).tone),
+                            figure: snapshot.map { "\($0.stepCount) steps" }) {
+                NotchGlyphButton(symbol: "stop.fill", help: "Stop the lesson") { engine.stopLesson() }
+                settingsButton
+            }
+
             Text(lesson?.lessonTitle ?? "Lesson")
-                .font(.system(size: 13, weight: .semibold))
+                .font(NotchGlassType.title)
+                .foregroundStyle(NotchInk.primary)
                 .lineLimit(1)
-            Spacer(minLength: 4)
-            settingsButton
-        }
 
-        Text(CallaNotchPresentation.teachingSubtitle(
-            courseTitle: course?.title ?? "Course",
-            completed: course?.completedCount ?? 0,
-            total: course?.lessonCount ?? 0,
-            stepCount: snapshot?.stepCount ?? 0
-        ))
-        .font(.system(size: 10))
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
+            Text(course?.title ?? "Course")
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
+                .lineLimit(1)
 
-        CallaProgress(done: course?.completedCount ?? 0, total: course?.lessonCount ?? 0)
-
-        // The course thread had a line here and cost the row below it: the
-        // slab is 168pt tall and the last row was drawn through the notch's
-        // bottom curve. Stop and Ask are what a learner reaches for mid-lesson;
-        // the thread is one click away in Tutor Settings.
-        Spacer(minLength: 0)
-
-        HStack(spacing: 7) {
-            Button("Stop") { engine.stopLesson() }
-                .controlSize(.small)
             askField(placeholder: "Ask about this step")
         }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
     }
 
     // MARK: - Idle
 
-    /// No lesson running: one course, its progress, and the single next thing
-    /// to start. The lesson list lives behind the "Next" menu instead of a
-    /// column that would need the scrolling this surface does not have.
+    /// No lesson running: what Resume would start, and the progress behind it.
+    /// The lesson roster stays behind a menu — a visible list would need the
+    /// vertical scrolling this surface refuses.
     @ViewBuilder private func idle(_ course: CallaCourseSnapshot) -> some View {
-        HStack(spacing: 8) {
-            courseMenu(course)
-            Spacer(minLength: 4)
-            Text("\(course.completedCount)/\(course.lessonCount)")
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
-            statusPill
-            lessonMenu(course)
-            settingsButton
+        VStack(alignment: .leading, spacing: NotchGlassSpace.snug) {
+            NotchCardHeader(state: CallaNotchPresentation.pill(for: mode).text,
+                            live: false,
+                            tint: tint(CallaNotchPresentation.pill(for: mode).tone)) {
+                courseMenu(course)
+                lessonMenu(course)
+                NotchGlyphButton(symbol: "play.fill",
+                                 help: CallaNotchPresentation.primaryActionTitle(completedCount: course.completedCount)) {
+                    engine.resumeCourse()
+                }
+                settingsButton
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(course.nextLesson?.title ?? "Nothing queued")
+                    .font(NotchGlassType.title)
+                    .foregroundStyle(NotchInk.primary)
+                    .lineLimit(1)
+                if course.dueForReview {
+                    Circle().fill(NotchTint.attention).frame(width: 5, height: 5)
+                }
+                Spacer(minLength: 0)
+            }
+
+            Text(idleSubtitle(course))
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
+                .lineLimit(1)
+
+            // The blocked state is a caption rather than a banner that would
+            // cost the card a line it does not have.
+            if course.runtimeBlocked {
+                NotchCaps("Runtime targets another build", tint: NotchTint.attention)
+            }
         }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
 
-        CallaProgress(done: course.completedCount, total: course.lessonCount)
+    private func idleSubtitle(_ course: CallaCourseSnapshot) -> String {
+        var parts = [course.title]
+        if let steps = course.nextLesson?.stepCount, steps > 0 {
+            parts.append("\(steps) steps")
+        }
+        return parts.joined(separator: " · ")
+    }
 
-        nextLine(course)
+    // MARK: - Progress column
 
-        if course.runtimeBlocked {
-            Label("Runtime targets a different app build", systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 10))
-                .foregroundStyle(.orange)
+    private func progressColumn(_ course: CallaCourseSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            NotchCaps("Course")
+            Text("\(course.completedCount)/\(course.lessonCount)")
+                .font(NotchGlassType.figure)
+                .foregroundStyle(course.completedCount > 0 ? NotchInk.primary : NotchInk.tertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            NotchBar(fraction: course.lessonCount == 0 ? 0
+                     : Double(min(course.completedCount, course.lessonCount)) / Double(course.lessonCount),
+                     tint: mode == .teaching ? NotchTint.healthy : NotchInk.tertiary)
+            Text("lessons done")
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
                 .lineLimit(1)
         }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
 
-        Spacer(minLength: 0)
+    // MARK: - Controls
 
-        HStack(spacing: 7) {
-            Button(CallaNotchPresentation.primaryActionTitle(completedCount: course.completedCount)) {
-                engine.resumeCourse()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(!engine.status.running || course.runtimeBlocked)
-
-            Button("Again") { engine.startAgain(courseID: course.id) }
-                .controlSize(.small)
-                .disabled(!engine.status.running || course.runtimeBlocked)
-
-            askField(placeholder: "Ask about this course")
+    private var settingsButton: some View {
+        NotchGlyphButton(symbol: "slider.horizontal.3", help: "Tutor Settings") {
+            SettingsWindowController.shared.showTutorWindow()
         }
     }
 
@@ -167,42 +217,20 @@ struct CallaTabView: View {
                 }
             }
         } label: {
-            HStack(spacing: 5) {
-                Image(systemName: course.icon.isEmpty ? "books.vertical.fill" : course.icon)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.blue)
-                Text(course.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .bold))
-                    .foregroundStyle(.secondary)
-            }
+            Image(systemName: "books.vertical.fill")
+                .font(NotchGlassType.glyphSmall)
+                .foregroundStyle(NotchInk.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .help("Switch course")
         .disabled(courses.count < 2)
     }
 
-    /// What Resume will start, said in words rather than hidden in a control.
-    private func nextLine(_ course: CallaCourseSnapshot) -> some View {
-        HStack(spacing: 5) {
-            Text("NEXT")
-                .font(.system(size: 8, weight: .bold, design: .rounded))
-                .tracking(0.45)
-                .foregroundStyle(.white.opacity(0.4))
-            Text(course.nextLesson?.title ?? "Nothing queued")
-                .font(.system(size: 11, weight: .medium))
-                .lineLimit(1)
-            if course.dueForReview {
-                Circle().fill(.orange).frame(width: 5, height: 5)
-            }
-        }
-    }
-
-    /// The whole lesson roster, one icon wide. A menu carries it because a
-    /// visible list would need the vertical scrolling this surface refuses.
+    /// The whole lesson roster, one glyph wide.
     private func lessonMenu(_ course: CallaCourseSnapshot) -> some View {
         Menu {
             ForEach(course.lessons) { lesson in
@@ -215,35 +243,44 @@ struct CallaTabView: View {
                 .disabled(!engine.status.running || course.runtimeBlocked)
             }
         } label: {
-            Image(systemName: "list.bullet").font(.system(size: 11))
+            Image(systemName: "list.bullet")
+                .font(NotchGlassType.glyphSmall)
+                .foregroundStyle(NotchInk.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .foregroundStyle(.secondary)
         .help("Lessons")
         .disabled(course.lessons.isEmpty)
     }
 
-    // MARK: - Shared pieces
-
     private func askField(placeholder: String) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: NotchGlassSpace.tight) {
+            Image(systemName: "text.bubble")
+                .font(NotchGlassType.glyphSmall)
+                .foregroundStyle(NotchInk.tertiary)
             TextField(placeholder, text: $question)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11))
+                .font(NotchGlassType.detail)
+                .foregroundStyle(NotchInk.secondary)
                 .onSubmit(submitQuestion)
             Button {
                 submitQuestion()
             } label: {
-                Image(systemName: "arrow.up.circle.fill").font(.system(size: 13))
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(NotchGlassType.glyph)
+                    .foregroundStyle(Color.effectiveAccent)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.plain)
             .disabled(!CallaNotchPresentation.canAsk(question: question, running: engine.status.running))
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(.white.opacity(0.08), in: Capsule())
+        .padding(.horizontal, 10)
+        .frame(height: NotchGlassSpace.control)
+        .frame(maxWidth: .infinity)
+        .background(NotchPlane.chip,
+                    in: RoundedRectangle(cornerRadius: NotchGlassRadius.chip, style: .continuous))
     }
 
     private func submitQuestion() {
@@ -252,78 +289,39 @@ struct CallaTabView: View {
         question = ""
     }
 
-    private var statusPill: some View {
-        let pill = CallaNotchPresentation.pill(for: mode)
-        return CallaPill(text: pill.text, tint: tint(pill.tone))
-    }
-
     private func tint(_ tone: CallaNotchPresentation.Tone) -> Color {
         switch tone {
-        case .active: return .blue
-        case .ready: return .green
-        case .warning: return .orange
+        case .active: return .effectiveAccent
+        case .ready: return NotchTint.healthy
+        case .warning: return NotchTint.attention
         }
     }
 
-    private var settingsButton: some View {
-        Button { SettingsWindowController.shared.showTutorWindow() } label: {
-            Image(systemName: "slider.horizontal.3").font(.system(size: 11))
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .help("Tutor Settings")
-    }
-
-    /// Offline and empty share a frame: one sentence and the one button that
-    /// resolves it. Everything diagnostic stays in Tutor Settings' System tab.
+    /// Offline and empty share a frame: one sentence and the one control that
+    /// resolves it.
     @ViewBuilder private var placeholder: some View {
-        HStack(spacing: 8) {
-            statusPill
-            Spacer(minLength: 4)
-            settingsButton
-        }
-
-        Spacer(minLength: 0)
-
-        VStack(alignment: .leading, spacing: 4) {
-            Text(mode == .offline ? "Tutor engine is not reachable" : "No published courses")
-                .font(.system(size: 13, weight: .semibold))
-            Text(mode == .offline
-                 ? "Start the engine or check the Gateway in Tutor Settings."
-                 : "Create or restore a course in Tutor Settings.")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-            Button(mode == .offline ? "Start engine" : "Open Tutor Settings") {
-                if mode == .offline { engine.start() } else { SettingsWindowController.shared.showTutorWindow() }
+        VStack(alignment: .leading, spacing: NotchGlassSpace.snug) {
+            NotchCardHeader(state: CallaNotchPresentation.pill(for: mode).text,
+                            live: false,
+                            tint: NotchTint.attention) {
+                settingsButton
             }
-            .controlSize(.small)
-            .padding(.top, 2)
+            Text(mode == .offline ? "Tutor engine is not reachable" : "No published courses")
+                .font(NotchGlassType.title)
+                .foregroundStyle(NotchInk.primary)
+            Text(mode == .offline
+                 ? "Start the engine, or check the Gateway in Tutor Settings."
+                 : "Create or restore a course in Tutor Settings.")
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            NotchChip(action: {
+                if mode == .offline { engine.start() } else { SettingsWindowController.shared.showTutorWindow() }
+            }) {
+                Text(mode == .offline ? "Start engine" : "Open Tutor Settings")
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-
-        Spacer(minLength: 0)
-    }
-}
-
-struct CallaPill: View {
-    let text: String; let tint: Color
-    var body: some View {
-        Text(text)
-            .font(.system(size: 9, weight: .semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(tint.opacity(0.22), in: Capsule())
-            .foregroundStyle(tint)
-            .fixedSize()
-    }
-}
-
-struct CallaProgress: View {
-    let done: Int; let total: Int
-    var body: some View {
-        ProgressView(value: total == 0 ? 0 : Double(min(done, total)), total: Double(max(1, total)))
-            .tint(.blue)
-            .progressViewStyle(.linear)
-            .scaleEffect(x: 1, y: 0.7, anchor: .center)
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
     }
 }

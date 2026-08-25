@@ -40,28 +40,25 @@ struct SweepSettings: View {
     /// every other move in this window.
     @Environment(\.settingsRouter) private var router
 
-    private var paneDetail: String {
+    private var page: SettingsPage? {
         switch selectedTab {
-        case .overview: return "How much of the disk is in use, and how much of it Sweep can give back."
-        case .cleanUp: return "Choose what goes. Nothing is removed until you confirm."
-        case .history: return "What previous cleanups actually freed, measured rather than estimated."
-        case .options: return "What counts as worth reclaiming, and where to look."
+        case .overview: nil
+        case .cleanUp: .sweepCleanUp
+        case .history: .sweepHistory
+        case .options: .sweepOptions
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            SettingsPane(eyebrow: "Sweep", title: selectedTab.rawValue, detail: paneDetail) {
-                switch selectedTab {
-                case .overview: overview
-                case .cleanUp: cleanUp
-                case .history: history
-                case .options: options
-                }
-                if let error = sweep.error {
-                    SettingCard(tint: NotchTint.stuck) {
-                        Text(error).font(NotchType.rowDetail).foregroundStyle(NotchTint.stuck)
-                            .fixedSize(horizontal: false, vertical: true)
+            Group {
+                if let page {
+                    SettingsPane(page) {
+                        paneContent
+                    }
+                } else {
+                    SettingsPane(.sweep) {
+                        paneContent
                     }
                 }
             }
@@ -76,6 +73,22 @@ struct SweepSettings: View {
         .onAppear { expandedCategoryID = nil; loadOptions() }
         .onChange(of: sweep.snapshot?.preferences.candidateThresholdBytes) { loadOptions() }
         .task(id: selectedTab) { if selectedTab == .history { sweep.loadHistory() } }
+    }
+
+    @ViewBuilder
+    private var paneContent: some View {
+        switch selectedTab {
+        case .overview: overview
+        case .cleanUp: cleanUp
+        case .history: history
+        case .options: options
+        }
+        if let error = sweep.error {
+            SettingCard(tint: NotchTint.stuck) {
+                Text(error).font(NotchType.rowDetail).foregroundStyle(NotchTint.stuck)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private var overview: some View {

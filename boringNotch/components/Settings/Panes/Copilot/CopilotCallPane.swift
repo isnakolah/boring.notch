@@ -10,17 +10,19 @@ import SwiftUI
 /// arriving, built from half a conversation.
 struct CopilotCallPane: View {
     @ObservedObject private var engine = CallaEngineClient.shared
-    @ObservedObject private var detector = MeetingDetector.shared
 
     @Default(.callaCopilotEnabled) private var copilotEnabled
     @Default(.callaCopilotPersona) private var persona
     @Default(.callaCopilotLiveModel) private var model
     @Default(.callaCopilotAutoReveal) private var autoReveal
-    @Default(.callaCopilotAutoStartOnMeeting) private var autoStart
     @Default(.callaCopilotPrerollEnabled) private var preroll
     @Default(.callaCopilotPrerollLead) private var prerollLead
     @Default(.callaCopilotGlassLevel) private var glassLevel
     @Default(.callaCopilotCustomPersonas) private var customPersonas
+    @Default(.callaPanelWidth) private var panelWidth
+    @Default(.callaPanelHeight) private var panelHeight
+    @Default(.callaCompactPanelWidth) private var compactPanelWidth
+    @Default(.callaCompactPanelHeight) private var compactPanelHeight
 
     private var copilot: CallaCopilotStatus { engine.status.copilot }
 
@@ -29,9 +31,10 @@ struct CopilotCallPane: View {
             if !copilot.available { notInstalled }
             liveCard
             permissionsCard
-            autoStartCard
+                warmUpCard
             personaCard
             notchCard
+            panelSizeCard
             if let result = copilot.lastResult {
                 SettingCard("Last result") {
                     Text(result)
@@ -85,9 +88,6 @@ struct CopilotCallPane: View {
                 HStack {
                     if copilot.running {
                         Button("End call", role: .destructive) {
-                            // Ending by hand outranks the detector, or it starts
-                            // the call again four seconds later.
-                            MeetingDetector.shared.suppressUntilMicIdle()
                             engine.endCall()
                         }
                     } else {
@@ -165,9 +165,9 @@ struct CopilotCallPane: View {
         }
     }
 
-    private var autoStartCard: some View {
-        SettingCard("Start on its own",
-                    detail: "A copilot you have to remember to start is one that is off during the question worth answering.") {
+    private var warmUpCard: some View {
+        SettingCard("Before a scheduled meeting",
+                    detail: "Warms the model before a meeting. Recording always needs your Start or Join button.") {
             VStack(spacing: 12) {
                 SettingRow("Warm up before a scheduled meeting",
                            detail: "Two minutes before an event with a call link, the copilot loads its model and opens its connections so the first suggestion is not ten seconds late. Nothing is recorded: the notch shows Join, Start and Not now, and both microphones stay off until you press one.") {
@@ -188,25 +188,6 @@ struct CopilotCallPane: View {
                         SettingFact(title: "Armed for", value: armed.title, tint: NotchTint.active)
                     }
                 }
-                Divider()
-                SettingRow("Start when a meeting starts",
-                           detail: "Begins when your microphone goes live and something corroborates it — a conferencing app running, or the speakers live at the same time, which is what a two-way conversation looks like. Ends when the mic goes quiet. Ending a call by hand keeps it off until then.") {
-                    Toggle("", isOn: $autoStart).labelsHidden().toggleStyle(.switch)
-                }
-                // The two raw signals, so the detector can be understood rather
-                // than guessed at when it does something surprising.
-                SettingFact(title: "Microphone in use",
-                            value: detector.microphoneInUse ? "Yes" : "No",
-                            tint: detector.microphoneInUse ? NotchTint.active : NotchTint.paused)
-                SettingFact(title: "Conferencing app running",
-                            value: detector.meetingAppRunning ? "Yes" : "No",
-                            tint: detector.meetingAppRunning ? NotchTint.active : NotchTint.paused)
-                SettingFact(title: "Speakers live",
-                            value: detector.speakerActive ? "Yes" : "No",
-                            tint: detector.speakerActive ? NotchTint.active : NotchTint.paused)
-                SettingFact(title: "Reads as a meeting",
-                            value: detector.inMeeting ? "Yes" : "No",
-                            tint: detector.inMeeting ? NotchTint.healthy : NotchTint.paused)
             }
         }
     }
@@ -243,6 +224,113 @@ struct CopilotCallPane: View {
         }
     }
 
+    /// How big the live panel is, in both layouts.
+    ///
+    /// Two layouts rather than one size: expanded carries the transcript beside
+    /// the answer and wants room, collapsed is read at a glance and wants to be
+    /// out of the way. How much of a call belongs on screen is a matter of
+    /// screen size and taste, so it is a setting rather than a constant.
+    ///
+    /// The ranges are not decoration. The window behind the notch is created
+    /// once at a fixed ceiling, so a size outside them would draw a panel the
+    /// window cannot contain — the sliders are bounded to what can actually be
+    /// shown, and the stored value is clamped again on read.
+    /// How big the live panel is, in each layout.
+    ///
+    /// The card shows the thing it controls. Four numbers on four sliders say
+    /// nothing about the shape they make, and the panel is a shape — so each
+    /// layout gets a silhouette drawn to scale, hanging from the top edge the
+    /// way the notch does, resizing as the sliders move. The two are drawn
+    /// against the same maximum, so the collapsed panel is visibly a smaller
+    /// thing than the expanded one rather than a second diagram of the same size.
+    private var panelSizeCard: some View {
+        SettingCard(
+            "Panel size",
+            detail: "The live call panel, in each layout. Changes apply straight away."
+        ) {
+            VStack(spacing: 16) {
+                panelSizeSection(
+                    "Expanded",
+                    caption: "Answer and transcript, side by side.",
+                    width: $panelWidth,
+                    height: $panelHeight,
+                    heightRange: CallaPanelBounds.fullHeight)
+
+                Divider()
+
+                panelSizeSection(
+                    "Collapsed",
+                    caption: "The answer and the caption strip alone.",
+                    width: $compactPanelWidth,
+                    height: $compactPanelHeight,
+                    heightRange: CallaPanelBounds.compactHeight)
+
+                if !CallaPanelSize.isDefault {
+                    HStack {
+                        Spacer(minLength: 0)
+                        Button("Reset to defaults") { CallaPanelSize.reset() }
+                            .controlSize(.small)
+                    }
+                }
+            }
+        }
+    }
+
+    private func panelSizeSection(
+        _ title: String,
+        caption: String,
+        width: Binding<Double>,
+        height: Binding<Double>,
+        heightRange: ClosedRange<CGFloat>
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            PanelSilhouette(width: CGFloat(width.wrappedValue),
+                            height: CGFloat(height.wrappedValue),
+                            heightRange: heightRange)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(title)
+                        .font(NotchType.rowTitle)
+                    Spacer(minLength: 0)
+                    // One read-out for the pair. "600 × 340" is the size; two
+                    // numbers parked beside two sliders are just slider state.
+                    Text("\(Int(width.wrappedValue)) × \(Int(height.wrappedValue))")
+                        .font(NotchType.figure)
+                        .foregroundStyle(.secondary)
+                }
+                Text(caption)
+                    .font(NotchType.rowDetail)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                dimensionSlider("W", value: width, range: CallaPanelBounds.width)
+                dimensionSlider("H", value: height, range: heightRange)
+            }
+        }
+    }
+
+    private func dimensionSlider(
+        _ label: String,
+        value: Binding<Double>,
+        range: ClosedRange<CGFloat>
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(NotchType.figure)
+                .foregroundStyle(.tertiary)
+                .frame(width: 12, alignment: .leading)
+            // Continuous, and rounded in the binding. Passing `step:` draws a
+            // row of tick marks under the track — a dotted ruler that says
+            // nothing here, because the value is already shown as a number.
+            Slider(
+                value: Binding(
+                    get: { value.wrappedValue },
+                    set: { value.wrappedValue = (($0 / 2).rounded() * 2) }),
+                in: Double(range.lowerBound)...Double(range.upperBound))
+        }
+    }
+
     // The three copilot recorders moved to Settings › Shortcuts, which is now
     // the only place any of them live. Three panes used to own recorders, so
     // "what is bound to ⌥⌘C" could not be answered from one screen and nothing
@@ -251,5 +339,56 @@ struct CopilotCallPane: View {
     private func openPrivacySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// A scale drawing of the call panel, hanging from the top edge the way the
+/// notch does.
+///
+/// The point is that four numbers do not describe a shape. Drawn against the
+/// same maximum in both layouts, the two silhouettes are directly comparable —
+/// you can see that the collapsed panel is a smaller thing, not a second
+/// diagram of the same size, and you can see the proportion you are choosing
+/// before opening a call to find out.
+private struct PanelSilhouette: View {
+    let width: CGFloat
+    let height: CGFloat
+    /// The height range this layout is drawn against; the width range is shared.
+    let heightRange: ClosedRange<CGFloat>
+
+    /// The frame the silhouette is drawn inside. Fixed, so both sections line
+    /// up and the drawing does not resize as the value changes — only the shape
+    /// within it does.
+    private static let box = CGSize(width: 108, height: 74)
+
+    private var drawn: CGSize {
+        // Against the shared maximum, so the two layouts are comparable. The
+        // height uses the larger of the two ranges for the same reason.
+        let widthFraction = width / CallaPanelBounds.width.upperBound
+        let heightFraction = height / CallaPanelBounds.fullHeight.upperBound
+        return CGSize(width: max(12, Self.box.width * widthFraction),
+                      height: max(8, Self.box.height * heightFraction))
+    }
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            // The screen the notch hangs from.
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(NotchSurface.sunken)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(NotchSurface.hairline, lineWidth: 1))
+
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0, bottomLeadingRadius: 7,
+                bottomTrailingRadius: 7, topTrailingRadius: 0,
+                style: .continuous
+            )
+            .fill(Color.effectiveAccent.opacity(0.75))
+            .frame(width: drawn.width, height: drawn.height)
+        }
+        .frame(width: Self.box.width, height: Self.box.height)
+        .animation(.easeOut(duration: 0.12), value: drawn)
+        .accessibilityHidden(true)
     }
 }

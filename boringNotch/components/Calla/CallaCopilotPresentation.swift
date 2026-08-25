@@ -48,9 +48,14 @@ enum CallaCopilotPresentation {
 
     static func pill(for mode: Mode) -> Pill {
         switch mode {
-        case .suggesting: return Pill(text: "Live", tone: .active)
-        case .listening: return Pill(text: "Listening", tone: .active)
-        case .halfDeaf: return Pill(text: "Mic only", tone: .warning)
+        // What is being *heard*, not what is connected. "Live" and "Listening"
+        // were the same claim twice over and neither said whether the other
+        // side was on the recording, which is the thing that silently ruins a
+        // call. Only `suggesting` names the copilot's own state, because an
+        // answer waiting is worth the word.
+        case .suggesting: return Pill(text: "Answer ready", tone: .active)
+        case .listening: return Pill(text: "Hearing both sides", tone: .active)
+        case .halfDeaf: return Pill(text: "Only you", tone: .warning)
         case .ready: return Pill(text: "Ready", tone: .ready)
         case .unavailable: return Pill(text: "Not installed", tone: .warning)
         }
@@ -86,6 +91,31 @@ enum CallaCopilotPresentation {
         let hours = total / 3600
         if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    /// What the panel is showing, named once — in the notch's header band rather
+    /// than inside the panel.
+    ///
+    /// The heading used to sit at the top of the answer column, which spent a
+    /// line of a short panel on a two-word label while the band above it had
+    /// room to spare. Both surfaces read it, so it is computed here rather than
+    /// twice.
+    static func panelHeading(
+        surface: String,
+        hasAnswer: Bool,
+        hasSummary: Bool,
+        mode: Mode,
+        working: String?
+    ) -> String {
+        if let working, !working.isEmpty {
+            // The working states outrank the label: four seconds of silence with
+            // nothing said about it reads as a panel that has stopped.
+            return working
+        }
+        if mode == .halfDeaf, !hasAnswer { return "Only you" }
+        if surface == "question", hasAnswer { return "Say this" }
+        if hasSummary { return "So far" }
+        return "Listening"
     }
 
     /// One status line under the headline.

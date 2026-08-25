@@ -362,30 +362,6 @@ struct EventListView: View {
             openURL(url)
         }
 
-        // Joining from here is the clearest statement of intent the copilot
-        // ever gets — clearer than the microphone detector, which has to infer
-        // it. Start now rather than waiting out the detector's dwell.
-        if event.videoCallURL != nil { startCopilotForMeeting(event) }
-    }
-
-    private func startCopilotForMeeting(_ event: EventModel) {
-        guard Defaults[.callaCopilotEnabled], Defaults[.callaCopilotAutoStartOnMeeting] else { return }
-        let engine = CallaEngineClient.shared
-        guard engine.status.copilot.available else { return }
-        // The pre-roll already warmed a host for this meeting; joining is the
-        // release it was waiting for, not a reason to spawn a second one.
-        if engine.status.copilot.prewarming {
-            MeetingPreroll.shared.release()
-            return
-        }
-        guard !engine.status.copilot.running else { return }
-        // The meeting travels with the call now. It links the recording to the
-        // calendar event, scopes the knowledge that gets retrieved, and is what
-        // the end-of-call account is filed under so the next occurrence of a
-        // recurring meeting can read it.
-        engine.startCall(persona: Defaults[.callaCopilotPersona],
-                         model: Defaults[.callaCopilotLiveModel],
-                         meeting: CallaMeeting(event))
     }
 
     /// Turns the event's remaining time window into a Pomodoro plan and starts

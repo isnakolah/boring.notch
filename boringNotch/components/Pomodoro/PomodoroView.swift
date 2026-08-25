@@ -2,9 +2,18 @@
 //  PomodoroView.swift
 //  boringNotch
 //
-//  The open-notch Pomodoro section. Two states share one frame: an idle state
-//  that give focus timer its own compact cockpit. Whole section fits inside
-//  roughly 488x100pt beneath notch header.
+//  The open-notch Pomodoro section.
+//
+//  One card, two columns, split the way the Usage tab splits its two providers.
+//  Idle and running are the same frame: the figure, the field, the bar and the
+//  Today column never move — idle shows what pressing play would buy, in a
+//  quieter ink, and the transport in the header line changes shape.
+//
+//  Two earlier mistakes, both visible in the deployed build: a chrome row that
+//  spent a band of a 168pt surface naming the tab the reader had just clicked,
+//  and a separate control rail below the card, which pushed the whole layout
+//  past the notch's lower curve so the Start button was drawn outside the shape.
+//  Controls live in the card's header line now, and there is no second band.
 //
 
 import AppKit
@@ -16,287 +25,187 @@ struct PomodoroView: View {
     @Default(.pomodoroPresets) private var presets
     @Default(.pomodoroSelectedPresetID) private var selectedPresetID
 
-    @State private var customMinutes: Int = 25
-    @State private var showingCustom = false
     @FocusState private var titleFieldFocused: Bool
 
+    /// Lengths offered beside the saved presets, so a one-off block does not
+    /// need a row of its own on a surface that has no room for one.
+    private let customLengths = [15, 45, 60, 90]
+
     var body: some View {
-        Group {
-            if pomodoro.isActive {
-                runningView
-            } else {
-                idleView
-            }
+        HStack(spacing: 0) {
+            timerColumn
+                .frame(maxWidth: .infinity)
+            NotchColumnDivider()
+            todayColumn
+                .frame(width: 116)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .animation(.smooth(duration: 0.3), value: pomodoro.isActive)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        // The card takes the whole tab rather than hugging its content: a slab
+        // with a band of dead black under it reads as a layout that failed to
+        // load, not as restraint.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .notchCard()
+        .notchTabInsets()
+        .animation(.smooth(duration: 0.25), value: pomodoro.isActive)
     }
 
-    // MARK: - Running
+    // MARK: - Timer
 
-    private var runningView: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 7) {
-                phaseStatus
-                Spacer(minLength: 8)
-                todayStats
+    private var timerColumn: some View {
+        VStack(alignment: .leading, spacing: NotchGlassSpace.snug) {
+            NotchCardHeader(state: stateLine,
+                            live: pomodoro.isActive,
+                            tint: phaseTint) {
+                transport
             }
 
-            HStack(alignment: .center, spacing: 12) {
-                countdown
-                titleField
-                transportControls
-            }
-
-            phaseProgressBar
-        }
-    }
-
-    private var phaseStatus: some View {
-        HStack(spacing: 5) {
-            Image(systemName: pomodoro.statusIcon)
-                .font(.system(size: 11, weight: .semibold))
-                .contentTransition(.symbolEffect)
-            Text(pomodoro.runState == .paused ? "PAUSED" : pomodoro.phase.title.uppercased())
-                .tracking(0.45)
-            if pomodoro.phase.isWork {
-                Text("BLOCK \(pomodoro.completedWorkBlocks + 1)")
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-        }
-        .font(.system(size: 9, weight: .bold, design: .rounded))
-        .foregroundStyle(phaseTint)
-    }
-
-    private var countdown: some View {
-        VStack(alignment: .leading, spacing: -1) {
-            Text("REMAINING")
-                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.38))
-                .tracking(0.45)
-            Text(twoUnitString(pomodoro.remaining))
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-                .foregroundStyle(isFinalStretch ? .red : .white)
-                .animation(.smooth(duration: 0.25), value: pomodoro.remaining)
-                .fixedSize()
-        }
-        .fixedSize()
-    }
-
-    private var transportControls: some View {
-        HStack(spacing: 5) {
-            Button(action: pomodoro.toggle) {
-                Image(systemName: pomodoro.isRunning ? "pause.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(width: 30, height: 30)
-                    .background(Circle().fill(phaseTint))
-            }
-            .buttonStyle(.plain)
-            .help(pomodoro.isRunning ? "Pause timer" : "Resume timer")
-
-            secondaryControl(icon: "forward.end.fill", help: "Skip phase", action: pomodoro.skip)
-            secondaryControl(icon: "arrow.counterclockwise", help: "Reset phase", action: pomodoro.reset)
-            secondaryControl(icon: "stop.fill", help: "Stop timer", action: pomodoro.stop)
-        }
-        .foregroundStyle(.white)
-        .fixedSize()
-    }
-
-    private func secondaryControl(icon: String, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(.white.opacity(0.1)))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.white.opacity(0.78))
-        .help(help)
-    }
-
-    private var phaseProgressBar: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(.white.opacity(0.12))
-                Capsule()
-                    .fill(phaseTint)
-                    .frame(width: max(0, geometry.size.width * pomodoro.progress))
-            }
-        }
-        .frame(height: 4)
-        .animation(.smooth(duration: 0.3), value: pomodoro.progress)
-    }
-
-    // MARK: - Idle
-
-    private var idleView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "timer")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.effectiveAccent)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Start focus")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                    Text("Pick a session length")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.42))
-                }
-
-                Spacer(minLength: 8)
-                todayStats
-            }
-
-            HStack(spacing: 6) {
-                ForEach(presets) { preset in
-                    presetChip(preset)
-                }
-
-                customChip
-
-                Spacer(minLength: 0)
-            }
-
-            if showingCustom {
-                HStack(spacing: 8) {
-                    Text("Custom")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.5))
-
-                    Stepper(value: $customMinutes, in: 1...240, step: 5) {
-                        Text("\(customMinutes) min")
-                            .font(.system(size: 11, weight: .semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(.white)
-                    }
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(figureText)
+                    .font(NotchGlassType.hero)
+                    .foregroundStyle(figureTint)
+                    .contentTransition(.numericText())
+                    .animation(.smooth(duration: 0.25), value: pomodoro.remaining)
                     .fixedSize()
+                titleField
+            }
 
-                    Button {
-                        pomodoro.startCustom(minutes: customMinutes)
-                    } label: {
-                        Label("Start", systemImage: "play.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.effectiveAccent)
-                    .controlSize(.small)
-                }
-                .padding(.leading, 2)
-            }
-        }
-    }
+            NotchBar(fraction: pomodoro.isActive ? pomodoro.progress : 0, tint: phaseTint)
 
-    private func presetChip(_ preset: PomodoroPreset) -> some View {
-        Button {
-            selectedPresetID = preset.id
-            showingCustom = false
-            pomodoro.start(preset: preset)
-        } label: {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(preset.chipLabel)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.white)
-                Text(preset.name)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(preset.id == selectedPresetID ? .white.opacity(0.75) : .white.opacity(0.45))
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(preset.id == selectedPresetID ? Color.effectiveAccent.opacity(0.34) : Color.white.opacity(0.08))
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(preset.id == selectedPresetID ? Color.effectiveAccent.opacity(0.8) : .clear, lineWidth: 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var customChip: some View {
-        Button {
-            withAnimation(.smooth(duration: 0.2)) { showingCustom.toggle() }
-        } label: {
-            HStack(spacing: 4) {
-                Text("Custom")
-                    .font(.system(size: 11, weight: .semibold))
-                Image(systemName: showingCustom ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
-            }
-            .foregroundStyle(.white.opacity(0.75))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(.white.opacity(0.08))
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Shared
-
-    private var titleField: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            TextField("What are you working on?", text: $pomodoro.sessionTitle)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white)
-                .focused($titleFieldFocused)
+            Text(edgeNote)
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
                 .lineLimit(1)
-                // This overlay stays in layout before and after focus. The
-                // previous conditional ZStack layer changed intrinsic width
-                // when it disappeared, which made cockpit controls jump.
-                .overlay {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .allowsHitTesting(!titleFieldFocused)
-                        .onTapGesture {
-                            NSApp.activate(ignoringOtherApps: true)
-                            DispatchQueue.main.async { titleFieldFocused = true }
-                        }
-                }
-                .onSubmit { titleFieldFocused = false }
-
-            Rectangle()
-                .fill(.white.opacity(titleFieldFocused ? 0.35 : 0.12))
-                .frame(height: 1)
         }
-        .frame(minWidth: 110, maxWidth: .infinity, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
     }
 
-    private var todayStats: some View {
-        VStack(alignment: .trailing, spacing: 0) {
-            Text("TODAY")
-                .font(.system(size: 8, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.35))
-                .tracking(0.4)
-
-            HStack(spacing: 4) {
-                Text("\(pomodoro.todayCompletedWorkBlocks)")
-                    .foregroundStyle(.white)
-                Text("·")
-                    .foregroundStyle(.white.opacity(0.3))
-                Text(focusTotalString(pomodoro.todayFocusTime))
-                    .foregroundStyle(.white.opacity(0.7))
+    /// The one field, in the same slot whether or not a block is running.
+    private var titleField: some View {
+        TextField("What are you working on?", text: $pomodoro.sessionTitle)
+            .textFieldStyle(.plain)
+            .font(NotchGlassType.row)
+            .foregroundStyle(pomodoro.isActive ? NotchInk.secondary : NotchInk.tertiary)
+            .focused($titleFieldFocused)
+            .lineLimit(1)
+            // Stays in layout focused or not: a conditional layer here used to
+            // change the intrinsic width and shove the figure sideways.
+            .overlay {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .allowsHitTesting(!titleFieldFocused)
+                    .onTapGesture {
+                        NSApp.activate(ignoringOtherApps: true)
+                        DispatchQueue.main.async { titleFieldFocused = true }
+                    }
             }
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .monospacedDigit()
+            .onSubmit { titleFieldFocused = false }
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Transport in the header line, where the Usage tab keeps its refresh.
+    @ViewBuilder private var transport: some View {
+        if pomodoro.isActive {
+            NotchGlyphButton(symbol: pomodoro.isRunning ? "pause.fill" : "play.fill",
+                             help: pomodoro.isRunning ? "Pause timer" : "Resume timer",
+                             action: pomodoro.toggle)
+            NotchGlyphButton(symbol: "forward.end.fill", help: "Skip phase", action: pomodoro.skip)
+            NotchGlyphButton(symbol: "arrow.counterclockwise", help: "Reset phase", action: pomodoro.reset)
+            NotchGlyphButton(symbol: "stop.fill", help: "Stop timer", action: pomodoro.stop)
+        } else {
+            presetMenu
+            NotchGlyphButton(symbol: "play.fill", help: "Start focus") {
+                if let preset = selectedPreset { pomodoro.start(preset: preset) }
+            }
         }
+    }
+
+    /// Saved presets and a few one-off lengths. A menu rather than a rail of
+    /// chips: the choice is made rarely, and a rail costs a band this surface
+    /// does not have.
+    private var presetMenu: some View {
+        Menu {
+            ForEach(presets) { preset in
+                Button("\(preset.name) · \(preset.chipLabel)") {
+                    selectedPresetID = preset.id
+                    if pomodoro.isActive { pomodoro.start(preset: preset) }
+                }
+            }
+            Divider()
+            ForEach(customLengths, id: \.self) { minutes in
+                Button("Just \(minutes) minutes") { pomodoro.startCustom(minutes: minutes) }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(NotchGlassType.chevron)
+                .foregroundStyle(NotchInk.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
         .fixedSize()
+        .help("Choose a preset or a one-off length")
+    }
+
+    // MARK: - Today
+
+    private var todayColumn: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            NotchCaps("Today")
+            Text("\(pomodoro.todayCompletedWorkBlocks)")
+                .font(NotchGlassType.figure)
+                .foregroundStyle(pomodoro.todayCompletedWorkBlocks > 0 ? NotchInk.primary : NotchInk.tertiary)
+            Text("\(focusTotalString(pomodoro.todayFocusTime)) focused")
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
+                .lineLimit(1)
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
+
+    // MARK: - Copy
+
+    private var selectedPreset: PomodoroPreset? {
+        presets.first { $0.id == selectedPresetID } ?? presets.first
+    }
+
+    private var stateLine: String {
+        guard pomodoro.isActive else { return selectedPreset?.name ?? "Ready" }
+        if pomodoro.runState == .paused { return "Paused" }
+        guard pomodoro.phase.isWork else { return pomodoro.phase.title }
+        return "\(pomodoro.phase.title) · Block \(pomodoro.completedWorkBlocks + 1)"
+    }
+
+    /// The caption under the bar: when this phase gives out.
+    private var edgeNote: String {
+        guard pomodoro.isActive else {
+            guard let preset = selectedPreset else { return "" }
+            return "\(preset.workMinutes)m focus, then \(preset.shortBreakMinutes)m break"
+        }
+        let ends = Date().addingTimeInterval(pomodoro.remaining)
+        let next = pomodoro.phase.isWork ? "Break" : "Focus"
+        return "\(next) at \(ends.formatted(date: .omitted, time: .shortened))"
+    }
+
+    /// Running counts down; idle shows what pressing play would buy.
+    private var figureText: String {
+        guard pomodoro.isActive else {
+            let minutes = selectedPreset?.workMinutes ?? 25
+            return "\(minutes):00"
+        }
+        return notchClockString(pomodoro.remaining)
+    }
+
+    private var figureTint: Color {
+        guard pomodoro.isActive else { return NotchInk.secondary }
+        return isFinalStretch ? NotchTint.stuck : NotchInk.primary
     }
 
     private var phaseTint: Color {
-        pomodoro.runState == .paused ? .gray : pomodoro.phase.tint
+        pomodoro.runState == .paused ? NotchInk.tertiary : pomodoro.phase.tint
     }
 
     private var isFinalStretch: Bool {

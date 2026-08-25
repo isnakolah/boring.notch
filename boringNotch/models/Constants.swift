@@ -209,6 +209,19 @@ extension Defaults.Keys {
     /// Which conversation the pointers are tuned for. Bound at call start; the
     /// gateway validates it against the same allowlist.
     static let callaCopilotPersona = Key<String>("callaCopilotPersona", default: "generic")
+
+    // How big the call panel is, in both layouts. Stored as Double because
+    // `Defaults` has no CGFloat bridge; clamped on read by `CallaPanelSize`, so
+    // a value edited by hand in the plist cannot produce a panel the window is
+    // too small to draw.
+    static let callaPanelWidth = Key<Double>(
+        "callaPanelWidth", default: Double(copilotNotchSize.width))
+    static let callaPanelHeight = Key<Double>(
+        "callaPanelHeight", default: Double(copilotNotchSize.height))
+    static let callaCompactPanelWidth = Key<Double>(
+        "callaCompactPanelWidth", default: Double(copilotCompactNotchSize.width))
+    static let callaCompactPanelHeight = Key<Double>(
+        "callaCompactPanelHeight", default: Double(copilotCompactNotchSize.height))
     /// Live transcription model. The archive model is deliberately not offered:
     /// its CoreML encoder forces whisper's full 30s context per utterance.
     static let callaCopilotLiveModel = Key<String>("callaCopilotLiveModel", default: "whisper-small-en")
@@ -218,7 +231,8 @@ extension Defaults.Keys {
     static let callaCopilotArchiveRetranscribe = Key<Bool>("callaCopilotArchiveRetranscribe", default: false)
     /// Start the copilot on its own when a meeting starts, and stop it when the
     /// meeting does.
-    static let callaCopilotAutoStartOnMeeting = Key<Bool>("callaCopilotAutoStartOnMeeting", default: true)
+    /// Legacy storage only. Automatic meeting start is no longer supported.
+    static let callaCopilotAutoStartOnMeeting = Key<Bool>("callaCopilotAutoStartOnMeeting", default: false)
     /// Warm the copilot up before a meeting on the calendar starts.
     ///
     /// Separate from the microphone detector above, and it does something the
@@ -257,6 +271,8 @@ extension Defaults.Keys {
     /// only decides what is on screen. Summary is the resting state; an arriving
     /// answer takes the panel briefly whichever is selected.
     static let callaCopilotPanelSurface = Key<String>("callaCopilotPanelSurface", default: "summary")
+    /// Copilot-only settings schema. Never use global reset for a domain migration.
+    static let callaCopilotSettingsSchemaVersion = Key<Int>("callaCopilotSettingsSchemaVersion", default: 0)
 
     // MARK: Calla Intelligence
     /// Which brain answers: "local" (the Antigravity CLI on this Mac) or
@@ -277,6 +293,17 @@ extension Defaults.Keys {
         "callaIntelligenceSummaryModel", default: "gemini-3.1-pro-high")
     /// Let the gateway answer when the local brain cannot.
     static let callaIntelligenceFallback = Key<Bool>("callaIntelligenceFallback", default: true)
+    /// When the gateway socket opens on a call the local brain is answering:
+    /// `off` | `on-failure` | `warm`.
+    ///
+    /// Was not a choice: the socket connected on every call, received every turn
+    /// whether or not the gateway was allowed to answer, and the host awaited its
+    /// handshake before opening either microphone — ~1s of startup for a
+    /// connection a healthy local call never uses. `warm` keeps the instant
+    /// handover and is the default; `on-failure` connects only when the local
+    /// brain gives up, and backfills the recent transcript so the handover is not
+    /// blind; `off` never opens it, so nothing about the call leaves this Mac.
+    static let callaGatewayStandby = Key<String>("callaGatewayStandby", default: "warm")
 
     // MARK: Usage Monitor
     static let usageMonitorTab = Key<Bool>("usageMonitorTab", default: false)

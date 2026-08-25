@@ -42,12 +42,21 @@ final class UsageMonitorManager: ObservableObject {
     @Published private(set) var codex: ProviderUsageState = .idle
 
     private var inFlight: Set<String> = []
+    /// Usage badges can be recreated as the notch opens and closes. Keep the
+    /// refresh lifetime here instead of in a particular SwiftUI surface, so a
+    /// visible stale badge is never left waiting for another `onAppear`.
+    private var periodicRefreshTask: Task<Void, Never>?
 
     private init() {
         // Seed from the last successful reports so a fresh launch (or a launch
         // while Claude/Codex are unreachable) still shows the previous usage.
         if let cached = Self.loadCachedReport(for: "claude") { claude = .loaded(cached) }
         if let cached = Self.loadCachedReport(for: "codex") { codex = .loaded(cached) }
+        startPeriodicRefresh()
+    }
+
+    deinit {
+        periodicRefreshTask?.cancel()
     }
 
     // MARK: - Running out
@@ -130,6 +139,23 @@ final class UsageMonitorManager: ObservableObject {
         for provider in Self.enabledProviders {
             if isStale(state(for: provider), interval: interval) {
                 refresh(provider: provider, force: false)
+            }
+        }
+    }
+
+    private func startPeriodicRefresh() {
+        periodicRefreshTask?.cancel()
+        periodicRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.refreshIfStale()
+
+                let interval = max(30, Defaults[.usageMonitorRefreshInterval])
+                do {
+                    try await Task.sleep(for: .seconds(interval))
+                } catch {
+                    return
+                }
             }
         }
     }

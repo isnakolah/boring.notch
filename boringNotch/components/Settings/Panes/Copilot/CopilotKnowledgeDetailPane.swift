@@ -49,7 +49,8 @@ struct CopilotKnowledgeDetailPane: View {
             return choices.first { $0.scope == scope } ?? choices.first ?? .everyCall
         case .byPersona:
             return KnowledgeTarget(
-                kind: .always, title: "Every \(CallaCopilotPersona.title(persona)) call",
+                kind: .persona(id: persona),
+                title: "Every \(CallaCopilotPersona.title(persona)) call",
                 detail: "Only that persona")
         default:
             return .everyCall
@@ -58,8 +59,11 @@ struct CopilotKnowledgeDetailPane: View {
 
     private var canAdd: Bool {
         switch route {
-        case .event, .everyCall: true
-        case .byPersona, .orphaned: false
+        // By-persona is addable now that it files under the persona scope it
+        // claims. It is the answer to "the copilot should know my CV on every
+        // interview but not on a support call".
+        case .event, .everyCall, .byPersona: true
+        case .orphaned: false
         }
     }
 

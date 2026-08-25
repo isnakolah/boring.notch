@@ -74,7 +74,10 @@ struct ContentView: View {
         vm.notchState == .open && coordinator.currentView == .copilot
             // The sign-in panel takes the copilot's place, so it takes its glass
             // too — otherwise signing in drops back to the opaque slab mid-flow.
-            && (copilotSession.isLive || copilotSession.signInActive)
+            // A starting call takes the glass too: it becomes the live panel a
+            // second later, and swapping the background underneath the reader at
+            // that moment is a flash for nothing.
+            && (copilotSession.isLive || copilotSession.starting || copilotSession.signInActive)
     }
 
     @ViewBuilder
@@ -87,7 +90,10 @@ struct ContentView: View {
                 // text survives that. The frost is what makes the panel a surface
                 // rather than a window.
                 Rectangle().fill(.regularMaterial)
-                Color.black.opacity(1 - copilotGlassLevel)
+                // Frost stays dark enough for readable white text even over a
+                // bright share. The slider still controls how much desktop comes
+                // through, but never turns material into an almost-black scrim.
+                Color.black.opacity(0.68 - (0.28 * copilotGlassLevel))
             }
         } else {
             Color.black
@@ -147,11 +153,23 @@ struct ContentView: View {
                     .padding(
                         .horizontal,
                         vm.notchState == .open
-                        ? Defaults[.cornerRadiusScaling]
-                        ? (cornerRadiusInsets.opened.top) : (cornerRadiusInsets.opened.bottom)
+                        // The live call panel buys its width back. Every other
+                        // state keeps the corner inset, which is what stops a
+                        // tab's content from running into the shape's curve —
+                        // but this one is dense text on a fixed slab, and the
+                        // usual inset plus the 12 below spent about 130pt of a
+                        // 600pt panel on margins.
+                        ? (isCopilotGlass
+                           ? 10
+                           : Defaults[.cornerRadiusScaling]
+                           ? (cornerRadiusInsets.opened.top) : (cornerRadiusInsets.opened.bottom))
                         : cornerRadiusInsets.closed.bottom
                     )
-                    .padding([.horizontal, .bottom], vm.notchState == .open ? 12 : 0)
+                    // Horizontal and bottom are set apart now: the height above
+                    // is computed against a bottom inset of 12, so only the
+                    // horizontal one may vary by state.
+                    .padding(.horizontal, vm.notchState == .open ? (isCopilotGlass ? 4 : 12) : 0)
+                    .padding(.bottom, vm.notchState == .open ? 12 : 0)
                     .background(notchBackground)
                     .clipShape(currentNotchShape)
                     .overlay {
@@ -198,14 +216,8 @@ struct ContentView: View {
                             .animation(vm.notchState == .open ? openAnimation : closeAnimation, value: vm.notchState)
                             .animation(.smooth, value: gestureProgress)
                     }
-                    // A live call parks a panel over the meeting for its whole
-                    // duration, so it has to know when it is not the thing
-                    // being looked at. Moving away to click something below
-                    // fades it back to a glance-able trace; coming back to it
-                    // restores it. Only the copilot does this — every other
-                    // tab is open because it was just asked for.
-                    .opacity(isCopilotGlass && !isHovering ? 0.4 : 1)
-                    .animation(.easeOut(duration: 0.22), value: isHovering)
+                    // Live text must retain full contrast when pointer leaves.
+                    .opacity(1)
                     .contentShape(currentNotchShape)
                     .onHover { hovering in
                         handleHover(hovering)
@@ -544,6 +556,12 @@ struct ContentView: View {
                             CallaCopilotSignInView()
                         } else if copilotSession.isLive {
                             CallaCopilotLiveView()
+                        } else if copilotSession.starting {
+                            // The seconds between pressing the button and the
+                            // microphone opening. Previously this was the tab
+                            // with its Start button still on it, which read as
+                            // the press having been lost.
+                            CallaCopilotStartingView()
                         } else {
                             CallaCopilotTabView()
                         }
@@ -601,6 +619,11 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .copilotLiveDidChange)) { _ in
             syncCopilotLiveNotch()
+        }
+        // The size sliders in Settings, applied as they move rather than at the
+        // next open.
+        .onChange(of: copilotSession.panelSizeRevision) { _, _ in
+            applyLivePanelSize()
         }
         .onChange(of: vm.notchState) { _, state in
             // Only an open notch may host a caret. Closing hands the keyboard
@@ -696,6 +719,19 @@ struct ContentView: View {
         }
         coordinator.currentView = .copilot
         withAnimation(.spring(response: 0.42, dampingFraction: 0.85)) {
+            vm.open(size: copilotSession.preferredOpenSize)
+        }
+    }
+
+    /// Resizes an already-open call panel while the size sliders move.
+    ///
+    /// Guarded on the panel actually being a call: a closed notch must not pop
+    /// open because someone touched a slider, and another tab must not be
+    /// resized to the call panel's dimensions.
+    private func applyLivePanelSize() {
+        guard vm.notchState == .open,
+              coordinator.currentView == .copilot else { return }
+        withAnimation(.easeOut(duration: 0.12)) {
             vm.open(size: copilotSession.preferredOpenSize)
         }
     }

@@ -156,6 +156,7 @@ struct CallaKnowledgeDropView: View {
         case .always: "Every call"
         case .series: "Every repeat"
         case .event: "Just this one"
+        case let .persona(id): "Every \(CallaCopilotPersona.title(id)) call"
         }
     }
 
@@ -444,6 +445,7 @@ struct CallaKnowledgeDropView: View {
         case .always: "globe"
         case .series: "repeat"
         case .event: "calendar"
+        case .persona: "person.crop.rectangle"
         }
     }
 
@@ -452,6 +454,7 @@ struct CallaKnowledgeDropView: View {
         case .always: Color.white.opacity(0.5)
         case .series: Color.accentColor
         case .event: Color.accentColor.opacity(0.75)
+        case .persona: Color.accentColor.opacity(0.6)
         }
     }
 }

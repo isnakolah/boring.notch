@@ -16,6 +16,7 @@ struct CopilotIntelligencePane: View {
     @Default(.callaIntelligenceLiveTier) private var liveTier
     @Default(.callaIntelligenceSummaryModel) private var summaryModel
     @Default(.callaIntelligenceFallback) private var fallback
+    @Default(.callaGatewayStandby) private var gatewayStandby
 
     private var copilot: CallaCopilotStatus { engine.status.copilot }
 
@@ -27,11 +28,7 @@ struct CopilotIntelligencePane: View {
     }
 
     var body: some View {
-        SettingsPane(
-            eyebrow: "Call copilot",
-            title: "Intelligence",
-            detail: "Where suggestions come from. Transcription always happens on this Mac."
-        ) {
+        SettingsPane(.copilotIntelligence) {
             providerCard
             localCard
             summaryCard
@@ -236,23 +233,80 @@ struct CopilotIntelligencePane: View {
         }
     }
 
+    /// One control for two questions that were previously answered separately and
+    /// inconsistently: may the gateway answer, and when does its socket open.
+    ///
+    /// They were never independent. The socket connected on every call and
+    /// received every turn whether or not the gateway was allowed to answer — so
+    /// "fall back: off" still shipped the transcript to `nomonhomelab`, and every
+    /// call paid ~1s of handshake before its microphone opened. Collapsing them
+    /// makes the honest combinations the only reachable ones.
     private var fallbackCard: some View {
-        SettingCard("If this Mac cannot answer") {
-            SettingRow(
-                "Fall back to the gateway",
-                detail: """
-                Hands the rest of the call to the gateway when the local brain fails, \
-                and says so in the notch.
-                """
-            ) {
-                Toggle("", isOn: $fallback)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .disabled(provider != "local")
-                    .onChange(of: fallback) { _, new in
-                        engine.setIntelligence(provider: provider, fallback: new)
-                    }
+        SettingCard(
+            "If this Mac cannot answer",
+            detail: """
+            A warm gateway is connected from the start and hears the call as it \
+            happens, so a handover is instant. None of these delay recording.
+            """
+        ) {
+            VStack(spacing: 12) {
+                Picker("", selection: standbyBinding) {
+                    Text("Never").tag("off")
+                    Text("On failure").tag("on-failure")
+                    Text("Keep warm").tag("warm")
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .disabled(provider != "local")
+
+                SettingRow(standbyTitle, detail: standbyDetail) { EmptyView() }
             }
+        }
+    }
+
+    /// `fallback` stays the flag the engine and the advisor already understand —
+    /// "may the gateway answer" — and is derived rather than picked, because
+    /// "never connect" and "may answer" is not a state that means anything.
+    private var standbyBinding: Binding<String> {
+        Binding(
+            get: { fallback ? gatewayStandby : "off" },
+            set: { mode in
+                let allowed = mode != "off"
+                fallback = allowed
+                if allowed { gatewayStandby = mode }
+                engine.setIntelligence(
+                    provider: provider,
+                    fallback: allowed,
+                    gatewayStandby: allowed ? mode : "off")
+            })
+    }
+
+    private var standbyTitle: String {
+        switch standbyBinding.wrappedValue {
+        case "off": return "Nothing leaves this Mac"
+        case "on-failure": return "Connects only if the local brain gives up"
+        default: return "Connected for the whole call"
+        }
+    }
+
+    private var standbyDetail: String {
+        switch standbyBinding.wrappedValue {
+        case "off":
+            return """
+            The gateway is never opened, so no part of the transcript is sent to it. \
+            A local brain that fails simply says so — there is nowhere to hand over to.
+            """
+        case "on-failure":
+            return """
+            The call stays on this Mac while it is going well. On a failure the socket \
+            opens and the recent transcript is sent so the handover is not blind, which \
+            costs a moment at exactly the wrong time.
+            """
+        default:
+            return """
+            Every turn is sent to the gateway as it is transcribed, so it can take over \
+            mid-sentence. Its suggestions stay hidden unless the local brain gives up.
+            """
         }
     }
 }

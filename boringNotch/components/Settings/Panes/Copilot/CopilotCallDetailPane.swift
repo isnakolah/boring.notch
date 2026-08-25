@@ -25,6 +25,7 @@ struct CopilotCallDetailPane: View {
     @State private var call: CallaCallSummary?
     @State private var turns: [CallaCallTurn] = []
     @State private var suggestions: [CallaCopilotArchivedSuggestion] = []
+    @State private var recap: CallaRecapDraft?
     @State private var view: DetailView = .timeline
     @State private var loading = true
 
@@ -46,6 +47,7 @@ struct CopilotCallDetailPane: View {
         SettingsPane(SettingsPage.copilotCallDetail(id: callID), titleOverride: title) {
             if let call {
                 overviewCard(for: call)
+                recapCard
                 detailCard(for: call)
             } else if loading {
                 SettingCard {
@@ -80,6 +82,7 @@ struct CopilotCallDetailPane: View {
         guard call != nil else { return }
         engine.fetchCallTranscript(callID: callID) { turns = $0 }
         engine.fetchCallSuggestions(callID) { suggestions = $0 }
+        engine.fetchRecapDraft(callID: callID) { recap = $0 }
     }
 
     private func overviewCard(for call: CallaCallSummary) -> some View {
@@ -123,6 +126,59 @@ struct CopilotCallDetailPane: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var recapCard: some View {
+        if let recap {
+            SettingCard("Review recap", detail: recapDetail(recap), tint: recap.reviewState == "pending" ? NotchTint.active : nil) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(recap.overview)
+                        .font(NotchType.rowDetail)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    ForEach(recap.items) { item in
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.kind.replacingOccurrences(of: "_", with: " ").capitalized)
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            Text(item.text)
+                                .font(NotchType.rowDetail)
+                                .textSelection(.enabled)
+                            Text("Turns \(item.fromSeq)–\(item.toSeq)")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    if let failure = recap.failure, !failure.isEmpty {
+                        Text(failure).font(NotchType.rowDetail).foregroundStyle(NotchTint.attention)
+                    }
+                    HStack {
+                        if recap.reviewState == "pending" {
+                            Button("Approve recap") { controlRecap("approve") }
+                                .buttonStyle(.borderedProminent)
+                            Button("Reject") { controlRecap("reject") }
+                        } else {
+                            Text(recap.reviewState == "approved" ? "Approved knowledge" : "Rejected — kept in history")
+                                .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Delete", role: .destructive) { controlRecap("delete") }
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private func recapDetail(_ recap: CallaRecapDraft) -> String {
+        var values = [recap.provider, recap.model].compactMap { $0 }
+        values.append(recap.reviewState == "pending" ? "Approval required" : recap.reviewState.capitalized)
+        return values.joined(separator: " · ")
+    }
+
+    private func controlRecap(_ action: String) {
+        engine.controlRecap(action, callID: callID) { recap = $0 }
     }
 
     private func detailCard(for call: CallaCallSummary) -> some View {

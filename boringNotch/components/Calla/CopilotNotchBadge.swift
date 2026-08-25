@@ -68,13 +68,14 @@ struct CopilotNotchBadge: View {
     private var readout: some View {
         HStack(spacing: 5) {
             Text(CallaCopilotPresentation.elapsed(since: copilot.startedAt, now: now) ?? "0:00")
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
+                .font(.system(size: 13, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(Color.white.opacity(0.85))
             if answerWaiting {
                 // The one thing worth interrupting for: an answer exists and the
                 // panel is closed.
                 Circle()
-                    .fill(Color.accentColor)
+                    .fill(Color.effectiveAccent)
+                    .shadow(color: Color.effectiveAccent.opacity(0.9), radius: 4)
                     .frame(width: 5, height: 5)
                     .transition(.scale.combined(with: .opacity))
             }
@@ -97,14 +98,17 @@ struct CopilotNotchBadge: View {
     }
 
     private var tint: Color {
-        if copilot.working == "summary" { return Color.accentColor.opacity(0.65) }
-        if copilot.thinking { return .accentColor }
+        // The panel's own vocabulary, so the closed badge and the open surface
+        // teach the same code: accent is the copilot working, white is you, and
+        // amber is the one state worth checking.
+        if copilot.working == "summary" { return Color.effectiveAccent.opacity(0.65) }
+        if copilot.thinking { return .effectiveAccent }
         switch copilot.speaking {
-        case "them": return .blue
-        case "me": return Color.white.opacity(0.85)
+        case "them": return .effectiveAccent
+        case "me": return NotchInk.primary.opacity(0.85)
         // Not grey: a call that is running but hearing nothing still needs to read
         // as running, or the badge becomes indistinguishable from a stopped one.
-        default: return copilot.systemAudioActive ? Color.white.opacity(0.5) : .orange
+        default: return copilot.systemAudioActive ? NotchInk.secondary : NotchTint.attention
         }
     }
 

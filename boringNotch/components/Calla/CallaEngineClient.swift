@@ -1,11 +1,16 @@
 import Foundation
 import Defaults
 
+@objc protocol BoringCallaEngineStatusObserver {
+    func callaEngineStatusDidChange(_ data: Data)
+}
+
 @objc protocol BoringCallaEngineProtocol {
     func start(with reply: @escaping (Data) -> Void)
     func stop(with reply: @escaping (Data) -> Void)
     func applyPreferences(_ preferences: Data, with reply: @escaping (Data) -> Void)
     func status(with reply: @escaping (Data) -> Void)
+    func subscribeStatus(_ observer: BoringCallaEngineStatusObserver, with reply: @escaping (Data) -> Void)
     func requestGatewayUpdate(with reply: @escaping (Data) -> Void)
     func requestScreenRecording(with reply: @escaping (Data) -> Void)
     func requestAccessibility(with reply: @escaping (Data) -> Void)
@@ -21,6 +26,10 @@ import Defaults
     func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
     /// What the copilot returned during that call.
     func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void)
+    func copilotRecapDraft(_ callID: String, with reply: @escaping (Data) -> Void)
+    func copilotRecapControl(_ command: Data, with reply: @escaping (Data) -> Void)
+    /// The prompts the copilot would actually send, as `[path: text]`.
+    func copilotPrompts(with reply: @escaping (Data) -> Void)
     func requestCopilotPermissions(with reply: @escaping (Data) -> Void)
     func submitAgyToken(_ token: String, with reply: @escaping (Data) -> Void)
     /// Create, edit, delete or list knowledge notes. Replies with the resulting
@@ -116,12 +125,31 @@ struct CallaCopilotStatus: Codable, Equatable {
     var thinking = false
     /// Which job is in flight: `answer` or `summary`.
     var working: String? = nil
+    var questionWorking = false
+    var summaryWorking = false
     /// The newest pointer answers a question, rather than remarking on a statement.
     var answering = false
     /// Warm and ready, but deliberately not recording — the pre-roll before a
     /// scheduled meeting. `micActive` and `systemAudioActive` are both false while
     /// this is true, which is exactly the claim the pre-roll card makes.
     var prewarming = false
+    /// A host process exists and is still paying its fixed costs — loading the
+    /// model, opening the microphone. Never true at the same time as `running`.
+    ///
+    /// Before this existed the notch had nothing between "no call" and "call
+    /// live", and the ~2s the host takes to come up was drawn as the former: the
+    /// Start button sat there unchanged and the press read as lost.
+    var starting = false
+    /// Which fixed cost the host is on: `launching`, `permissions`, `model`,
+    /// `capture`, `listening`.
+    var startupStage: String? = nil
+    var modelLoaded = false
+    /// Both local lanes are open, so the next question is answered at
+    /// conversation speed rather than paying the bootstrap.
+    var brainWarm = false
+    /// Nil when the gateway is not part of this call at all — standby off, or a
+    /// local call that has not failed over. False means "not connected yet".
+    var gatewayWarm: Bool? = nil
     /// The meeting this call was armed for.
     var meetingTitle: String? = nil
     var meetingStartsAt: Date? = nil
@@ -267,6 +295,7 @@ struct CallaCopilotCommand: Codable {
     let persona: String?
     let model: String?
     let callID: String?
+    let question: String?
     /// Prompt text the user edited. Never reaches a process argument — the
     /// engine hands it to the capture host on stdin.
     let profile: CallaCopilotProfile?
@@ -278,6 +307,8 @@ struct CallaCopilotCommand: Codable {
     let summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     let fallback: Bool?
+    /// When the gateway socket opens: off | on-failure | warm.
+    let gatewayStandby: String?
     /// The calendar event this call is for.
     ///
     /// Only the identity and the event's own fields travel. The knowledge itself
@@ -286,8 +317,9 @@ struct CallaCopilotCommand: Codable {
     let meeting: CallaMeeting?
 
     enum CodingKeys: String, CodingKey {
-        case action, persona, model, profile, provider, tier, fallback, meeting
+        case action, persona, model, profile, provider, tier, fallback, meeting, question
         case summaryModel = "summary_model"
+        case gatewayStandby = "gateway_standby"
         case callID = "call_id"
     }
 
@@ -295,23 +327,65 @@ struct CallaCopilotCommand: Codable {
          persona: String? = nil,
          model: String? = nil,
          callID: String? = nil,
+         question: String? = nil,
          profile: CallaCopilotProfile? = nil,
          provider: String? = nil,
          tier: String? = nil,
          summaryModel: String? = nil,
          fallback: Bool? = nil,
+         gatewayStandby: String? = nil,
          meeting: CallaMeeting? = nil) {
         self.action = action
         self.persona = persona
         self.model = model
         self.callID = callID
+        self.question = question
         self.profile = profile
         self.provider = provider
         self.tier = tier
         self.summaryModel = summaryModel
         self.fallback = fallback
+        self.gatewayStandby = gatewayStandby
         self.meeting = meeting
     }
+}
+
+struct CallaRecapItem: Codable, Identifiable, Equatable {
+    let id: String
+    let kind: String
+    let text: String
+    let fromSeq: Int
+    let toSeq: Int
+    let resolved: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, text
+        case fromSeq = "from_seq"
+        case toSeq = "to_seq"
+        case resolved
+    }
+}
+
+struct CallaRecapDraft: Codable, Equatable {
+    let callID: String
+    let overview: String
+    let items: [CallaRecapItem]
+    let provider: String?
+    let model: String?
+    let failure: String?
+    let reviewState: String
+
+    enum CodingKeys: String, CodingKey {
+        case overview, items, provider, model, failure
+        case callID = "call_id"
+        case reviewState = "review_state"
+    }
+}
+
+private struct CallaRecapCommand: Codable {
+    let action: String
+    let callID: String
+    enum CodingKeys: String, CodingKey { case action; case callID = "call_id" }
 }
 
 /// A calendar event, on its way to the copilot.
@@ -376,19 +450,128 @@ struct CallaCopilotProfile: Codable, Equatable {
     /// Reads the current settings into a profile, or nil when nothing is set.
     @MainActor
     static var current: CallaCopilotProfile? {
-        let persona = Defaults[.callaCopilotPersona]
-        let overrides = Defaults[.callaCopilotPersonaOverrides]
-            .merging(Defaults[.callaCopilotCustomPersonas]) { override, _ in override }
+        let settings = CallaCopilotSettings.current
+        let persona = settings.persona
+        let overrides = settings.personaOverrides
+            .merging(settings.customPersonas) { override, _ in override }
         let profile = CallaCopilotProfile(
-            about: nonEmpty(Defaults[.callaCopilotAboutMe]),
+            about: nonEmpty(settings.aboutMe),
             personaGuidance: nonEmpty(overrides[persona] ?? ""),
-            baseGuidance: nonEmpty(Defaults[.callaCopilotBaseGuidance]))
+            baseGuidance: nonEmpty(settings.baseGuidance))
         return profile.isEmpty ? nil : profile
     }
 
     private static func nonEmpty(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Single typed ownership boundary for Call Copilot preferences. Existing keys
+/// remain storage during staged migration; callers use this snapshot, validate
+/// it, then atomically apply it before telling engine about next-call settings.
+@MainActor
+struct CallaCopilotSettings: Codable, Equatable {
+    static let schemaVersion = 4
+    /// The spellings the engine's own validator accepts. Kept here so an imported
+    /// settings file with a mode this build does not know is rejected at the
+    /// boundary rather than silently resolving to the default in the host.
+    static let gatewayStandbyModes: Set<String> = ["off", "on-failure", "warm"]
+
+    var enabled: Bool
+    var persona: String
+    var liveModel: String
+    var autoReveal: Bool
+    var archiveRetranscribe: Bool
+    var prerollEnabled: Bool
+    var prerollLead: Double
+    var panelSurface: String
+    var aboutMe: String
+    var personaOverrides: [String: String]
+    var customPersonas: [String: String]
+    var baseGuidance: String
+    var provider: String
+    var liveTier: String
+    var summaryModel: String
+    var fallback: Bool
+    /// Optional so a settings file exported before this field existed still
+    /// imports — the synthesized decoder demands every non-optional key, and one
+    /// missing key would throw away the whole import.
+    var gatewayStandby: String?
+
+    static var current: Self {
+        Self(enabled: Defaults[.callaCopilotEnabled], persona: Defaults[.callaCopilotPersona],
+             liveModel: Defaults[.callaCopilotLiveModel], autoReveal: Defaults[.callaCopilotAutoReveal],
+             archiveRetranscribe: Defaults[.callaCopilotArchiveRetranscribe],
+             prerollEnabled: Defaults[.callaCopilotPrerollEnabled], prerollLead: Defaults[.callaCopilotPrerollLead],
+             panelSurface: Defaults[.callaCopilotPanelSurface], aboutMe: Defaults[.callaCopilotAboutMe],
+             personaOverrides: Defaults[.callaCopilotPersonaOverrides], customPersonas: Defaults[.callaCopilotCustomPersonas],
+             baseGuidance: Defaults[.callaCopilotBaseGuidance], provider: Defaults[.callaIntelligenceProvider],
+             liveTier: Defaults[.callaIntelligenceLiveTier], summaryModel: Defaults[.callaIntelligenceSummaryModel],
+             fallback: Defaults[.callaIntelligenceFallback],
+             gatewayStandby: Defaults[.callaGatewayStandby])
+    }
+
+    static var defaults: Self {
+        Self(enabled: true, persona: "generic", liveModel: "whisper-small-en", autoReveal: true,
+             archiveRetranscribe: false, prerollEnabled: true, prerollLead: 120,
+             panelSurface: "summary", aboutMe: "", personaOverrides: [:], customPersonas: [:],
+             baseGuidance: "", provider: "local", liveTier: "balanced",
+             summaryModel: "gemini-3.1-pro-high", fallback: true, gatewayStandby: "warm")
+    }
+
+    static func exportData() throws -> Data { try JSONEncoder().encode(current) }
+
+    static func importData(_ data: Data) throws {
+        var value = try JSONDecoder().decode(Self.self, from: data)
+        if value.panelSurface == "answers" { value.panelSurface = "question" }
+        try apply(value)
+        Defaults[.callaCopilotSettingsSchemaVersion] = schemaVersion
+    }
+
+    static func reset() { try? apply(defaults) }
+
+    static func migrate() {
+        guard Defaults[.callaCopilotSettingsSchemaVersion] < schemaVersion else { return }
+        var value = current
+        if value.panelSurface == "answers" { value.panelSurface = "question" }
+        if !["summary", "question"].contains(value.panelSurface) { value.panelSurface = "summary" }
+        if !["local", "gateway"].contains(value.provider) { value.provider = "local" }
+        if !["fast", "balanced", "deep"].contains(value.liveTier) { value.liveTier = "balanced" }
+        if !Self.gatewayStandbyModes.contains(value.gatewayStandby ?? "") { value.gatewayStandby = "warm" }
+        if !["whisper-small-en", "whisper-base-en"].contains(value.liveModel) { value.liveModel = "whisper-small-en" }
+        try? apply(value)
+        Defaults[.callaCopilotSettingsSchemaVersion] = schemaVersion
+    }
+
+    static func apply(_ value: Self) throws {
+        guard ["summary", "question"].contains(value.panelSurface),
+              ["local", "gateway"].contains(value.provider),
+              ["fast", "balanced", "deep"].contains(value.liveTier),
+              Self.gatewayStandbyModes.contains(value.gatewayStandby ?? "warm"),
+              ["whisper-small-en", "whisper-base-en"].contains(value.liveModel),
+              (30...300).contains(value.prerollLead) else { throw ValidationError.invalid }
+        Defaults[.callaCopilotEnabled] = value.enabled
+        Defaults[.callaCopilotPersona] = value.persona
+        Defaults[.callaCopilotLiveModel] = value.liveModel
+        Defaults[.callaCopilotAutoReveal] = value.autoReveal
+        Defaults[.callaCopilotArchiveRetranscribe] = value.archiveRetranscribe
+        Defaults[.callaCopilotPrerollEnabled] = value.prerollEnabled
+        Defaults[.callaCopilotPrerollLead] = value.prerollLead
+        Defaults[.callaCopilotPanelSurface] = value.panelSurface
+        Defaults[.callaCopilotAboutMe] = value.aboutMe
+        Defaults[.callaCopilotPersonaOverrides] = value.personaOverrides
+        Defaults[.callaCopilotCustomPersonas] = value.customPersonas
+        Defaults[.callaCopilotBaseGuidance] = value.baseGuidance
+        Defaults[.callaIntelligenceProvider] = value.provider
+        Defaults[.callaIntelligenceLiveTier] = value.liveTier
+        Defaults[.callaIntelligenceSummaryModel] = value.summaryModel
+        Defaults[.callaIntelligenceFallback] = value.fallback
+        Defaults[.callaGatewayStandby] = value.gatewayStandby ?? "warm"
+    }
+
+    enum ValidationError: LocalizedError { case invalid
+        var errorDescription: String? { "Copilot settings contain unsupported values" }
     }
 }
 
@@ -510,6 +693,10 @@ final class CallaEngineClient: ObservableObject {
     @Published private(set) var status = CallaEngineStatus()
     private var connection: NSXPCConnection?
     private var monitorTask: Task<Void, Never>?
+    private lazy var statusObserver = StatusObserver { [weak self] data in
+        guard let self, let result = try? Self.decoder.decode(CallaEngineStatus.self, from: data) else { return }
+        self.apply(result)
+    }
 
     private init() {}
 
@@ -536,7 +723,14 @@ final class CallaEngineClient: ObservableObject {
                 // cadence it then sat there for up to 4s more, which is longer than
                 // the answer took and long enough for the moment to pass.
                 let onACall = self.status.copilot.running
-                let interval: Double = signingIn ? 0.5 : (onACall ? 0.6 : (teaching ? 2 : 4))
+                // A call on the way up is the other case where the poll *is* the
+                // latency, and a tighter one: every startup step the host
+                // publishes is a line the panel wants to draw, and at the idle
+                // cadence the whole startup would land as one jump at the end.
+                let comingUp = self.callIsComingUp
+                let interval: Double = comingUp
+                    ? 0.25
+                    : (signingIn ? 0.5 : (onACall ? 0.6 : (teaching ? 2 : 4)))
                 try? await Task.sleep(for: .seconds(interval))
             }
         }
@@ -666,6 +860,20 @@ final class CallaEngineClient: ObservableObject {
         let previousCopilot = status.copilot
         status = result
 
+        // The host now speaks for itself, so our optimistic claim stands down.
+        // Also released on a host that reports a failure, and on the timeout —
+        // otherwise a call that never came up would leave the notch starting
+        // forever with no way back to the button.
+        if result.copilot.running {
+            // It is a call now, not a warm host on spec.
+            armedSpeculativePrewarm = false
+        }
+        if result.copilot.starting || result.copilot.running {
+            endLaunch()
+        } else if let deadline = launchDeadline, Date() >= deadline {
+            endLaunch()
+        }
+
         // A new pointer is the one copilot event worth interrupting for. Keyed
         // on the turn it answers, so a poll that re-reads the same suggestion
         // does not re-open the notch every two seconds.
@@ -694,8 +902,51 @@ final class CallaEngineClient: ObservableObject {
             loginAgy()
             return
         }
+        // A warm host is already most of a call. Promote it rather than asking
+        // the engine to spawn a second one, which it would refuse outright with
+        // "Call already running" — the warm-up would have made the button dead.
+        if status.copilot.prewarming {
+            armedSpeculativePrewarm = false
+            beginLaunch()
+            releaseCall()
+            return
+        }
+
+        // Set here rather than waited for.
+        //
+        // The engine cannot report a host that does not exist yet, and the poll
+        // that would notice it is up to four seconds away. Claiming the launch
+        // locally is what makes the button respond to the press; the host's own
+        // status replaces this the moment it lands, and `launchDeadline` gives up
+        // if it never does.
+        beginLaunch()
         send(callCommand("start", persona: persona, model: model, meeting: meeting))
     }
+
+    /// A call this app has asked for and not yet seen come up.
+    ///
+    /// Cleared by the host reporting for itself — either `starting`, which means
+    /// the process is alive and the claim is now the host's rather than ours, or
+    /// `running`, which means it beat us to it.
+    @Published private(set) var launchingCall = false
+    private var launchDeadline: Date?
+    /// Long enough to cover a cold model load and a TCC prompt, short enough that
+    /// a host that died on launch does not leave the notch waiting forever.
+    private static let launchTimeout: TimeInterval = 30
+
+    private func beginLaunch() {
+        launchingCall = true
+        launchDeadline = Date().addingTimeInterval(Self.launchTimeout)
+    }
+
+    private func endLaunch() {
+        launchingCall = false
+        launchDeadline = nil
+    }
+
+    /// True while the user should be looking at a starting call — ours by claim,
+    /// or the host's by report.
+    var callIsComingUp: Bool { launchingCall || status.copilot.starting }
 
     /// Boots everything a call needs — the model, both `agy` lanes, the knowledge —
     /// without starting either capture leg.
@@ -716,6 +967,55 @@ final class CallaEngineClient: ObservableObject {
         send(callCommand("prewarm", persona: persona, model: model, meeting: meeting))
     }
 
+    /// Arms the copilot because a call now looks likely — the user has the
+    /// Copilot tab open in front of them.
+    ///
+    /// The local brain costs ~3.4s to boot its language server and several more
+    /// to bootstrap both conversation lanes, and none of that can start until a
+    /// host exists. Paid at Start, it lands squarely on the first question of the
+    /// call: measured ~10-15s for the opening answer against ~2.5s for every one
+    /// after it. Paid while someone is looking at the tab deciding whether to
+    /// begin, it is usually finished before they press anything.
+    ///
+    /// Deliberately reuses the pre-roll rather than adding a second warm-up path:
+    /// "warm but not recording" is a state the host, the engine and the notch all
+    /// already model, and the microphones stay shut until `releaseCall()`.
+    func prewarmForImminentCall() {
+        guard Defaults[.callaCopilotEnabled] else { return }
+        // Only the local brain has anything worth warming; a gateway call has no
+        // per-call boot cost to move.
+        guard Defaults[.callaIntelligenceProvider] == "local" else { return }
+        // Nothing to arm for, or nothing that would succeed.
+        guard status.copilot.agyAvailable, status.copilot.agyLoggedIn else { return }
+        // A host already exists — starting, running, or somebody else's pre-roll.
+        guard !status.copilot.running, !status.copilot.starting,
+              !status.copilot.prewarming, !launchingCall, !armedSpeculativePrewarm
+        else { return }
+        armedSpeculativePrewarm = true
+        send(callCommand("prewarm", persona: Defaults[.callaCopilotPersona],
+                         model: Defaults[.callaCopilotLiveModel], meeting: nil))
+    }
+
+    /// Stands the speculative pre-roll down when the user navigates away without
+    /// starting a call.
+    ///
+    /// Only ever stops a host this method armed. A pre-roll belonging to a
+    /// scheduled meeting carries a `meetingTitle` and is `MeetingPreroll`'s to
+    /// cancel — tearing that one down because someone glanced at another tab
+    /// would silently disarm the feature they scheduled.
+    func cancelSpeculativePrewarm() {
+        guard armedSpeculativePrewarm else { return }
+        armedSpeculativePrewarm = false
+        // Never touch a host that has become a real call, and never one armed for
+        // a meeting.
+        guard !status.copilot.running, status.copilot.meetingTitle == nil else { return }
+        guard status.copilot.prewarming || status.copilot.starting else { return }
+        endCall()
+    }
+
+    /// Whether the warm host currently up is one this app armed on spec.
+    private var armedSpeculativePrewarm = false
+
     /// Promotes a warmed-up copilot to a recording one. This is the moment capture
     /// starts, and it only ever happens because the user pressed something.
     func releaseCall() {
@@ -725,15 +1025,17 @@ final class CallaEngineClient: ObservableObject {
     private func callCommand(
         _ action: String, persona: String, model: String, meeting: CallaMeeting?
     ) -> CallaCopilotCommand {
-        CallaCopilotCommand(
+        let settings = CallaCopilotSettings.current
+        return CallaCopilotCommand(
             action: action,
             persona: persona,
             model: model,
             profile: CallaCopilotProfile.current,
-            provider: Defaults[.callaIntelligenceProvider],
-            tier: Defaults[.callaIntelligenceLiveTier],
-            summaryModel: Defaults[.callaIntelligenceSummaryModel],
-            fallback: Defaults[.callaIntelligenceFallback],
+            provider: settings.provider,
+            tier: settings.liveTier,
+            summaryModel: settings.summaryModel,
+            fallback: settings.fallback,
+            gatewayStandby: settings.gatewayStandby,
             meeting: meeting)
     }
 
@@ -745,18 +1047,24 @@ final class CallaEngineClient: ObservableObject {
         provider: String,
         tier: String? = nil,
         summaryModel: String? = nil,
-        fallback: Bool? = nil
+        fallback: Bool? = nil,
+        gatewayStandby: String? = nil
     ) {
         send(CallaCopilotCommand(
             action: "set_provider",
             provider: provider,
             tier: tier,
             summaryModel: summaryModel,
-            fallback: fallback))
+            fallback: fallback,
+            gatewayStandby: gatewayStandby))
     }
 
     func endCall() {
         send(CallaCopilotCommand(action: "stop"))
+    }
+
+    func answerSelectedText(_ text: String) {
+        send(CallaCopilotCommand(action: "answer", question: text))
     }
 
     func setCallPersona(_ persona: String) {
@@ -899,6 +1207,47 @@ final class CallaEngineClient: ObservableObject {
         }
     }
 
+    func fetchRecapDraft(callID: String, completion: @escaping (CallaRecapDraft?) -> Void) {
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+            Task { @MainActor in completion(nil) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotRecapDraft(callID) { data in
+            let recap = try? Self.decoder.decode(CallaRecapDraft.self, from: data)
+            Task { @MainActor in completion(recap) }
+        }
+    }
+
+    /// The effective prompt pack, keyed by its path inside the pack.
+    ///
+    /// The Settings pane used to hold its own copy of the default wording, which
+    /// drifted until it was previewing a JSON contract the host had stopped
+    /// using. This asks the side of the sandbox line that actually sends them.
+    func fetchPrompts(completion: @escaping ([String: String]) -> Void) {
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+            Task { @MainActor in completion([:]) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotPrompts { data in
+            let prompts = (try? JSONDecoder().decode([String: String].self, from: data)) ?? [:]
+            Task { @MainActor in completion(prompts) }
+        }
+    }
+
+    func controlRecap(_ action: String, callID: String, completion: @escaping (CallaRecapDraft?) -> Void) {
+        guard let payload = try? JSONEncoder().encode(CallaRecapCommand(action: action, callID: callID)) else {
+            completion(nil); return
+        }
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in
+            Task { @MainActor in completion(nil) }
+        }) as? BoringCallaEngineProtocol else { return }
+        proxy.copilotRecapControl(payload) { data in
+            let recap = try? Self.decoder.decode(CallaRecapDraft.self, from: data)
+            Task { @MainActor in completion(recap) }
+        }
+    }
+
     /// Re-runs the large model over a finished call's saved audio.
     func retranscribe(callID: String) {
         send(CallaCopilotCommand(action: "archive", callID: callID))
@@ -955,7 +1304,13 @@ final class CallaEngineClient: ObservableObject {
 
     private func makeConnection() -> NSXPCConnection {
         let connection = NSXPCConnection(serviceName: "theboringteam.boringnotch.BoringCallaEngine")
-        connection.remoteObjectInterface = NSXPCInterface(with: BoringCallaEngineProtocol.self)
+        let remoteInterface = NSXPCInterface(with: BoringCallaEngineProtocol.self)
+        remoteInterface.setInterface(
+            NSXPCInterface(with: BoringCallaEngineStatusObserver.self),
+            for: #selector(BoringCallaEngineProtocol.subscribeStatus(_:with:)), argumentIndex: 0, ofReply: false)
+        connection.remoteObjectInterface = remoteInterface
+        connection.exportedInterface = NSXPCInterface(with: BoringCallaEngineStatusObserver.self)
+        connection.exportedObject = statusObserver
         connection.invalidationHandler = { [weak self] in
             Task { @MainActor in
                 self?.connection = nil
@@ -964,7 +1319,21 @@ final class CallaEngineClient: ObservableObject {
         }
         connection.resume()
         self.connection = connection
+        if let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in }) as? BoringCallaEngineProtocol {
+            proxy.subscribeStatus(statusObserver) { [weak self] data in
+                guard let self, let result = try? Self.decoder.decode(CallaEngineStatus.self, from: data) else { return }
+                Task { @MainActor in self.apply(result) }
+            }
+        }
         return connection
+    }
+}
+
+private final class StatusObserver: NSObject, BoringCallaEngineStatusObserver {
+    private let receive: (Data) -> Void
+    init(receive: @escaping (Data) -> Void) { self.receive = receive }
+    func callaEngineStatusDidChange(_ data: Data) {
+        Task { @MainActor in receive(data) }
     }
 }
 

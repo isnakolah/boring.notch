@@ -14,6 +14,7 @@ import SwiftUI
 /// the engine's allowlist stance intact for everything that names a process.
 struct CopilotPromptsPane: View {
     @ObservedObject private var engine = CallaEngineClient.shared
+    @ObservedObject private var defaults = CopilotPromptDefaults.shared
 
     @Default(.callaCopilotAboutMe) private var aboutMe
     @Default(.callaCopilotPersona) private var persona
@@ -33,6 +34,7 @@ struct CopilotPromptsPane: View {
             advancedCard
             previewCard
         }
+        .onAppear { defaults.loadIfNeeded() }
     }
 
     // MARK: - About me
@@ -65,7 +67,7 @@ struct CopilotPromptsPane: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     PromptEditor(text: personaBinding,
-                                 placeholder: CopilotPromptDefaults.personaHint(for: editingPersona),
+                                 placeholder: defaults.personaHint(for: editingPersona),
                                  minHeight: 120)
                     HStack {
                         CharacterCount(count: (overrides[editingPersona] ?? customPersonas[editingPersona] ?? "").count,
@@ -78,7 +80,7 @@ struct CopilotPromptsPane: View {
                             Button("Reset to default") { overrides[editingPersona] = nil }
                                 .controlSize(.small)
                         } else {
-                            Text("Using the gateway's own wording.")
+                            Text("Using the built-in wording.")
                                 .font(NotchType.rowDetail)
                                 .foregroundStyle(.tertiary)
                         }
@@ -111,12 +113,12 @@ struct CopilotPromptsPane: View {
 
     private var advancedCard: some View {
         SettingCard("Base guidance",
-                    detail: "The block every persona sits on. It defines the JSON the copilot must reply with — a bad edit here makes every suggestion unreadable, and the notch simply goes quiet.",
+                    detail: "The block every persona sits on. It defines the JSON the copilot must reply with — a bad edit here makes every suggestion unreadable. `CallaCallHost prompts lint` checks it before a call does.",
                     tint: baseGuidance.isEmpty ? nil : NotchTint.attention) {
             VStack(alignment: .leading, spacing: 10) {
                 SettingRow("Override the base guidance",
                            detail: baseGuidance.isEmpty
-                               ? "Off. The gateway's own wording is used, which is what almost everyone should do."
+                               ? "Off. The built-in wording is used, which is what almost everyone should do."
                                : "On. You are responsible for keeping the JSON contract intact.") {
                     Toggle("", isOn: Binding(
                         get: { showAdvanced || !baseGuidance.isEmpty },
@@ -136,9 +138,10 @@ struct CopilotPromptsPane: View {
                         CharacterCount(count: baseGuidance.count, limit: PromptLimits.base)
                         Spacer(minLength: 8)
                         Button("Start from the default") {
-                            baseGuidance = CopilotPromptDefaults.base
+                            baseGuidance = defaults.base
                         }
                         .controlSize(.small)
+                        .disabled(defaults.base.isEmpty)
                         Button("Reset") { baseGuidance = "" }
                             .controlSize(.small)
                     }
@@ -170,16 +173,27 @@ struct CopilotPromptsPane: View {
         }
     }
 
+    /// What is actually sent, in the order the host assembles it.
+    ///
+    /// The fallbacks show the real prompt text now, not `[gateway base
+    /// guidance]`. A placeholder standing in for the default is how the app's own
+    /// copy of the wording drifted for months without anyone noticing.
     private var composedPrompt: String {
         var blocks: [String] = []
-        blocks.append(baseGuidance.isEmpty ? "[gateway base guidance]" : baseGuidance)
+        blocks.append(baseGuidance.isEmpty ? effective(defaults.base, "base guidance") : baseGuidance)
         let guidance = overrides[persona] ?? customPersonas[persona] ?? ""
-        blocks.append(guidance.isEmpty ? "[gateway persona block: \(persona)]" : guidance)
+        blocks.append(guidance.isEmpty
+            ? effective(defaults.persona(persona), "persona block: \(persona)")
+            : guidance)
         let about = aboutMe.trimmingCharacters(in: .whitespacesAndNewlines)
         if !about.isEmpty {
-            blocks.append("About the person you are helping:\n\(about)")
+            blocks.append("## About the user\n\(about)")
         }
         return blocks.joined(separator: "\n\n")
+    }
+
+    private func effective(_ text: String, _ label: String) -> String {
+        text.isEmpty ? "[\(label) — unavailable until the engine is running]" : text
     }
 
     // MARK: - Editing

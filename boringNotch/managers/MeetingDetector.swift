@@ -201,25 +201,9 @@ final class MeetingDetector: ObservableObject {
     }
 
     private func applyToCopilot(started: Bool) {
-        guard Defaults[.callaCopilotEnabled], Defaults[.callaCopilotAutoStartOnMeeting] else { return }
-        let engine = CallaEngineClient.shared
-        guard engine.status.copilot.available else { return }
-
-        if started {
-            // A prewarmed host is already the right host for this meeting; the
-            // microphone going live is the user joining it by some other route.
-            // Releasing beats refusing, and beats spawning a second host.
-            if engine.status.copilot.prewarming {
-                MeetingPreroll.shared.release()
-                return
-            }
-            guard !engine.status.copilot.running else { return }
-            engine.startCall(persona: Defaults[.callaCopilotPersona],
-                             model: Defaults[.callaCopilotLiveModel])
-        } else {
-            guard engine.status.copilot.running else { return }
-            engine.endCall()
-        }
+        // Detection is diagnostic only. Capture is explicit: no microphone,
+        // app, speaker, calendar, or tab state may start or stop a call.
+        _ = started
     }
 
     // MARK: - CoreAudio plumbing

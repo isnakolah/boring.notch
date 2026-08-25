@@ -14,6 +14,12 @@ struct KnowledgeTarget: Identifiable, Equatable {
         case always
         case event(id: String)
         case series(id: String)
+        /// Every call run with one persona — "attach my CV to every interview".
+        ///
+        /// The store and the engine have accepted this scope all along; the app
+        /// had no case for it, so the by-persona page filed under `always` while
+        /// telling the user it meant "only that persona".
+        case persona(id: String)
     }
 
     var kind: Kind
@@ -26,6 +32,7 @@ struct KnowledgeTarget: Identifiable, Equatable {
         case .always: "always"
         case let .event(id): "event:\(id)"
         case let .series(id): "series:\(id)"
+        case let .persona(id): "persona:\(id)"
         }
     }
 
@@ -34,13 +41,14 @@ struct KnowledgeTarget: Identifiable, Equatable {
         case .always: "always"
         case .event: "event"
         case .series: "series"
+        case .persona: "persona"
         }
     }
 
     var scopeKey: String? {
         switch kind {
         case .always: nil
-        case let .event(id), let .series(id): id
+        case let .event(id), let .series(id), let .persona(id): id
         }
     }
 

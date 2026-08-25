@@ -65,58 +65,53 @@ struct CharacterCount: View {
             .help(count > limit ? "Over the limit — the engine will refuse this." : "")
     }
 }
-
-/// Copies of the gateway's own text, for the "start from the default" button
-/// and the placeholders.
+/// The prompts as they are actually sent, fetched from the engine.
 ///
-/// Deliberately a copy rather than something fetched: it is a starting point
-/// for an edit, and the live default stays whatever the gateway ships. If the
-/// two drift, the gateway is right.
-enum CopilotPromptDefaults {
-    static let base = """
-    You are a live call copilot.
+/// This file used to hold a *copy* of the default wording so the pane had
+/// something to show. It drifted: by the time it was replaced it was previewing
+/// a JSON contract with different keys from the one the host had been using for
+/// months, and offering "start from the default" would have handed the user
+/// wording that was never sent. The prompts live in files under the runtime
+/// directory now, and this reads them across the sandbox line.
+@MainActor
+final class CopilotPromptDefaults: ObservableObject {
+    static let shared = CopilotPromptDefaults()
 
-    You receive a running transcript of a phone or video call, one turn at a time.
-    Turns are labelled by source:
-    - "them" — the other party
-    - "me" — the person you are helping
+    @Published private(set) var prompts: [String: String] = [:]
+    private var loaded = false
 
-    Your job is to help "me" answer well, in the moment. You are read during a live
-    call, so brevity is not a style preference — it is the whole constraint.
-
-    When you respond, return a single JSON object and nothing else:
-
-    {
-      "headline": "the thing they were actually asked, in under 12 words",
-      "angles": ["a way to answer", "a different way to answer"],
-      "confirm": ["a fact worth checking before asserting it"]
+    /// Idempotent: the pane calls this on appear and the engine exports the
+    /// defaults on first ask, so there is nothing to arrange beforehand.
+    func loadIfNeeded() {
+        guard !loaded else { return }
+        loaded = true
+        CallaEngineClient.shared.fetchPrompts { [weak self] prompts in
+            self?.prompts = prompts
+        }
     }
 
-    Rules:
-    - "headline" is required. If there is no open question, return {"headline": ""}
-      and nothing else — silence is a valid and frequently correct output.
-    - "angles": zero to three, each a distinct approach, under 25 words.
-    - "confirm": zero to three. Only facts, numbers, names, commitments or dates
-      that appeared in the call and should be verified before being stated.
-    - Never invent specifics.
-    - Transcription is imperfect. Work from context rather than quoting a garble.
-    - Do not narrate, greet, apologise, or wrap the JSON in prose or code fences.
-    """
+    /// Force a re-read, for after an edit outside the app.
+    func reload() {
+        loaded = false
+        loadIfNeeded()
+    }
 
-    static let baseHint = "Replaces the gateway's base guidance in full. Keep the JSON contract."
+    var base: String { prompts["live/base.md"] ?? "" }
 
-    static func personaHint(for persona: String) -> String {
-        switch persona {
-        case "interview":
-            return "Favour concrete, structured answers grounded in specific past work…"
-        case "sales":
-            return "Track what they have said they need, separately from what they merely mentioned…"
-        case "support":
-            return "Acknowledge the specific problem before proposing a fix…"
-        case "generic":
-            return "Favour clarity and directness."
-        default:
+    func persona(_ persona: String) -> String {
+        prompts["live/personas/\(persona).md"] ?? ""
+    }
+
+    static let baseHint = "Replaces the base guidance in full. Keep the JSON contract — `headline`, `angles`, `confirm`."
+
+    /// Shown in an empty editor. The real block is long, so the placeholder is
+    /// its opening rather than the whole thing.
+    func personaHint(for persona: String) -> String {
+        let block = self.persona(persona)
+        guard !block.isEmpty else {
             return "What should the copilot do differently on this kind of call?"
         }
+        let firstLine = block.split(separator: "\n").first.map(String.init) ?? block
+        return firstLine.count > 160 ? String(firstLine.prefix(157)) + "…" : firstLine
     }
 }

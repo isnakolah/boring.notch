@@ -33,8 +33,12 @@ struct DynamicNotchApp: App {
         SettingsWindowController.shared.setUpdaterController(updaterController)
 
         // SwiftUI constructs App before AppDelegate receives launch callbacks.
-        // Start early and retain client singleton for full app lifetime.
+        // Start long-lived services early instead of depending on a particular
+        // notch surface to appear. The side usage badges may render cached data
+        // before their view lifecycle starts, so their monitor owns refreshes
+        // from app launch onward.
         DispatchQueue.main.async {
+            _ = UsageMonitorManager.shared
             guard Defaults[.callaTutorEnabled] else { return }
             CallaEngineClient.shared.start()
             CallaEngineClient.shared.applyCurrentPreferences()
@@ -69,7 +73,7 @@ struct DynamicNotchApp: App {
                 }
                 Divider()
             }
-            Button("Settings") {
+            Button("Settings…") {
                 DispatchQueue.main.async {
                     SettingsWindowController.shared.showWindow()
                 }
@@ -103,7 +107,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     /// initial registration so a later user choice in Settings remains respected.
     private static let didConfigureLaunchAtLoginKey = "didConfigureLaunchAtLogin"
 
-    var statusItem: NSStatusItem?
     var windows: [String: NSWindow] = [:] // UUID -> NSWindow
     var viewModels: [String: BoringViewModel] = [:] // UUID -> BoringViewModel
     var window: NSWindow?
@@ -357,6 +360,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
 
+        CallaCopilotSettings.migrate()
+
         configureLaunchAtLoginIfNeeded()
         if Defaults[.callaTutorEnabled] {
             // Retain one XPC connection for app lifetime so node requests keep
@@ -369,14 +374,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if Defaults[.callaCopilotEnabled] {
-            // The copilot is only useful if it is already listening when the
-            // question is asked, so the detector runs whether or not the notch
-            // has ever been opened. Touching the session here also builds it
-            // before the first status poll lands.
+            // Touching the session here builds its status bridge before the first
+            // poll. Recording remains an explicit user action; the calendar may
+            // warm a host, but it never releases capture on its own.
             _ = CopilotLiveSession.shared
             CallaEngineClient.shared.start()
             CallaEngineClient.shared.startMonitoring()
-            MeetingDetector.shared.start()
             MeetingPreroll.shared.start()
         }
 
@@ -526,9 +529,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let engine = CallaEngineClient.shared
                 guard Defaults[.callaCopilotEnabled], engine.status.copilot.available else { return }
                 if engine.status.copilot.running {
-                    // Ending by hand has to outrank the detector, or it starts
-                    // the call again while the meeting is still going.
-                    MeetingDetector.shared.suppressUntilMicIdle()
                     engine.endCall()
                 } else {
                     engine.startCall(persona: Defaults[.callaCopilotPersona],
@@ -699,10 +699,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             window?.orderFrontRegardless()
         }
-    }
-
-    @objc func showMenu() {
-        statusItem?.menu?.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 
     @objc func quitAction() {

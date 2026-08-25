@@ -1,15 +1,26 @@
+//
+//  CallaCopilotTabView.swift
+//  boringNotch
+//
+//  The copilot at rest, in the notch.
+//
+//  A pre-flight check rather than a settings page, because that is the question
+//  people bring to it thirty seconds before a call: *will this work?* A copilot
+//  that starts and then silently hears only one side is worse than one that
+//  refuses to start, so the panel shows what is armed before it offers to begin,
+//  and the primary control names whatever is missing instead of always saying
+//  "start".
+//
+//  One card, two columns: the verdict on the left, the four facts behind it on
+//  the right. An earlier pass put those facts in a grid *under* the verdict and
+//  the whole second row fell through the notch's lower curve — 168pt does not
+//  hold three stacked bands, which is why the tab-naming row is gone too.
+//
+
 import Defaults
 import KeyboardShortcuts
 import SwiftUI
 
-/// The copilot at rest, in the notch.
-///
-/// Designed as a pre-flight check rather than a settings page, because that is the
-/// question people actually bring to it thirty seconds before a call: *will this
-/// work?* A copilot that starts and then silently hears only one side is worse than
-/// one that refuses to start, so the panel shows what is armed before it offers to
-/// begin — and the primary button names whatever is missing instead of always
-/// saying "start".
 struct CallaCopilotTabView: View {
     @ObservedObject private var engine = CallaEngineClient.shared
     @ObservedObject private var session = CopilotLiveSession.shared
@@ -17,6 +28,7 @@ struct CallaCopilotTabView: View {
     @Default(.callaCopilotPersona) private var persona
     @Default(.callaCopilotLiveModel) private var liveModel
     @Default(.callaIntelligenceProvider) private var provider
+    @Default(.callaCopilotCustomPersonas) private var customPersonas
 
     /// Drives only the elapsed-time label; the rest arrives on the engine poll.
     @State private var now = Date()
@@ -25,90 +37,178 @@ struct CallaCopilotTabView: View {
     private var copilot: CallaCopilotStatus { engine.status.copilot }
 
     var body: some View {
-        // The notch's lower corners curve inward, so the control row has to stay
-        // above that curve or it draws half outside the shape.
-        VStack(alignment: .leading, spacing: 0) {
-            eyebrow
-            Spacer(minLength: 6)
-            stateLine
-            Spacer(minLength: 8)
-            readinessRow
-            Spacer(minLength: 8)
-            controls
+        HStack(spacing: 0) {
+            verdictColumn
+                .frame(maxWidth: .infinity)
+            NotchColumnDivider()
+            readinessColumn
+                .frame(width: 190)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 4)
-        .padding(.bottom, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .notchCard()
+        .notchTabInsets()
         .task {
             engine.start()
             engine.startMonitoring()
+            // Debounced, because this tab is one arrow key away from the others
+            // and arming spawns a host process plus a language server. Someone
+            // passing through should not pay for that; someone who has settled
+            // here for a moment is probably about to start a call.
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            engine.prewarmForImminentCall()
         }
+        .onDisappear { engine.cancelSpeculativePrewarm() }
         .onReceive(tick) { value in
             if copilot.running || isPreroll { now = value }
         }
     }
 
-    // MARK: - Eyebrow
+    // MARK: - Verdict
 
-    /// The legend of an instrument, not a title bar: what this is, what it is set
-    /// to, and the way out to past calls.
-    private var eyebrow: some View {
-        HStack(spacing: 8) {
-            LivePulse(active: copilot.running)
-            Text("CALL COPILOT")
-                .font(.system(size: 8.5, weight: .bold))
-                .tracking(1.2)
-                .foregroundStyle(Color.white.opacity(0.55))
-
-            Spacer(minLength: 0)
-
-            if copilot.running {
-                Text(CallaCopilotPresentation.elapsed(since: copilot.startedAt, now: now) ?? "")
-                    .font(.system(size: 10, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Color.white.opacity(0.8))
-            } else {
-                Picker("", selection: $persona) {
-                    ForEach(CallaCopilotPersona.all, id: \.self) { value in
-                        Text(CallaCopilotPersona.title(value)).tag(value)
-                    }
+    private var verdictColumn: some View {
+        VStack(alignment: .leading, spacing: NotchGlassSpace.snug) {
+            NotchCardHeader(state: stateLine,
+                            live: copilot.running || isPreroll,
+                            tint: copilot.running ? NotchTint.healthy : .effectiveAccent,
+                            figure: copilot.running
+                             ? CallaCopilotPresentation.elapsed(since: copilot.startedAt, now: now)
+                             : nil) {
+                personaMenu
+                NotchGlyphButton(symbol: "clock.arrow.circlepath",
+                                 help: "Past calls, their transcripts, and what the copilot said") {
+                    SettingsWindowController.shared.showCopilotWindow(tab: "CopilotHistory")
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .frame(width: 104)
-                .onChange(of: persona) { _, value in engine.setCallPersona(value) }
             }
 
-            Button {
-                SettingsWindowController.shared.showCopilotWindow(tab: "CopilotHistory")
-            } label: {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.white.opacity(0.5))
-            .help("Past calls, their transcripts, and what the copilot said")
-        }
-    }
-
-    // MARK: - State line
-
-    /// One sentence of truth, and one of consequence. Sized to be the thing you
-    /// read first from across the desk.
-    private var stateLine: some View {
-        VStack(alignment: .leading, spacing: 2) {
             Text(headline)
-                .font(.system(size: 15, weight: .semibold))
-                .tracking(-0.2)
-                .foregroundStyle(.white)
+                .font(NotchGlassType.title)
+                .foregroundStyle(NotchInk.primary)
                 .lineLimit(1)
+
+            // One line, never two. The four facts are in the column beside
+            // this one; a second line here is the band that pushed the control
+            // row through the notch's lower curve.
             Text(detail)
-                .font(.system(size: 10.5))
-                .foregroundStyle(Color.white.opacity(0.6))
+                .font(NotchGlassType.caption)
+                .foregroundStyle(NotchInk.tertiary)
+                .lineLimit(1)
+
+            controls
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
+
+    /// Which kind of call this is. A glyph menu, because the choice is made
+    /// rarely and the current value is already in the state line.
+    private var personaMenu: some View {
+        Menu {
+            ForEach(CallaCopilotPersona.all(including: Array(customPersonas.keys)), id: \.self) { value in
+                Button(CallaCopilotPersona.title(value)) {
+                    persona = value
+                    engine.setCallPersona(value)
+                }
+            }
+        } label: {
+            Image(systemName: "person.crop.circle")
+                .font(NotchGlassType.glyphSmall)
+                .foregroundStyle(NotchInk.tertiary)
+                .padding(4)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("What kind of call this is")
+    }
+
+    // MARK: - Readiness
+
+    /// The four things a call needs, and nothing more.
+    ///
+    /// Ready is deliberately quiet; the one thing missing is the only thing in
+    /// colour. A column of green ticks is equally loud whether everything is
+    /// fine or nothing is, which is how the old segmented strip managed to be
+    /// both noisy and uninformative.
+    private var readinessColumn: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            check("Microphone", state: micState, ready: "allowed", problem: "not allowed")
+            check("Other side", state: screenState, ready: "captured", problem: "not captured")
+            check(brainLabel, state: brainState, ready: brainReadyNote, problem: brainProblemNote)
+            check("Speech model", state: modelState, ready: shortModelName, problem: modelShortProblem)
+        }
+        .frame(maxHeight: .infinity, alignment: .center)
+        .padding(.horizontal, 12)
+    }
+
+    private enum CheckState {
+        /// Armed and known good.
+        case ready
+        /// The thing standing between you and a working call.
+        case blocking
+        /// Working on it.
+        case progress(Double)
+        /// Nobody has asked yet, which is not the same as denied.
+        case unknown
+
+        var symbol: String {
+            switch self {
+            case .ready: "checkmark"
+            case .blocking: "exclamationmark.triangle.fill"
+            case .progress: "arrow.down.circle"
+            case .unknown: "questionmark"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .ready: NotchTint.healthy
+            case .blocking: NotchTint.attention
+            case .progress: NotchTint.active
+            case .unknown: NotchInk.tertiary
+            }
+        }
+
+        var settled: Bool {
+            switch self {
+            case .ready, .unknown: true
+            case .blocking, .progress: false
+            }
+        }
+    }
+
+    private func check(_ label: String, state: CheckState,
+                       ready: String, problem: String) -> some View {
+        HStack(spacing: NotchGlassSpace.tight) {
+            Image(systemName: state.symbol)
+                .font(NotchGlassType.glyphSmall)
+                .foregroundStyle(state.tint)
+                .frame(width: 12)
+            Text(label)
+                .font(NotchGlassType.detail)
+                .foregroundStyle(state.settled ? NotchInk.secondary : NotchInk.primary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(state.settled ? ready : problem)
+                .font(NotchGlassType.caption)
+                .foregroundStyle(state.settled ? NotchInk.tertiary : state.tint)
                 .lineLimit(1)
         }
     }
+
+    // MARK: - Copy
+
+    /// State, then which kind of call it is set up for. Never the tab's name.
+    private var stateLine: String {
+        let kind = CallaCopilotPersona.title(persona)
+        if isPreroll { return "Warming up · \(kind)" }
+        if copilot.running { return "In a call · \(kind)" }
+        return "Ready · \(kind)"
+    }
+
 
     /// The pre-roll owns the panel, but never over a blocker.
     ///
@@ -136,7 +236,7 @@ struct CallaCopilotTabView: View {
             return copilot.systemAudioActive ? "Listening to both sides" : "Hearing only you"
         }
         switch blocker {
-        case .microphone: return "Microphone not allowed yet"
+        case .microphone: return "Nothing would be heard"
         case .screen: return "Only your side would be heard"
         case .signIn: return "Sign in to use this Mac's copilot"
         case .model: return "Fetching the transcription model"
@@ -150,12 +250,11 @@ struct CallaCopilotTabView: View {
         }
         if isPreroll {
             // Says the countdown and says nothing is being recorded, in that
-            // order. The second half is the promise the whole pre-roll rests on,
-            // and it is repeated on the readiness row below in its own words.
-            return "Ready \(prerollCountdown) · not recording yet"
+            // order. The second half is the promise the whole pre-roll rests on.
+            return "Starts \(prerollCountdown) · nothing is being recorded yet"
         }
         if copilot.running {
-            return "\(copilot.turnCount) turn\(copilot.turnCount == 1 ? "" : "s") · \(brainLabel)"
+            return "\(copilot.turnCount) turn\(copilot.turnCount == 1 ? "" : "s") · \(brainLabel) answers"
         }
         switch blocker {
         case .microphone: return "Your own voice is half the conversation."
@@ -169,107 +268,36 @@ struct CallaCopilotTabView: View {
     private var modelDetail: String {
         guard let download = copilot.modelDownload else { return "Downloading in the background." }
         if download.state == "failed" { return download.message ?? "The download did not finish." }
-        return "\(Int(download.fraction * 100))% of \(download.model)."
+        return "\(Int(download.fraction * 100))% of \(download.model)"
+    }
+
+    /// The readiness column has room for a value, not a sentence — the long
+    /// form is already in `detail` under the headline.
+    private var modelShortProblem: String {
+        guard let download = copilot.modelDownload else { return "downloading" }
+        if download.state == "failed" { return "failed" }
+        return "\(Int(download.fraction * 100))%"
+    }
+
+    private var shortModelName: String {
+        liveModel.replacingOccurrences(of: "whisper-", with: "").replacingOccurrences(of: "-en", with: "")
     }
 
     private var brainLabel: String {
         provider == "local" ? "This Mac" : "Gateway"
     }
 
-    // MARK: - Readiness
-
-    /// The four things a call needs, and nothing more.
-    ///
-    /// This was a row of segmented bars, which was wrong twice over: a gauge implies
-    /// a quantity, and these are yes-or-no facts with nothing to measure — and it
-    /// was equally loud whether everything was fine or nothing was, so sixteen green
-    /// dashes ended up reading as decoration.
-    ///
-    /// So it inverts. When everything is ready this is a quiet grey line you can
-    /// ignore, which is the correct amount of attention for "no problems". When
-    /// something is missing, that one item goes amber and legible and the rest stay
-    /// quiet, so the eye lands on the thing that needs fixing.
-    private var readinessRow: some View {
-        HStack(spacing: 12) {
-            if isPreroll {
-                // The one moment a process booted without the user asking, so the
-                // panel states what it is not doing rather than only what it is.
-                // Said in words, not a dot: "not recording" is the claim, and a
-                // grey dot is not a claim.
-                Text("MIC OFF · SYSTEM AUDIO OFF")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .tracking(0.8)
-                    .foregroundStyle(Color.white.opacity(0.45))
-                check("MODEL", state: modelState)
-                check(brainLabel.uppercased(), state: brainState)
-                Spacer(minLength: 0)
-            } else {
-                callReadiness
-            }
-        }
+    private var brainReadyNote: String {
+        provider == "local" ? "signed in" : "reachable"
     }
 
-    @ViewBuilder
-    private var callReadiness: some View {
-        check("MIC", state: micState)
-        check("SCREEN", state: screenState)
-        check("MODEL", state: modelState)
-        check(brainLabel.uppercased(), state: brainState)
-        Spacer(minLength: 0)
+    private var brainProblemNote: String {
+        provider == "local"
+            ? (copilot.agyAvailable ? "Not signed in on this Mac" : "Local intelligence unavailable")
+            : "Gateway unreachable"
     }
 
-    private enum CheckState {
-        /// Armed and known good.
-        case ready
-        /// The thing standing between you and a working call.
-        case blocking
-        /// Working on it.
-        case progress(Double)
-        /// Nobody has asked yet, which is not the same as denied.
-        case unknown
-
-        var symbol: String {
-            switch self {
-            case .ready: "checkmark"
-            case .blocking: "exclamationmark.triangle.fill"
-            case .progress: "arrow.down.circle"
-            case .unknown: "questionmark"
-            }
-        }
-
-        /// Ready is deliberately dim. Green on everything is how the old strip
-        /// managed to be both loud and uninformative.
-        var tint: Color {
-            switch self {
-            case .ready: Color.white.opacity(0.4)
-            case .blocking: NotchTint.attention
-            case .progress: NotchTint.active
-            case .unknown: Color.white.opacity(0.3)
-            }
-        }
-
-        var emphasised: Bool {
-            switch self {
-            case .blocking, .progress: true
-            case .ready, .unknown: false
-            }
-        }
-    }
-
-    private func check(_ label: String, state: CheckState) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: state.symbol)
-                .font(.system(size: 8.5, weight: .bold))
-            Text(label)
-                .font(.system(size: 8.5, weight: .bold))
-                .tracking(0.8)
-            if case let .progress(fraction) = state {
-                Text("\(Int(fraction * 100))%")
-                    .font(.system(size: 8.5, weight: .bold).monospacedDigit())
-            }
-        }
-        .foregroundStyle(state.tint)
-    }
+    // MARK: - Readiness state
 
     private var micState: CheckState {
         guard copilot.hostPermissionsKnown else { return .unknown }
@@ -312,28 +340,18 @@ struct CallaCopilotTabView: View {
         return .none
     }
 
-    /// One button, and it says what pressing it does.
+    /// One primary button, and it says what pressing it does.
     ///
     /// A panel that offers "Start call" while the microphone is denied is lying by
     /// omission: the call starts and hears nothing. The button becomes the fix
     /// instead, so the next step is always the obvious one.
     private var controls: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: NotchGlassSpace.tight) {
             if isPreroll {
                 prerollControls
             } else {
                 callControls
             }
-
-            if let shortcut = KeyboardShortcuts.getShortcut(for: .copilotToggleCall) {
-                Text(shortcut.description)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(Color.white.opacity(0.45))
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.08), in: Capsule())
-            }
-
             Spacer(minLength: 0)
         }
     }
@@ -346,17 +364,17 @@ struct CallaCopilotTabView: View {
     /// force one of those to be wrong.
     @ViewBuilder
     private var prerollControls: some View {
-        actionButton("Join", symbol: "video.fill", tint: .accentColor) {
+        primaryButton("Join", symbol: "video.fill", tint: .effectiveAccent) {
             if let url = MeetingPreroll.shared.joinURL { open(url) }
             MeetingPreroll.shared.release()
         }
         .disabled(MeetingPreroll.shared.joinURL == nil)
 
-        actionButton("Start", symbol: "waveform", tint: NotchTint.active) {
-            MeetingPreroll.shared.release()
+        NotchChip(action: { MeetingPreroll.shared.release() }) {
+            Text("Start listening")
         }
 
-        actionButton("Not now", symbol: "xmark", tint: Color.white.opacity(0.35)) {
+        NotchGlyphButton(symbol: "xmark", help: "Not this one") {
             MeetingPreroll.shared.cancel()
             CopilotLiveSession.shared.endPreroll()
         }
@@ -364,22 +382,29 @@ struct CallaCopilotTabView: View {
 
     @ViewBuilder
     private var callControls: some View {
-        switch (copilot.running, blocker) {
+        // `isRecording`, not `running`. A host can be up and deliberately not
+        // recording — the pre-roll, and now the speculative warm-up armed when
+        // this tab opens — and in that state the useful button is still the one
+        // that begins the call, not "End call" for a call nobody started.
+        switch (copilot.isRecording, blocker) {
         case (true, _):
-            actionButton("End call", symbol: "stop.fill", tint: .red) { engine.endCall() }
+            primaryButton("End call", symbol: "stop.fill", tint: NotchTint.stuck) { engine.endCall() }
         case (false, .microphone), (false, .screen):
-            actionButton("Allow recording", symbol: "checkmark.shield.fill", tint: NotchTint.attention) {
+            primaryButton("Allow recording", symbol: "checkmark.shield.fill", tint: NotchTint.attention) {
                 engine.requestCopilotPermissions()
             }
+            NotchChip(action: { engine.startCall(persona: persona, model: liveModel) }) {
+                Text("Start anyway")
+            }
         case (false, .signIn):
-            actionButton("Sign in", symbol: "person.badge.key.fill", tint: NotchTint.attention) {
+            primaryButton("Sign in", symbol: "person.badge.key.fill", tint: NotchTint.attention) {
                 engine.loginAgy()
             }
         case (false, .model):
-            actionButton("Fetching model…", symbol: "arrow.down.circle", tint: NotchTint.active) {}
+            primaryButton("Fetching model…", symbol: "arrow.down.circle", tint: NotchTint.active) {}
                 .disabled(true)
         case (false, .none):
-            actionButton("Start listening", symbol: "waveform", tint: .accentColor) {
+            primaryButton("Start listening", symbol: "waveform", tint: .effectiveAccent) {
                 engine.startCall(persona: persona, model: liveModel)
             }
             .disabled(!copilot.available)
@@ -397,24 +422,22 @@ struct CallaCopilotTabView: View {
         openURL(url)
     }
 
-    private func actionButton(
+    private func primaryButton(
         _ title: String,
         symbol: String,
         tint: Color,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
+            HStack(spacing: 8) {
+                Image(systemName: symbol).font(NotchGlassType.glyph)
+                Text(title).font(NotchGlassType.action)
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 5)
-            .background(tint.opacity(0.9), in: Capsule())
-            .contentShape(Capsule())
+            .padding(.horizontal, 13)
+            .frame(height: NotchGlassSpace.control)
+            .background(tint, in: RoundedRectangle(cornerRadius: NotchGlassRadius.chip, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
