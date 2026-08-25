@@ -2,6 +2,7 @@ import ApplicationServices
 import CoreGraphics
 import Darwin
 import Foundation
+import CallaContracts
 import IntelligenceStore
 
 private struct Preferences: Codable, Equatable {
@@ -64,12 +65,28 @@ private struct CopilotStatus: Codable {
     var thinking = false
     /// Which job is in flight: `answer` or `summary`.
     var working: String? = nil
+    var questionWorking = false
+    var summaryWorking = false
     /// The newest pointer answers a question, rather than remarking on a statement.
     var answering = false
     /// Warm and ready, but deliberately not recording — the pre-roll before a
     /// scheduled meeting. `micActive` and `systemAudioActive` are both false while
     /// this is true, which is the claim the pre-roll card makes to the user.
     var prewarming = false
+    /// A host process exists and is still paying its fixed costs.
+    ///
+    /// Distinct from `running`, which was only ever true once the whole of the
+    /// host's `start()` had finished — so the notch had nothing to show for the
+    /// first seconds of every call and the button read as dead.
+    var starting = false
+    /// Which fixed cost the host is on: `launching`, `permissions`, `model`,
+    /// `capture`, `listening`. Optional so an older host decodes.
+    var startupStage: String? = nil
+    var modelLoaded = false
+    /// The local brain has both lanes open and can answer at conversation speed.
+    var brainWarm = false
+    /// Nil when the gateway is not part of this call at all.
+    var gatewayWarm: Bool? = nil
     /// The meeting this call was armed for, so the card has something to name.
     var meetingTitle: String? = nil
     var meetingStartsAt: Date? = nil
@@ -217,10 +234,13 @@ private struct CopilotHostStatus: Codable {
     var speaking: String?
     var thinking: Bool?
     var working: String?
+    var questionWorking: Bool?
+    var summaryWorking: Bool?
     var answering: Bool?
     var prewarming: Bool?
     var meetingTitle: String?
     var meetingStartsAt: Date?
+    var lifecycle: CopilotLifecycleFile?
 
     enum CodingKeys: String, CodingKey {
         case callID = "call_id"
@@ -234,8 +254,36 @@ private struct CopilotHostStatus: Codable {
         case micActive = "mic_active"
         case systemAudioActive = "system_audio_active"
         case provider, speaking, thinking, answering, working
+        case questionWorking = "question_working"
+        case summaryWorking = "summary_working"
         case providerDetail = "provider_detail"
+        case lifecycle
     }
+}
+
+/// Small, forward-compatible projection of v2 lifecycle. Keep engine status
+/// sanitized: no transcript, prompt, capture path, or raw provider output.
+private struct CopilotLifecycleFile: Codable {
+    var contractVersion: Int
+    var generation: Int
+    var state: String
+    /// Absent once the call is up, and absent entirely from a host older than
+    /// the startup checklist.
+    var startup: CopilotStartupFile?
+
+    enum CodingKeys: String, CodingKey {
+        case contractVersion = "contractVersion"
+        case generation, state, startup
+    }
+}
+
+/// Mirrors `CallStartupProgress`. Every field optional: this is read from a file
+/// another executable writes, and one renamed key must not cost the whole status.
+private struct CopilotStartupFile: Codable {
+    var stage: String?
+    var modelLoaded: Bool?
+    var brainWarm: Bool?
+    var gatewayWarm: Bool?
 }
 
 /// Mirrors the gateway's `suggestion` frame as persisted by the host.
@@ -265,6 +313,7 @@ private struct CopilotCommand: Codable {
     var persona: String?
     var model: String?
     var callID: String?
+    var question: String?
     var profile: CopilotProfile?
     /// "local" or "gateway". Absent means leave the stored preference alone.
     var provider: String?
@@ -274,16 +323,26 @@ private struct CopilotCommand: Codable {
     var summaryModel: String?
     /// Whether the gateway may answer when the local brain cannot.
     var fallback: Bool?
+    /// When the gateway socket opens: off | on-failure | warm.
+    var gatewayStandby: String?
     /// The calendar event this call belongs to. The app sends the identity and
     /// the event's own fields; the knowledge itself is composed here, because the
     /// app is sandboxed and cannot open the store.
     var meeting: CopilotMeeting?
 
     enum CodingKeys: String, CodingKey {
-        case action, persona, model, profile, provider, tier, fallback, meeting
+        case action, persona, model, profile, provider, tier, fallback, meeting, question
         case summaryModel = "summary_model"
+        case gatewayStandby = "gateway_standby"
         case callID = "call_id"
     }
+}
+
+private struct CopilotRecapCommand: Codable {
+    let action: String
+    let callID: String
+
+    enum CodingKeys: String, CodingKey { case action; case callID = "call_id" }
 }
 
 /// The calendar event a call is for, as the app sends it.
@@ -525,6 +584,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var runtime: Process?
     private var nodeRuntime: Process?
     private var copilotProcess: Process?
+    /// Monotonic per-engine call epoch. A host from an earlier run can finish
+    /// after a restart; its file/event must not replace current call state.
+    private var copilotGeneration = 0
     private var copilotPersona = "generic"
     private var copilotModel = "whisper-small-en"
     /// Which brain the next call starts on. Local by default, so a call still
@@ -533,6 +595,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var copilotTier = "balanced"
     private var copilotSummaryModel = "gemini-3.1-pro-high"
     private var copilotFallback = true
+    /// When the gateway socket opens on a call the local brain is answering.
+    /// Warm matches what every host did before this was a setting.
+    private var copilotGatewayStandby: GatewayStandby = .warm
     /// Mirrors the notch's "Answers only" toggle.
     private var retranscribingCallID: String?
     private var copilotResult: String?
@@ -596,6 +661,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var gatewayReachable = false
     private var gatewayMonitor: DispatchSourceTimer?
     private var diagnostics: [String] = []
+    private let statusObservers = NSHashTable<AnyObject>.weakObjects()
+    private var statusMonitor: DispatchSourceTimer?
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -742,6 +809,26 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         queue.async { reply(self.encodedStatus()) }
     }
 
+    func subscribeStatus(_ observer: BoringCallaEngineStatusObserver, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            self.statusObservers.add(observer)
+            self.startStatusMonitorIfNeeded()
+            reply(self.encodedStatus())
+        }
+    }
+
+    private func startStatusMonitorIfNeeded() {
+        guard statusMonitor == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(400), repeating: .milliseconds(400))
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.statusObservers.allObjects.isEmpty else { return }
+            _ = self.encodedStatus()
+        }
+        timer.resume()
+        statusMonitor = timer
+    }
+
     func requestGatewayUpdate(with reply: @escaping (Data) -> Void) {
         queue.async {
             guard self.isInstalledBoringApp else {
@@ -874,6 +961,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     /// The capture host's own directory, written by CallaCallHost and read here.
     private var copilotRoot: URL { root.appendingPathComponent("copilot", isDirectory: true) }
     private var copilotStatusURL: URL { copilotRoot.appendingPathComponent("active-call.json") }
+    private var copilotControlSocketURL: URL { copilotRoot.appendingPathComponent("call-host.sock") }
     private var copilotSuggestionURL: URL { copilotRoot.appendingPathComponent("latest-suggestion.json") }
     private var copilotPermissionsURL: URL { copilotRoot.appendingPathComponent("permissions.json") }
     private var copilotModelDownloadURL: URL { copilotRoot.appendingPathComponent("model-download.json") }
@@ -908,6 +996,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             case "prewarm": self.startCopilot(command, prewarm: true)
             case "release": self.releasePrewarm()
             case "stop": self.stopCopilot()
+            case "answer": self.answerSelectedText(command.question)
             case "archive": self.retranscribeCall(command)
             case "fetch_model": self.fetchModel(command)
             case "set_provider":
@@ -920,6 +1009,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                     self.copilotSummaryModel = summary
                 }
                 if let fallback = command.fallback { self.copilotFallback = fallback }
+                if let standby = CallaCopilotCommandValidation.gatewayStandby(command.gatewayStandby),
+                   let mode = GatewayStandby.named(standby) {
+                    self.copilotGatewayStandby = mode
+                }
                 // Like persona: the host binds its provider at launch, so a
                 // change mid-call would be a lie. Automatic fallback is the only
                 // thing that switches brains during a call.
@@ -961,6 +1054,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         if let tier = CallaCopilotCommandValidation.tier(command.tier) { copilotTier = tier }
         if let summary = CallaCopilotCommandValidation.summaryModel(command.summaryModel) { copilotSummaryModel = summary }
         if let fallback = command.fallback { copilotFallback = fallback }
+        if let standby = CallaCopilotCommandValidation.gatewayStandby(command.gatewayStandby),
+           let mode = GatewayStandby.named(standby) {
+            copilotGatewayStandby = mode
+        }
         guard let gateway = CallaCopilotCommandValidation.gatewayURL(Self.copilotGateway) else {
             copilotResult = "Copilot gateway route is not valid"; return
         }
@@ -984,6 +1081,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let process = Process()
         process.executableURL = executable
         process.currentDirectoryURL = executable.deletingLastPathComponent()
+        copilotGeneration &+= 1
+        let generation = copilotGeneration
         var arguments = [
             "serve",
             "--gateway", gateway.absoluteString,
@@ -991,6 +1090,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             "--model", copilotModel,
             "--provider", copilotProvider,
             "--tier", copilotTier,
+            "--generation", String(generation),
         ]
         // Every value here came back from an allowlist above, so nothing the UI
         // sent can widen this command line.
@@ -998,6 +1098,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             arguments += ["--summary-model", summaryModel]
         }
         if !copilotFallback { arguments.append("--no-fallback") }
+        // Validated to a known mode before it reaches argv, like every other
+        // value here — nothing the UI sends can widen this command line.
+        arguments += ["--gateway-standby", copilotGatewayStandby.argument]
         // Warm everything, record nothing. The flag is ours, not the caller's:
         // it is derived from which action was validated, never from a string the
         // app sent, so nothing the UI says can turn a pre-roll into a recording.
@@ -1046,6 +1149,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let pidFile = copilotPIDURL
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
+                guard self?.copilotGeneration == generation else { return }
                 self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
                 self?.copilotProcess = nil
                 if child.terminationStatus != 0 {
@@ -1204,19 +1308,20 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
-    /// Tells a prewarmed host to start recording.
-    ///
-    /// A file rather than a signal or a socket: there is no live command channel
-    /// to a running host, and the host already wakes every 250ms for its
-    /// segmenter. The call id is stamped in so a marker left behind by a host that
-    /// died cannot release an unrelated call later — the one failure that would
-    /// record a meeting nobody agreed to.
+    /// Promotes a ready host through its owner-only control socket. The 0600
+    /// marker is retained only while an older host is still starting.
     private func releasePrewarm() {
         guard copilotProcess?.isRunning == true else {
             copilotResult = "Nothing is warmed up"
             return
         }
         let callID = currentCopilotStatus().callID
+        if let callID,
+           let event = requestHostControl(.release, callID: callID),
+           event.kind != .fatal {
+            copilotResult = "Recording"
+            return
+        }
         let payload = ["call_id": callID].compactMapValues { $0 }
         guard let data = try? JSONEncoder().encode(payload) else { return }
         let marker = copilotRoot.appendingPathComponent("prewarm-release.json")
@@ -1439,11 +1544,80 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             try? fileManager.removeItem(at: copilotStatusURL)
             return
         }
+        if let callID = currentCopilotStatus().callID,
+           let event = requestHostControl(.stop, callID: callID),
+           event.kind == .finished {
+            copilotResult = "Ending call…"
+            return
+        }
         // SIGINT rather than terminate(): the host flushes its endpointers,
         // drains the transcription queue and closes the WAVs on it, so a
         // trailing sentence is not lost.
         kill(process.processIdentifier, SIGINT)
         copilotResult = "Ending call…"
+    }
+
+    private func answerSelectedText(_ text: String?) {
+        guard let callID = currentCopilotStatus().callID else {
+            copilotResult = "No call running"
+            return
+        }
+        guard case .accepted(let prompt?) = CallaCopilotCommandValidation.promptText(
+            text, limit: CallaCopilotCommandValidation.manualQuestionLimit
+        ) else {
+            copilotResult = "Select up to \(CallaCopilotCommandValidation.manualQuestionLimit) characters"
+            return
+        }
+        guard let event = requestHostControl(.answer, callID: callID, text: prompt),
+              event.kind == .answer else {
+            copilotResult = "Copilot unavailable; try again"
+            return
+        }
+        copilotResult = "Answering selected text…"
+    }
+
+    /// One bounded JSON request/reply over the host's mode-0600 Unix socket.
+    /// No transcript, prompt, coordinates, or raw provider output crosses it.
+    private func requestHostControl(
+        _ kind: CallHostCommandKind, callID: String, text: String? = nil
+    ) -> CallHostEvent? {
+        guard fileManager.fileExists(atPath: copilotControlSocketURL.path) else { return nil }
+        let command = CallHostCommand(callID: callID, generation: copilotGeneration, kind: kind, text: text)
+        guard let payload = try? JSONEncoder().encode(command) else { return nil }
+        let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard descriptor >= 0 else { return nil }
+        defer { Darwin.close(descriptor) }
+        var address = sockaddr_un()
+        address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        address.sun_family = sa_family_t(AF_UNIX)
+        let maximumPathLength = MemoryLayout.size(ofValue: address.sun_path) - 1
+        copilotControlSocketURL.path.withCString { source in
+            withUnsafeMutablePointer(to: &address.sun_path) { destination in
+                let destination = UnsafeMutableRawPointer(destination).assumingMemoryBound(to: CChar.self)
+                strncpy(destination, source, maximumPathLength)
+            }
+        }
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+        guard connected == 0 else { return nil }
+        let sent = payload.withUnsafeBytes { send(descriptor, $0.baseAddress, payload.count, 0) }
+        guard sent == payload.count else { return nil }
+        _ = shutdown(descriptor, SHUT_WR)
+        var reply = Data(); var buffer = [UInt8](repeating: 0, count: 4096)
+        while reply.count < 64 * 1024 {
+            let count = recv(descriptor, &buffer, buffer.count, 0)
+            if count > 0 { reply.append(buffer, count: Int(count)); continue }
+            if count == 0 { break }
+            if errno == EINTR { continue }
+            return nil
+        }
+        guard let event = try? JSONDecoder().decode(CallHostEvent.self, from: reply),
+              event.callID == callID, event.generation == copilotGeneration,
+              event.contractVersion == CallaContract.version else { return nil }
+        return event
     }
 
     func copilotTranscript(since seq: Int, with reply: @escaping (Data) -> Void) {
@@ -1495,6 +1669,102 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    func copilotRecapDraft(_ callID: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let callID = CallaCopilotCommandValidation.callID(callID),
+                  let store = self.store,
+                  let draft = try? store.recapDraft(forCall: callID) else {
+                reply(Data()); return
+            }
+            reply((try? JSONEncoder().encode(draft)) ?? Data())
+        }
+    }
+
+    func copilotPrompts(with reply: @escaping (Data) -> Void) {
+        queue.async {
+            reply((try? JSONEncoder().encode(self.effectivePrompts())) ?? Data())
+        }
+    }
+
+    /// The prompt files as they stand, exporting the defaults first if the user
+    /// has never taken a copy.
+    ///
+    /// Reading files rather than asking the host over a pipe: the export is
+    /// idempotent and never overwrites, so this costs one directory walk and
+    /// cannot block the reply on a process that might not start. An empty result
+    /// simply leaves the pane showing its own placeholders, which is what it did
+    /// before this existed.
+    private func effectivePrompts() -> [String: String] {
+        let directory = root.appendingPathComponent("copilot/prompts", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            exportPromptDefaults()
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory, includingPropertiesForKeys: nil) else { return [:] }
+
+        var prompts: [String: String] = [:]
+        let base = directory.standardizedFileURL.path
+        for case let url as URL in enumerator where url.pathExtension == "md" {
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            let path = url.standardizedFileURL.path
+            guard path.hasPrefix(base) else { continue }
+            let relative = String(path.dropFirst(base.count)).trimmingCharacters(
+                in: CharacterSet(charactersIn: "/"))
+            prompts[relative] = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return prompts
+    }
+
+    /// Runs the host's own `prompts export`, which is the only thing that knows
+    /// the bundled wording.
+    private func exportPromptDefaults() {
+        guard let executable = copilotExecutable else { return }
+        let process = Process()
+        process.executableURL = executable
+        process.currentDirectoryURL = executable.deletingLastPathComponent()
+        process.arguments = ["prompts", "export"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CALLA_RUNTIME_ROOT"] = root.path
+        process.environment = environment
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            // Not worth surfacing: the pane falls back to its own placeholders,
+            // which is exactly what it did before this method existed.
+            copilotResult = "Could not export prompts: \(error.localizedDescription)"
+        }
+    }
+
+    func copilotRecapControl(_ payload: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let command = try? JSONDecoder().decode(CopilotRecapCommand.self, from: payload),
+                  ["approve", "reject", "delete"].contains(command.action),
+                  let callID = CallaCopilotCommandValidation.callID(command.callID),
+                  let store = self.store else {
+                reply(Data()); return
+            }
+            switch command.action {
+            case "approve":
+                let record = try? store.call(id: callID)
+                let meeting = record.map {
+                    MeetingContext(eventID: $0.eventID, seriesID: $0.seriesID,
+                                   title: $0.eventTitle, startsAt: $0.eventStart)
+                }
+                _ = self.awaitOnQueue { try? await store.approve(recapDraftFor: callID, meeting: meeting) }
+            case "reject":
+                try? store.reject(recapDraftFor: callID)
+            case "delete":
+                try? store.delete(recapDraftFor: callID)
+            default: break
+            }
+            let draft = try? store.recapDraft(forCall: callID)
+            reply((try? JSONEncoder().encode(draft)) ?? Data())
+        }
+    }
+
     func copilotCalls(with reply: @escaping (Data) -> Void) {
         queue.async {
             reply(self.archivedCalls())
@@ -1525,16 +1795,28 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             let validID = CallaCopilotCommandValidation.callID(callID) else {
             return Data("[]".utf8)
         }
-        return transcriptData(forCall: validID, since: seq, limit: limit)
+        // The live pass, deliberately: this is the transcript the copilot is
+        // reasoning over right now.
+        return transcriptData(forCall: validID, since: seq, limit: limit, revision: 0)
     }
 
-    private func transcriptData(forCall callID: String, since seq: Int, limit: Int) -> Data {
+    /// `revision`: nil takes the best transcript available — the archive pass
+    /// when it has run. The live panel passes `0` explicitly, because it is
+    /// showing turns beside suggestions that were made from those exact words,
+    /// and swapping in a better transcript mid-call would show advice next to
+    /// text that never appeared on screen.
+    private func transcriptData(
+        forCall callID: String,
+        since seq: Int,
+        limit: Int,
+        revision: Int? = nil
+    ) -> Data {
         // Indexed on `(call_id, seq)`, so `since` is a range scan rather than a
         // whole-file read and filter. That matters here more than anywhere else:
         // the live panel polls this sub-second for the length of a call.
         if let store {
             let turns = awaitOnQueue {
-                (try? await store.turns(forCall: callID, since: seq)) ?? []
+                (try? await store.turns(forCall: callID, since: seq, revision: revision)) ?? []
             } ?? []
             if !turns.isEmpty {
                 let mapped = turns.suffix(limit).map { turn in
@@ -1701,8 +1983,25 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             .flatMap { try? jsonDecoder.decode(ModelDownloadFile.self, from: $0) }
 
         if let data = try? Data(contentsOf: copilotStatusURL),
-           let host = try? jsonDecoder.decode(CopilotHostStatus.self, from: data) {
-            status.running = copilotProcess?.isRunning == true
+           let host = try? jsonDecoder.decode(CopilotHostStatus.self, from: data),
+           // V2 host reports generation. Refuse stale lifecycle state before it
+           // can change notch UI; old archives have no lifecycle and remain
+           // readable through history, never as active calls.
+           host.lifecycle?.generation == copilotGeneration {
+            let alive = copilotProcess?.isRunning == true
+            // `starting` and `running` are deliberately exclusive. A host that is
+            // still loading its model is not a call the notch should draw as live,
+            // but it is emphatically not nothing either — that gap is what made
+            // pressing Start look like it had failed.
+            let booting = host.lifecycle?.state == CallLifecycleState.starting.rawValue
+            status.starting = alive && booting
+            status.running = alive && !booting
+            if let startup = host.lifecycle?.startup {
+                status.startupStage = startup.stage
+                status.modelLoaded = startup.modelLoaded ?? false
+                status.brainWarm = startup.brainWarm ?? false
+                status.gatewayWarm = startup.gatewayWarm
+            }
             status.callID = host.callID
             status.persona = host.persona
             status.startedAt = host.startedAt
@@ -1717,6 +2016,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             status.speaking = host.speaking
             status.thinking = host.thinking ?? false
             status.working = host.working
+            status.questionWorking = host.questionWorking ?? false
+            status.summaryWorking = host.summaryWorking ?? false
             status.answering = host.answering ?? false
             status.prewarming = host.prewarming ?? false
             status.meetingTitle = host.meetingTitle
@@ -2762,7 +3063,11 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             copilot: currentCopilotStatus()
         )
         do {
-            return try JSONEncoder().encode(status)
+            let data = try JSONEncoder().encode(status)
+            for object in statusObservers.allObjects {
+                (object as? BoringCallaEngineStatusObserver)?.callaEngineStatusDidChange(data)
+            }
+            return data
         } catch {
             // Empty Data decodes to nothing on the far side, which looked
             // exactly like a dropped reply. The client logs its half; this is

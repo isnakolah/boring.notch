@@ -4,6 +4,9 @@ private final class ServiceDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         let engine = BoringCallaEngine()
         connection.exportedInterface = NSXPCInterface(with: BoringCallaEngineProtocol.self)
+        connection.exportedInterface?.setInterface(
+            NSXPCInterface(with: BoringCallaEngineStatusObserver.self),
+            for: #selector(BoringCallaEngineProtocol.subscribeStatus(_:with:)), argumentIndex: 0, ofReply: false)
         connection.exportedObject = engine
         // A quit, a force quit and a crash all end the same way from here: the
         // connection dies. Without this, whatever the engine started — the call

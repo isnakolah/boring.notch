@@ -75,7 +75,9 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
     private func fetchViaRPC() async throws -> CodexRateLimitsResponse {
         let transport = try ProcessRPCTransport(
             executable: executable,
-            arguments: ["-s", "read-only", "-a", "untrusted", "app-server"]
+            // Codex CLI 0.149 removed the old `untrusted` approval policy.
+            // This probe performs no agent work, and must not wait for UI approval.
+            arguments: ["-s", "read-only", "-a", "never", "app-server"]
         )
         defer { transport.close() }
 
@@ -125,7 +127,7 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
 
         let result = try cliExecutor.execute(
             binary: executable,
-            args: ["-s", "read-only", "-a", "untrusted"],
+            args: ["-s", "read-only", "-a", "never"],
             input: "/status\n",
             timeout: 20.0,
             workingDirectory: nil,

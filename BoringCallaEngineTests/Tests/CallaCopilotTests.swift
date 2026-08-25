@@ -7,14 +7,31 @@ import XCTest
 /// if it is wrong, so each is pinned.
 final class CallaCopilotCommandValidationTests: XCTestCase {
     func testOnlyTheKnownActionsAreAccepted() {
-        for action in ["start", "stop", "set_persona", "set_provider", "archive", "fetch_model",
-                      "login", "test_login", "sign_out", "restore_login"] {
+        // Every entry, not most of them. `prewarm` and `release` were missing
+        // here, which is how `set_detail` sat in a security allowlist with no
+        // sender and no handler for as long as it did.
+        for action in ["start", "stop", "answer", "set_persona", "set_provider", "archive",
+                       "fetch_model", "login", "test_login", "sign_out", "restore_login",
+                       "prewarm", "release"] {
             XCTAssertEqual(CallaCopilotCommandValidation.action(action), action)
         }
-        for action in ["", "  ", "restart", "start;rm -rf /", "START"] {
+        for action in ["", "  ", "restart", "start;rm -rf /", "START", "set_detail"] {
             XCTAssertNil(CallaCopilotCommandValidation.action(action), "accepted \(action)")
         }
         XCTAssertNil(CallaCopilotCommandValidation.action(nil))
+    }
+
+    /// The test above lists actions by hand, so it can only prove that what it
+    /// names is accepted. This proves nothing *else* is.
+    func testTheAllowlistHasNothingUnreachableInIt() {
+        let handled: Set<String> = [
+            "start", "stop", "answer", "set_persona", "set_provider", "archive",
+            "fetch_model", "login", "test_login", "sign_out", "restore_login",
+            "prewarm", "release",
+        ]
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.allowedActions.subtracting(handled), [],
+            "an action is allowlisted that nothing handles")
     }
 
     // MARK: - Intelligence provider
@@ -124,6 +141,16 @@ final class CallaCopilotCommandValidationTests: XCTestCase {
         XCTAssertEqual(
             CallaCopilotCommandValidation.profile(about: atLimit, personaGuidance: nil, baseGuidance: nil)?.about,
             atLimit)
+    }
+
+    func testManualQuestionUsesBoundedPromptRules() {
+        let text = String(repeating: "a", count: CallaCopilotCommandValidation.manualQuestionLimit)
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.promptText(text, limit: CallaCopilotCommandValidation.manualQuestionLimit),
+            .accepted(text))
+        XCTAssertEqual(
+            CallaCopilotCommandValidation.promptText(
+                text + "a", limit: CallaCopilotCommandValidation.manualQuestionLimit), .refused)
     }
 
     func testControlCharactersAreRefusedButNewlinesAreNot() {
@@ -270,5 +297,31 @@ final class CallaCopilotPresentationTests: XCTestCase {
         let lines = CallaCopilotPresentation.angleLines([long])
         XCTAssertEqual(lines.count, 1)
         XCTAssertEqual(lines[0].count, 79, "78 characters plus the ellipsis")
+    }
+}
+
+/// The gateway-standby mode rides in on the same command as every other
+/// next-call setting, so it gets the same treatment: an allowlist, and an
+/// unknown value that leaves the stored preference alone rather than resolving
+/// to something the user did not pick.
+final class CallaGatewayStandbyValidationTests: XCTestCase {
+    func testAcceptsTheThreeModes() {
+        XCTAssertEqual(CallaCopilotCommandValidation.gatewayStandby("off"), "off")
+        XCTAssertEqual(CallaCopilotCommandValidation.gatewayStandby("on-failure"), "on-failure")
+        XCTAssertEqual(CallaCopilotCommandValidation.gatewayStandby("warm"), "warm")
+    }
+
+    func testNormalisesCaseAndWhitespace() {
+        XCTAssertEqual(CallaCopilotCommandValidation.gatewayStandby("  WARM "), "warm")
+        XCTAssertEqual(CallaCopilotCommandValidation.gatewayStandby("On-Failure"), "on-failure")
+    }
+
+    func testRejectsAnythingElse() {
+        XCTAssertNil(CallaCopilotCommandValidation.gatewayStandby(nil))
+        XCTAssertNil(CallaCopilotCommandValidation.gatewayStandby(""))
+        XCTAssertNil(CallaCopilotCommandValidation.gatewayStandby("on_failure"))
+        XCTAssertNil(CallaCopilotCommandValidation.gatewayStandby("always"))
+        // Nothing here may name a host, a URL, or a binary — it reaches argv.
+        XCTAssertNil(CallaCopilotCommandValidation.gatewayStandby("warm; rm -rf /"))
     }
 }

@@ -1,10 +1,17 @@
 import Foundation
 
+@objc protocol BoringCallaEngineStatusObserver {
+    /// Versioned status snapshot pushed after an engine-observed change.
+    func callaEngineStatusDidChange(_ data: Data)
+}
+
 @objc protocol BoringCallaEngineProtocol {
     func start(with reply: @escaping (Data) -> Void)
     func stop(with reply: @escaping (Data) -> Void)
     func applyPreferences(_ preferences: Data, with reply: @escaping (Data) -> Void)
     func status(with reply: @escaping (Data) -> Void)
+    /// Retained weakly. Client keeps its regular status poll as reconnect fallback.
+    func subscribeStatus(_ observer: BoringCallaEngineStatusObserver, with reply: @escaping (Data) -> Void)
     func requestGatewayUpdate(with reply: @escaping (Data) -> Void)
     func requestScreenRecording(with reply: @escaping (Data) -> Void)
     func requestAccessibility(with reply: @escaping (Data) -> Void)
@@ -35,6 +42,18 @@ import Foundation
     func copilotCallTranscript(_ callID: String, with reply: @escaping (Data) -> Void)
     /// What the copilot returned during that call.
     func copilotCallSuggestions(_ callID: String, with reply: @escaping (Data) -> Void)
+    /// The prompts the copilot would actually send, as `[path: text]`.
+    ///
+    /// Replies with a JSON dictionary, not `Status`. The app used to carry its
+    /// own copy of the default wording so the Prompts pane could show something,
+    /// and the two drifted until the pane was previewing a JSON contract the host
+    /// had not used in months. There is one source now, and this is how the
+    /// sandboxed app reaches it.
+    func copilotPrompts(with reply: @escaping (Data) -> Void)
+    /// Read one separately persisted reviewed-recap draft.
+    func copilotRecapDraft(_ callID: String, with reply: @escaping (Data) -> Void)
+    /// Approve, reject, or delete a recap draft. Approval is only path to knowledge.
+    func copilotRecapControl(_ command: Data, with reply: @escaping (Data) -> Void)
     /// Runs the capture host's `permissions` subcommand so the microphone and
     /// screen-recording prompts are attributed to the host's own signature.
     ///

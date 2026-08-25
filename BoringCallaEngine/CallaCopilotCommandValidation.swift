@@ -10,7 +10,7 @@ import Foundation
 public enum CallaCopilotCommandValidation {
     /// Commands the notch may send. Anything else is refused outright.
     public static let allowedActions: Set<String> = [
-        "start", "stop", "set_persona", "set_provider", "archive", "fetch_model", "login",
+        "start", "stop", "answer", "set_persona", "set_provider", "archive", "fetch_model", "login",
         // The two-minute pre-roll: warm everything, record nothing. `release`
         // promotes a prewarmed host to a recording one; `stop` cancels it.
         "prewarm", "release",
@@ -20,8 +20,6 @@ public enum CallaCopilotCommandValidation {
         // Clearing credentials, and putting them back. Both name a file this
         // service owns; neither takes a path from the caller.
         "sign_out", "restore_login",
-        // Live display preferences, which also change what the copilot is asked.
-        "set_detail",
     ]
 
     /// Which brain answers a call.
@@ -79,6 +77,22 @@ public enum CallaCopilotCommandValidation {
         return value
     }
 
+    /// When the gateway socket opens on a call the local brain is answering.
+    ///
+    /// Three values, all of which name a code path here — never a host or a URL.
+    /// Rejecting an unknown one leaves the stored preference alone, which is the
+    /// same rule every other field on this command follows.
+    public static let allowedGatewayStandby: Set<String> = ["off", "on-failure", "warm"]
+
+    /// Returns the validated spelling rather than the contract's enum: this file
+    /// compiles into a dependency-free SPM target so every rule is unit-tested
+    /// without an XPC service, and importing the contract would end that.
+    public static func gatewayStandby(_ value: String?) -> String? {
+        guard let value = trimmed(value)?.lowercased(),
+              allowedGatewayStandby.contains(value) else { return nil }
+        return value
+    }
+
     public static func summaryModel(_ value: String?) -> String? {
         guard let value = trimmed(value), allowedSummaryModels.contains(value) else { return nil }
         return value
@@ -120,6 +134,8 @@ public enum CallaCopilotCommandValidation {
     }
 
     public static let aboutLimit = 1200
+    /// User-selected transcript text sent for an explicit live answer.
+    public static let manualQuestionLimit = 1200
     public static let personaGuidanceLimit = 2000
     public static let baseGuidanceLimit = 8000
     /// Larger than the rest because it is assembled from several notes plus a
