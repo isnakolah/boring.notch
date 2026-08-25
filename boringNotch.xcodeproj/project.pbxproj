@@ -107,6 +107,8 @@
 		7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */; };
 		802CAA563141E472C48CA624 /* SweepConfirmationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */; };
 		02280020F6CA36C63E4592B8 /* PrivacyPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */; };
+		55B1BB825F13665F52D3616E /* CopilotModelsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECEC9C72C4A5C58FA02249B /* CopilotModelsPane.swift */; };
+		64819F735A40296AD040F55E /* CopilotBackupPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93CF7CB0E93DBC0F8C6B9C07 /* CopilotBackupPane.swift */; };
 		786152D40D7BC0C3115C4020 /* CopilotPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1638998EA958CC94FBDBDD0F /* CopilotPane.swift */; };
 		84E4FCAFD2F34DA4D8DC61DB /* SystemPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */; };
 		C6F6C7B2154DA87D0F271D9E /* KDEConnectPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */; };
@@ -128,12 +130,13 @@
 		B484438BB89BD60A61D1077F /* SettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */; };
 		49FF3187F29A719E0AC8ECC4 /* SystemPermission.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6996C6B3FE39FC624128B92 /* SystemPermission.swift */; };
 		3E16E4AD44E2A80F2FFA3ECD /* SettingsNavigationComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */; };
+		09822EA4622A6E74F778B2EA /* NotchSlider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BBACD35B85223BF96EBAC8F /* NotchSlider.swift */; };
+		B6EAE9BD86FD54977A082623 /* SettingsLanding.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0D81BE98CE522486564CD20 /* SettingsLanding.swift */; };
 		BB0F88C4123D19A0AED59FED /* NotchWash.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15964D68EEC7E01160998CD5 /* NotchWash.swift */; };
 		1D904620B824FA448A5C5461 /* NotchMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5351BBF186C1389760606F4 /* NotchMotion.swift */; };
 		942BBB98FA129270158285F3 /* NotchSpacing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */; };
 		B2E2B13C2921E8B3DC718216 /* PromptEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */; };
 		2835061ED696BEA05B3B67F9 /* TutorEnginePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */; };
-		3200C7EB1006CDEC1AA3EFAF /* TutorAccessPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */; };
 		AB8B46C3E2FF2400A2152E5D /* TutorBehaviorPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */; };
 		41695E8965DEF83AE3604EA3 /* TutorCreatePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200575654710E83D0F8AD759 /* TutorCreatePane.swift */; };
 		F0D6260DD8E304886E993DBC /* TutorCoursesPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */; };
@@ -169,8 +172,6 @@
 		CA11KL010000000000000001 /* CallaKnowledgeLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */; };
 		CA11KL020000000000000001 /* CopilotKnowledgeDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */; };
 		CA1100010000000000E00201 /* CopilotPromptsPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00202 /* CopilotPromptsPane.swift */; };
-		CA1100010000000000900001 /* CopilotIntelligencePane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000900002 /* CopilotIntelligencePane.swift */; };
-		CA1100010000000000E00301 /* CopilotTranscriptionPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */; };
 		CA1100010000000000E00401 /* CopilotHistoryPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00402 /* CopilotHistoryPane.swift */; };
 		CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00502 /* CopilotLiveSession.swift */; };
 		CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00602 /* CallaCopilotLiveView.swift */; };
@@ -393,6 +394,8 @@
 		8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepLifetime.swift"; sourceTree = "<group>"; };
 		E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Sweep/SweepConfirmationSheet.swift"; sourceTree = "<group>"; };
 		B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Privacy/PrivacyPane.swift"; sourceTree = "<group>"; };
+		CECEC9C72C4A5C58FA02249B /* CopilotModelsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotModelsPane.swift"; sourceTree = "<group>"; };
+		93CF7CB0E93DBC0F8C6B9C07 /* CopilotBackupPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotBackupPane.swift"; sourceTree = "<group>"; };
 		1638998EA958CC94FBDBDD0F /* CopilotPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotPane.swift"; sourceTree = "<group>"; };
 		2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/System/SystemPane.swift"; sourceTree = "<group>"; };
 		B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Shelf/KDEConnectPane.swift"; sourceTree = "<group>"; };
@@ -414,12 +417,13 @@
 		CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Navigation/SettingsSection.swift"; sourceTree = "<group>"; };
 		A6996C6B3FE39FC624128B92 /* SystemPermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "models/SystemPermission.swift"; sourceTree = "<group>"; };
 		640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsNavigationComponents.swift"; sourceTree = "<group>"; };
+		3BBACD35B85223BF96EBAC8F /* NotchSlider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchSlider.swift"; sourceTree = "<group>"; };
+		E0D81BE98CE522486564CD20 /* SettingsLanding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/SettingsLanding.swift"; sourceTree = "<group>"; };
 		15964D68EEC7E01160998CD5 /* NotchWash.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchWash.swift"; sourceTree = "<group>"; };
 		F5351BBF186C1389760606F4 /* NotchMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchMotion.swift"; sourceTree = "<group>"; };
 		64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/DesignSystem/NotchSpacing.swift"; sourceTree = "<group>"; };
 		4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/PromptEditor.swift"; sourceTree = "<group>"; };
 		589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorEnginePane.swift"; sourceTree = "<group>"; };
-		18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorAccessPane.swift"; sourceTree = "<group>"; };
 		62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorBehaviorPane.swift"; sourceTree = "<group>"; };
 		200575654710E83D0F8AD759 /* TutorCreatePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorCreatePane.swift"; sourceTree = "<group>"; };
 		56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Tutor/TutorCoursesPane.swift"; sourceTree = "<group>"; };
@@ -455,8 +459,6 @@
 		CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaKnowledgeLibrary.swift"; sourceTree = "<group>"; };
 		CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotKnowledgeDetailPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00202 /* CopilotPromptsPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotPromptsPane.swift"; sourceTree = "<group>"; };
-		CA1100010000000000900002 /* CopilotIntelligencePane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotIntelligencePane.swift"; sourceTree = "<group>"; };
-		CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotTranscriptionPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00402 /* CopilotHistoryPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Settings/Panes/Copilot/CopilotHistoryPane.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00502 /* CopilotLiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotLiveSession.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00602 /* CallaCopilotLiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotLiveView.swift"; sourceTree = "<group>"; };
@@ -876,6 +878,8 @@
 				8B2E74C7C118D12600F318A0 /* SweepLifetime.swift */,
 				E5CA34636635451307D4AD25 /* SweepConfirmationSheet.swift */,
 				B73DC51812AA16023ABC39C0 /* PrivacyPane.swift */,
+				CECEC9C72C4A5C58FA02249B /* CopilotModelsPane.swift */,
+				93CF7CB0E93DBC0F8C6B9C07 /* CopilotBackupPane.swift */,
 				1638998EA958CC94FBDBDD0F /* CopilotPane.swift */,
 				2A31FE5D6C4372E3CCF2D2FF /* SystemPane.swift */,
 				B1BC371E9629ED7DC2723E53 /* KDEConnectPane.swift */,
@@ -897,12 +901,13 @@
 				CD09AC32501C35B4F19B5D6C /* SettingsSection.swift */,
 				A6996C6B3FE39FC624128B92 /* SystemPermission.swift */,
 				640BD5454A770242CD3369C6 /* SettingsNavigationComponents.swift */,
+				3BBACD35B85223BF96EBAC8F /* NotchSlider.swift */,
+				E0D81BE98CE522486564CD20 /* SettingsLanding.swift */,
 				15964D68EEC7E01160998CD5 /* NotchWash.swift */,
 				F5351BBF186C1389760606F4 /* NotchMotion.swift */,
 				64EA1AB5B5773D55C52FB74D /* NotchSpacing.swift */,
 				4D2AC40C093FE556358C5BD2 /* PromptEditor.swift */,
 				589E8942C63B594A0BAF14A6 /* TutorEnginePane.swift */,
-				18C0DE458B45B396F4C9482D /* TutorAccessPane.swift */,
 				62B0E60729747D7F0899F41B /* TutorBehaviorPane.swift */,
 				200575654710E83D0F8AD759 /* TutorCreatePane.swift */,
 				56F88D3428A009D4ABA6B70F /* TutorCoursesPane.swift */,
@@ -938,8 +943,6 @@
 				CA11KL010000000000000002 /* CallaKnowledgeLibrary.swift */,
 				CA11KL020000000000000002 /* CopilotKnowledgeDetailPane.swift */,
 				CA1100010000000000E00202 /* CopilotPromptsPane.swift */,
-				CA1100010000000000900002 /* CopilotIntelligencePane.swift */,
-				CA1100010000000000E00302 /* CopilotTranscriptionPane.swift */,
 				CA1100010000000000E00402 /* CopilotHistoryPane.swift */,
 				CA1100010000000000E00502 /* CopilotLiveSession.swift */,
 				CA1100010000000000E00602 /* CallaCopilotLiveView.swift */,
@@ -1500,6 +1503,8 @@
 				7EE3A719B7123D1F6B6CB626 /* SweepLifetime.swift in Sources */,
 				802CAA563141E472C48CA624 /* SweepConfirmationSheet.swift in Sources */,
 				02280020F6CA36C63E4592B8 /* PrivacyPane.swift in Sources */,
+				55B1BB825F13665F52D3616E /* CopilotModelsPane.swift in Sources */,
+				64819F735A40296AD040F55E /* CopilotBackupPane.swift in Sources */,
 				786152D40D7BC0C3115C4020 /* CopilotPane.swift in Sources */,
 				84E4FCAFD2F34DA4D8DC61DB /* SystemPane.swift in Sources */,
 				C6F6C7B2154DA87D0F271D9E /* KDEConnectPane.swift in Sources */,
@@ -1521,12 +1526,13 @@
 				B484438BB89BD60A61D1077F /* SettingsSection.swift in Sources */,
 				49FF3187F29A719E0AC8ECC4 /* SystemPermission.swift in Sources */,
 				3E16E4AD44E2A80F2FFA3ECD /* SettingsNavigationComponents.swift in Sources */,
+				09822EA4622A6E74F778B2EA /* NotchSlider.swift in Sources */,
+				B6EAE9BD86FD54977A082623 /* SettingsLanding.swift in Sources */,
 				BB0F88C4123D19A0AED59FED /* NotchWash.swift in Sources */,
 				1D904620B824FA448A5C5461 /* NotchMotion.swift in Sources */,
 				942BBB98FA129270158285F3 /* NotchSpacing.swift in Sources */,
 				B2E2B13C2921E8B3DC718216 /* PromptEditor.swift in Sources */,
 				2835061ED696BEA05B3B67F9 /* TutorEnginePane.swift in Sources */,
-				3200C7EB1006CDEC1AA3EFAF /* TutorAccessPane.swift in Sources */,
 				AB8B46C3E2FF2400A2152E5D /* TutorBehaviorPane.swift in Sources */,
 				41695E8965DEF83AE3604EA3 /* TutorCreatePane.swift in Sources */,
 				F0D6260DD8E304886E993DBC /* TutorCoursesPane.swift in Sources */,
@@ -1562,8 +1568,6 @@
 				CA11KL010000000000000001 /* CallaKnowledgeLibrary.swift in Sources */,
 				CA11KL020000000000000001 /* CopilotKnowledgeDetailPane.swift in Sources */,
 				CA1100010000000000E00201 /* CopilotPromptsPane.swift in Sources */,
-				CA1100010000000000900001 /* CopilotIntelligencePane.swift in Sources */,
-				CA1100010000000000E00301 /* CopilotTranscriptionPane.swift in Sources */,
 				CA1100010000000000E00401 /* CopilotHistoryPane.swift in Sources */,
 				CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */,
 				CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */,
