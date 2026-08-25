@@ -24,37 +24,39 @@ struct CodexUsageProbe: UsageProbe {
     }
 
     /// Maps RPC rate limits response to a UsageSnapshot.
+    ///
+    /// Each window says what it is — position in the response does not, and has
+    /// twice meant something different. Where more than one window falls in the
+    /// same class, the one closest to its ceiling wins: two 5-hour buckets are
+    /// two ways to be stopped, and the notch should be reporting the one that
+    /// will stop you first.
     static func mapRateLimitsToSnapshot(_ limits: CodexRateLimitsResponse) throws -> UsageSnapshot {
-        var quotas: [UsageQuota] = []
-
-        func appendQuota(_ window: CodexRateLimitWindow?, fallbackType: QuotaType) {
-            guard let window else { return }
-            let quotaType = quotaType(for: window, fallback: fallbackType)
-            quotas.append(UsageQuota(
+        func quota(_ window: CodexRateLimitWindow, _ type: QuotaType) -> UsageQuota {
+            UsageQuota(
                 percentRemaining: max(0, 100 - window.usedPercent),
-                quotaType: quotaType,
+                quotaType: type,
                 providerId: "codex",
                 resetsAt: window.resetsAt,
                 resetText: window.resetDescription
-            ))
+            )
         }
 
-        // Current Codex plans can expose only one `primary` window. Its duration
-        // determines whether it is a 5h session or 7d weekly quota; position in
-        // the response alone is not enough to classify it.
-        appendQuota(limits.primary, fallbackType: .session)
-        appendQuota(limits.secondary, fallbackType: .weekly)
+        let sessions = limits.windows.filter(\.isSession)
+        let weeklies = limits.windows.filter { !$0.isSession }
+
+        var quotas: [UsageQuota] = []
+        if let tightest = sessions.max(by: { $0.usedPercent < $1.usedPercent }) {
+            quotas.append(quota(tightest, .session))
+        }
+        if let tightest = weeklies.max(by: { $0.usedPercent < $1.usedPercent }) {
+            quotas.append(quota(tightest, .weekly))
+        }
 
         guard !quotas.isEmpty else {
             throw ProbeError.parseFailed("No rate limits found")
         }
 
         return UsageSnapshot(providerId: "codex", quotas: quotas, capturedAt: Date())
-    }
-
-    private static func quotaType(for window: CodexRateLimitWindow, fallback: QuotaType) -> QuotaType {
-        guard let minutes = window.windowDurationMins else { return fallback }
-        return minutes >= 24 * 60 ? .weekly : .session
     }
 
     // MARK: - Parsing (for TTY fallback)

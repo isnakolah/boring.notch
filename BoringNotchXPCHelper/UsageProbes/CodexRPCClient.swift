@@ -10,14 +10,24 @@ protocol CodexRPCClient: Sendable {
 }
 
 /// Response from Codex rate limits API.
+///
+/// A list of windows rather than a `primary`/`secondary` pair, because those two
+/// keys never meant "session" and "weekly". OpenAI has moved which bucket the
+/// 5-hour limit lives in more than once: it was `primary` with `secondary`
+/// weekly, then for a period only a single weekly window in `primary` (which is
+/// what an account on Plus reports today), and the response now also carries
+/// `rateLimitsByLimitId` with a bucket per limit. Reading position and calling
+/// the first one "session" was wrong in two of those three shapes, and is what
+/// made the 5-hour figure disappear from the notch.
+///
+/// So: collect every window the response contains, wherever it lives, and let
+/// each one say what it is.
 struct CodexRateLimitsResponse: Sendable, Equatable {
-    let primary: CodexRateLimitWindow?
-    let secondary: CodexRateLimitWindow?
+    let windows: [CodexRateLimitWindow]
     let planType: String?
 
-    init(primary: CodexRateLimitWindow?, secondary: CodexRateLimitWindow?, planType: String? = nil) {
-        self.primary = primary
-        self.secondary = secondary
+    init(windows: [CodexRateLimitWindow], planType: String? = nil) {
+        self.windows = windows
         self.planType = planType
     }
 }
@@ -39,6 +49,27 @@ struct CodexRateLimitWindow: Sendable, Equatable {
         self.resetDescription = resetDescription
         self.resetsAt = resetsAt
         self.windowDurationMins = windowDurationMins
+    }
+
+    /// How long this window covers, in minutes.
+    ///
+    /// The declared duration where there is one. Where there is not, the time
+    /// left until it resets is the only evidence available — it is a floor
+    /// rather than the duration, but a window resetting in under five hours
+    /// cannot be the weekly one, which is all this has to decide.
+    var estimatedMinutes: Int? {
+        if let windowDurationMins { return windowDurationMins }
+        guard let resetsAt else { return nil }
+        let remaining = resetsAt.timeIntervalSinceNow
+        guard remaining > 0 else { return nil }
+        return Int(remaining / 60)
+    }
+
+    /// Anything covering less than a day is the rolling session limit; the
+    /// weekly one is 10080 minutes and has never been close to the boundary.
+    var isSession: Bool {
+        guard let minutes = estimatedMinutes else { return false }
+        return minutes < 24 * 60
     }
 }
 
@@ -103,21 +134,61 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
         let planType = rateLimits["planType"] as? String
         AppLog.probes.info("Codex plan type: \(planType ?? "unknown")")
 
-        let primary = parseWindow(rateLimits["primary"])
-        let secondary = parseWindow(rateLimits["secondary"])
+        var windows = parseBucket(rateLimits)
 
-        if primary == nil && secondary == nil {
+        // Newer responses carry a bucket per limit alongside the flat one, and
+        // that is where a reinstated 5-hour window turns up first — the flat
+        // `rateLimits` object mirrors only one of them. Reading both means the
+        // figure appears the moment the API reports it, with no further change
+        // here.
+        if let byID = result["rateLimitsByLimitId"] as? [String: Any] {
+            for (_, bucket) in byID {
+                guard let bucket = bucket as? [String: Any] else { continue }
+                windows.append(contentsOf: parseBucket(bucket))
+            }
+        }
+
+        windows = Self.deduplicate(windows)
+
+        if windows.isEmpty {
             if planType == "free" {
                 return CodexRateLimitsResponse(
-                    primary: CodexRateLimitWindow(usedPercent: 0, resetDescription: "Free plan"),
-                    secondary: nil,
+                    windows: [CodexRateLimitWindow(usedPercent: 0,
+                                                   resetDescription: "Free plan",
+                                                   windowDurationMins: 5 * 60)],
                     planType: planType
                 )
             }
             throw ProbeError.parseFailed("No rate limits available yet - make some API calls first")
         }
 
-        return CodexRateLimitsResponse(primary: primary, secondary: secondary, planType: planType)
+        AppLog.probes.info(
+            "Codex windows: \(windows.map { "\($0.estimatedMinutes.map(String.init) ?? "?")m@\(Int($0.usedPercent))%" }.joined(separator: ", "))")
+        return CodexRateLimitsResponse(windows: windows, planType: planType)
+    }
+
+    /// Both windows out of one `{primary, secondary}` object.
+    private func parseBucket(_ bucket: [String: Any]) -> [CodexRateLimitWindow] {
+        [parseWindow(bucket["primary"]), parseWindow(bucket["secondary"])].compactMap { $0 }
+    }
+
+    /// The same window arrives in the flat object and again under its limit id.
+    /// Two windows are the same when they cover the same span and reset at the
+    /// same moment; where a duplicate pair disagrees on usage the higher figure
+    /// wins, because that is the one that will actually stop you.
+    static func deduplicate(_ windows: [CodexRateLimitWindow]) -> [CodexRateLimitWindow] {
+        var best: [String: CodexRateLimitWindow] = [:]
+        var order: [String] = []
+        for window in windows {
+            let key = "\(window.estimatedMinutes.map { $0 / 60 } ?? -1)|\(window.resetsAt?.timeIntervalSince1970.rounded() ?? -1)"
+            if let existing = best[key] {
+                if window.usedPercent > existing.usedPercent { best[key] = window }
+            } else {
+                best[key] = window
+                order.append(key)
+            }
+        }
+        return order.compactMap { best[$0] }
     }
 
     // MARK: - TTY Fallback
@@ -148,29 +219,28 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
         let fiveHourPct = extractTTYPercent(labelSubstring: "5h limit", text: clean)
         let weeklyPct = extractTTYPercent(labelSubstring: "Weekly limit", text: clean)
 
-        var primary: CodexRateLimitWindow?
-        var secondary: CodexRateLimitWindow?
+        var windows: [CodexRateLimitWindow] = []
 
         if let pct = fiveHourPct {
-            primary = CodexRateLimitWindow(
+            windows.append(CodexRateLimitWindow(
                 usedPercent: Double(100 - pct),
                 resetDescription: nil,
                 windowDurationMins: 5 * 60
-            )
+            ))
         }
         if let pct = weeklyPct {
-            secondary = CodexRateLimitWindow(
+            windows.append(CodexRateLimitWindow(
                 usedPercent: Double(100 - pct),
                 resetDescription: nil,
                 windowDurationMins: 7 * 24 * 60
-            )
+            ))
         }
 
-        guard primary != nil || secondary != nil else {
+        guard !windows.isEmpty else {
             throw ProbeError.parseFailed("Could not find usage limits in Codex output")
         }
 
-        return CodexRateLimitsResponse(primary: primary, secondary: secondary)
+        return CodexRateLimitsResponse(windows: windows)
     }
 
     private func extractTTYPercent(labelSubstring: String, text: String) -> Int? {
@@ -206,12 +276,14 @@ final class DefaultCodexRPCClient: CodexRPCClient, @unchecked Sendable {
 
     private func parseWindow(_ value: Any?) -> CodexRateLimitWindow? {
         guard let dict = value as? [String: Any] else { return nil }
-        guard let usedPercent = dict["usedPercent"] as? Double else { return nil }
+        // `as? Double` alone: the API sends whole numbers as JSON integers, and
+        // NSNumber's bridge is the only reason that has been working.
+        guard let usedPercent = (dict["usedPercent"] as? NSNumber)?.doubleValue else { return nil }
 
         var resetDescription: String?
         var resetDate: Date?
         let windowDurationMins = (dict["windowDurationMins"] as? NSNumber)?.intValue
-        if let resetsAt = dict["resetsAt"] as? Int {
+        if let resetsAt = (dict["resetsAt"] as? NSNumber)?.intValue {
             let date = Date(timeIntervalSince1970: TimeInterval(resetsAt))
             resetDate = date
             resetDescription = formatResetTime(date)
