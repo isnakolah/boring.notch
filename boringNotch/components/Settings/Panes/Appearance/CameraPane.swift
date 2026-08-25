@@ -174,15 +174,14 @@ struct CameraPane: View {
                             .padding(.vertical)
                         TextField("Name", text: $name)
                         TextField("Lottie JSON URL", text: $url)
-                        HStack {
-                            Text("Speed")
-                            Spacer(minLength: 80)
-                            Text("\(speed, specifier: "%.1f")s")
-                                .multilineTextAlignment(.trailing)
-                                .foregroundStyle(.secondary)
-                            Slider(value: $speed, in: 0...2, step: 0.1)
-                        }
-                        .padding(.vertical)
+                        NotchSlider(value: Binding(get: { Double(speed) },
+                                                   set: { speed = CGFloat($0) }),
+                                    range: 0...2,
+                                    step: 0.1,
+                                    label: "Speed",
+                                    format: { String(format: "%.1f×", $0) },
+                                    ends: ("Still", "2×"))
+                            .padding(.vertical)
                         HStack {
                             Button {
                                 isPresented.toggle()

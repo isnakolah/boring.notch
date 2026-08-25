@@ -182,16 +182,15 @@ struct UsageMonitorSettings: View {
     private var runningLowCard: some View {
         SettingCard("Running low") {
             VStack(alignment: .leading, spacing: NotchSpace.row) {
-                SettingRow("Low mark",
-                           detail: "Below this, a number is drawn as critical. Warning starts at \(Int((lowThreshold * 2.5).rounded()))%.") {
-                    HStack(spacing: NotchSpace.tight) {
-                        Slider(value: $lowThreshold, in: 5...40, step: 5).frame(width: 150)
-                        Text("\(Int(lowThreshold))%")
-                            .font(NotchType.figure)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 34, alignment: .trailing)
-                    }
-                }
+                NotchSlider(value: $lowThreshold,
+                            range: 5...40,
+                            step: 5,
+                            label: "Low mark",
+                            format: { "\(Int($0))%" },
+                            ends: ("5%", "40%"))
+                Text("Below this a figure is drawn as critical. Warning starts at \(Int((lowThreshold * 2.5).rounded()))%, which moves with it.")
+                    .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 SettingRow("Tell me when it drops below",
                            detail: "Once, on the way down — not every time it is checked and still low.") {
                     Toggle("", isOn: $notifyOnLow).labelsHidden().toggleStyle(.switch)

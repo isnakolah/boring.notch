@@ -30,22 +30,20 @@ struct GesturesPane: View {
                         SettingRow("Close gesture") {
                             Toggle("", isOn: $closeGestureEnabled).labelsHidden().toggleStyle(.switch)
                         }
-                        SettingRow("Sensitivity") {
-                            HStack(spacing: NotchSpace.tight) {
-                                Slider(value: $gestureSensitivity, in: 100...300, step: 100)
-                                    .frame(width: 150)
-                                Text(sensitivityLabel)
-                                    .font(NotchType.figure).foregroundStyle(.secondary)
-                                    .frame(width: 52, alignment: .trailing)
-                            }
-                        }
+                        // A three-position scale, so the control says so: the
+                        // number was never the point, and "200" told nobody
+                        // whether they were asking for more or less.
+                        NotchStopSlider(
+                            selection: $gestureSensitivity,
+                            stops: [
+                                .init(value: 100, title: "High", caption: "a nudge opens it"),
+                                .init(value: 200, title: "Medium"),
+                                .init(value: 300, title: "Low", caption: "a deliberate swipe"),
+                            ],
+                            label: "Sensitivity")
                     }
                 }
             }
         }
-    }
-
-    private var sensitivityLabel: String {
-        gestureSensitivity == 100 ? "High" : gestureSensitivity == 200 ? "Medium" : "Low"
     }
 }

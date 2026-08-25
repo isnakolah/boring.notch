@@ -73,15 +73,12 @@ struct GeneralSettings: View {
                         Toggle("", isOn: $openNotchOnHover).labelsHidden().toggleStyle(.switch)
                     }
                     if openNotchOnHover {
-                        SettingRow("Hover delay") {
-                            HStack(spacing: NotchSpace.tight) {
-                                Slider(value: $minimumHoverDuration, in: 0...1, step: 0.1)
-                                    .frame(width: 150)
-                                Text("\(minimumHoverDuration, specifier: "%.1f")s")
-                                    .font(NotchType.figure).foregroundStyle(.secondary)
-                                    .frame(width: 34, alignment: .trailing)
-                            }
-                        }
+                        NotchSlider(value: $minimumHoverDuration,
+                                    range: 0...1,
+                                    step: 0.1,
+                                    label: "Hover delay",
+                                    format: { $0 < 0.05 ? "Instant" : String(format: "%.1f s", $0) },
+                                    ends: ("Instant", "1 s"))
                     }
                     SettingRow("Haptic feedback") {
                         Toggle("", isOn: $enableHaptics).labelsHidden().toggleStyle(.switch)
@@ -128,14 +125,16 @@ struct GeneralSettings: View {
         }
     }
 
+    /// The notch's own height, which is the one number in this window that
+    /// changes the thing in the sidebar while you drag it — so the value belongs
+    /// on the thumb rather than in a column to its right.
     private func heightSlider(value: Binding<CGFloat>, range: ClosedRange<CGFloat>) -> some View {
-        SettingRow("Custom height") {
-            HStack(spacing: NotchSpace.tight) {
-                Slider(value: value, in: range, step: 1).frame(width: 150)
-                Text("\(value.wrappedValue, specifier: "%.0f")pt")
-                    .font(NotchType.figure).foregroundStyle(.secondary)
-                    .frame(width: 42, alignment: .trailing)
-            }
-        }
+        NotchSlider(value: Binding(get: { Double(value.wrappedValue) },
+                                   set: { value.wrappedValue = CGFloat($0) }),
+                    range: Double(range.lowerBound)...Double(range.upperBound),
+                    step: 1,
+                    label: "Custom height",
+                    format: { "\(Int($0)) pt" },
+                    ends: ("\(Int(range.lowerBound)) pt", "\(Int(range.upperBound)) pt"))
     }
 }

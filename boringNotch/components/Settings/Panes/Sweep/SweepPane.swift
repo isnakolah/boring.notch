@@ -2,33 +2,30 @@
 //  SweepPane.swift
 //  boringNotch
 //
-//  Moved out of SettingsView.swift. That file had grown to 2076 lines holding
-//  eleven panes and an XPC subsystem, while every newer pane already lived in
-//  its own file under Panes/.
-//
 
+import AppKit
 import SwiftUI
 
 /// Which Sweep page is showing.
 ///
-/// Derived from the route by whoever builds the view, rather than mirrored from
-/// a sidebar binding inside the pane. Sweep's four pages are the one place where
-/// the pages share a coordinator and an in-flight scan, so they stay one view;
-/// what changed is that the view no longer owns the navigation *or* the service
-/// lifetime.
+/// Three, not four. Overview and Clean Up were reporting the same scan from the
+/// same snapshot, and Overview's whole job was to stand in front of the page
+/// everybody wanted with a button labelled "Open Clean Up". So the section's
+/// landing pane *is* the clean-up list, and History and Options are reached from
+/// the header rather than from a card of links.
+///
+/// Sweep's pages stay one view because they share a coordinator and an in-flight
+/// scan; what changed is that the view owns neither the navigation nor the
+/// service lifetime.
 enum SweepWorkspaceTab: String, CaseIterable, Identifiable {
-    case overview = "Overview", cleanUp = "Clean Up", history = "History", options = "Options"
+    case cleanUp = "Clean Up", history = "History", options = "Options"
     var id: Self { self }
 }
-private enum SweepSizeUnit: String, CaseIterable, Identifiable { case bytes = "bytes", kilobytes = "KB", megabytes = "MB", gigabytes = "GB"; var id: String { rawValue }; var multiplier: Double { switch self { case .bytes: return 1; case .kilobytes: return 1_024; case .megabytes: return 1_048_576; case .gigabytes: return 1_073_741_824 } } }
-private enum SweepIntervalUnit: String, CaseIterable, Identifiable { case seconds = "seconds", minutes = "minutes", hours = "hours"; var id: String { rawValue }; var multiplier: Double { switch self { case .seconds: return 1; case .minutes: return 60; case .hours: return 3_600 } } }
 
 struct SweepSettings: View {
     @ObservedObject private var sweep = BoringSweepCoordinator.shared
-    @State private var minimumValue = ""
-    @State private var minimumUnit: SweepSizeUnit = .megabytes
-    @State private var refreshValue = ""
-    @State private var refreshUnit: SweepIntervalUnit = .minutes
+    @State private var thresholdBytes: Double = 0
+    @State private var refreshSeconds: Double = 0
     @State private var scanRoots: [String] = []
     @State private var exclusions: [String] = []
     @State private var expandedCategoryID: String?
@@ -42,8 +39,7 @@ struct SweepSettings: View {
 
     private var page: SettingsPage? {
         switch selectedTab {
-        case .overview: nil
-        case .cleanUp: .sweepCleanUp
+        case .cleanUp: nil
         case .history: .sweepHistory
         case .options: .sweepOptions
         }
@@ -53,23 +49,19 @@ struct SweepSettings: View {
         VStack(spacing: 0) {
             Group {
                 if let page {
-                    SettingsPane(page) {
-                        paneContent
-                    }
+                    SettingsPane(page) { paneContent }
                 } else {
-                    SettingsPane(.sweep) {
-                        paneContent
-                    }
+                    SettingsPane(.sweep, nav: [.sweepHistory, .sweepOptions]) { paneContent }
                 }
             }
             if selectedTab == .cleanUp { cleanupBar }
             if selectedTab == .options { optionsBar }
         }
-        // No service lifecycle here. A scan takes minutes and these four pages
-        // push and pop between each other, so starting the helper on `onAppear`
-        // and stopping it on `onDisappear` would tear down the scan that is
-        // still running. `View.sweepLifetime(_:)` owns it one level up, where
-        // the unit is the Sweep *section* rather than any one of its pages.
+        // No service lifecycle here. A scan takes minutes and these pages push
+        // and pop between each other, so starting the helper on `onAppear` and
+        // stopping it on `onDisappear` would tear down the scan that is still
+        // running. `View.sweepLifetime(_:)` owns it one level up, where the unit
+        // is the Sweep *section* rather than any one of its pages.
         .onAppear { expandedCategoryID = nil; loadOptions() }
         .onChange(of: sweep.snapshot?.preferences.candidateThresholdBytes) { loadOptions() }
         .task(id: selectedTab) { if selectedTab == .history { sweep.loadHistory() } }
@@ -78,7 +70,6 @@ struct SweepSettings: View {
     @ViewBuilder
     private var paneContent: some View {
         switch selectedTab {
-        case .overview: overview
         case .cleanUp: cleanUp
         case .history: history
         case .options: options
@@ -91,137 +82,289 @@ struct SweepSettings: View {
         }
     }
 
-    private var overview: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingCard("Disk") {
-                if let volume = sweep.snapshot?.volume {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 28) {
-                            metric("Free", sweepFormatBytes(volume.available))
-                            metric("Reclaimable", sweepFormatBytes(sweep.snapshot?.reclaimableBytes ?? 0))
-                            Spacer(minLength: 0)
-                        }
-                        Text("\(volume.name) · \(sweepFormatBytes(volume.available)) free of \(sweepFormatBytes(volume.total))")
-                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
-                    }
-                } else {
-                    ProgressView("Reading disk").font(NotchType.rowDetail)
-                }
-            }
-
-            SettingCard("Scan", tint: sweep.isSurveying ? NotchTint.active : nil) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if sweep.isSurveying {
-                        ProgressView(value: sweep.surveyProgress) { Text("Scanning").font(NotchType.rowTitle) }
-                        Text("\(Int(sweep.surveyProgress * 100))% complete. Saved findings stay available while this runs.")
-                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
-                    } else {
-                        Text("Ready to scan").font(NotchType.rowTitle)
-                    }
-                    if let date = sweep.snapshot?.lastSurvey {
-                        Text("\(sweep.snapshot?.analysisIsCached == true ? "Saved" : "Fresh") findings · \(date.formatted(date: .abbreviated, time: .shortened))")
-                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
-                    }
-                    HStack {
-                        Button("Scan now") { sweep.rescan() }
-                        if sweep.isSurveying { Button("Stop", role: .destructive) { sweep.cancel() } }
-                        Button("Open Clean Up") { router?.push(.sweepCleanUp) }.disabled(sweep.snapshot == nil)
-                        Spacer()
-                    }
-                    .controlSize(.small)
-                }
-            }
-
-            if sweep.snapshot?.fullDiskAccess == false {
-                SettingCard("Full Disk Access",
-                            detail: "Without it Sweep can only see part of the disk, so the figures above are an undercount.",
-                            tint: NotchTint.attention) {
-                    HStack {
-                        Button("Open Privacy Settings") {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
-                        }
-                        .controlSize(.small)
-                        Spacer()
-                    }
-                }
-            }
-        }
-    }
+    // MARK: - Clean up (the landing pane)
 
     private var cleanUp: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(sweep.isSurveying && sweep.snapshot?.analysisIsCached == true ? "Using saved findings while a fresh scan runs." : "Open a category to load its first 25 items.").font(NotchType.rowDetail).foregroundStyle(.secondary)
-            let categories = sweep.snapshot?.categories ?? []
-            if categories.isEmpty { sweep.isSurveying ? AnyView(ProgressView("Scanning for reclaimable space")) : AnyView(Text("No reclaimable items found.").foregroundStyle(.secondary)) }
-            ForEach(categories) { category in categoryGroup(id: category.id, label: category.label, count: category.count, bytes: category.reclaimableBytes, protected: false) }
-            if let protected = sweep.snapshot?.protected, protected.count > 0 { categoryGroup(id: BoringSweepProtected.id, label: "Protected items", count: protected.count, bytes: protected.bytes, protected: true) }
+        VStack(alignment: .leading, spacing: NotchSpace.stack) {
+            diskCard
+            if sweep.snapshot?.fullDiskAccess == false { fullDiskCard }
+            categoriesCard
         }
     }
 
-    private func categoryGroup(id: String, label: String, count: Int, bytes: Int64, protected: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    /// The volume, once, honestly.
+    ///
+    /// Reclaimable is a slice of what is *used*, not a separate figure parked
+    /// beside it — the old two-metric row let "12 GB free" and "48 GB
+    /// reclaimable" sit next to each other as if they were the same kind of
+    /// number. Drawn inside the bar, the relationship is unmistakable.
+    @ViewBuilder private var diskCard: some View {
+        if let volume = sweep.snapshot?.volume {
+            SettingCard(volume.name, detail: diskDetail(volume), tint: scanTint) {
+                DiskBar(total: volume.total,
+                        available: volume.available,
+                        reclaimable: sweep.snapshot?.reclaimableBytes ?? 0)
+                HStack(spacing: NotchSpace.snug) {
+                    if sweep.isSurveying {
+                        ProgressView(value: sweep.surveyProgress)
+                            .frame(width: 120)
+                        Text("\(Int(sweep.surveyProgress * 100))%")
+                            .font(NotchType.figure).foregroundStyle(.secondary)
+                        Button("Stop", role: .destructive) { sweep.cancel() }
+                    } else {
+                        Button("Scan again") { sweep.rescan() }
+                    }
+                    Spacer()
+                }
+                .controlSize(.small)
+            }
+        } else {
+            SettingCard {
+                ProgressView("Reading disk").font(NotchType.rowDetail)
+            }
+        }
+    }
+
+    private func diskDetail(_ volume: BoringSweepVolume) -> String {
+        var line = "\(sweepFormatBytes(volume.total)) total"
+        if let date = sweep.snapshot?.lastSurvey {
+            let freshness = sweep.snapshot?.analysisIsCached == true ? "Saved" : "Fresh"
+            line += " · \(freshness.lowercased()) findings from \(date.formatted(date: .abbreviated, time: .shortened))"
+        }
+        if sweep.isSurveying {
+            line += " · a fresh scan is running"
+        }
+        return line
+    }
+
+    private var scanTint: Color? { sweep.isSurveying ? NotchTint.active : nil }
+
+    private var fullDiskCard: some View {
+        SettingCard("Full Disk Access",
+                    detail: "Without it Sweep can only see part of the disk, so the figures above are an undercount.",
+                    tint: NotchTint.attention) {
+            HStack {
+                Button("Open Privacy Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+                }
+                .controlSize(.small)
+                Spacer()
+            }
+        }
+    }
+
+    private var categoriesCard: some View {
+        let categories = sweep.snapshot?.categories ?? []
+        let largest = max(1, categories.map(\.reclaimableBytes).max() ?? 1)
+        return SettingCard("What can be reclaimed",
+                           detail: "Open a category to load its first 25 items.") {
+            if categories.isEmpty {
+                if sweep.isSurveying {
+                    ProgressView("Scanning for reclaimable space").font(NotchType.rowDetail)
+                } else {
+                    SettingsEmptyState(symbol: "sparkles",
+                                       title: "Nothing to reclaim",
+                                       detail: "The last scan found no items above your size threshold.")
+                }
+            } else {
+                ForEach(Array(categories.enumerated()), id: \.element.id) { index, category in
+                    if index > 0 { Divider().opacity(0.35) }
+                    categoryGroup(id: category.id, label: category.label,
+                                  count: category.count, bytes: category.reclaimableBytes,
+                                  largest: largest, protected: false)
+                }
+                if let protected = sweep.snapshot?.protected, protected.count > 0 {
+                    Divider().opacity(0.35)
+                    categoryGroup(id: BoringSweepProtected.id, label: "Protected — never removed",
+                                  count: protected.count, bytes: protected.bytes,
+                                  largest: largest, protected: true)
+                }
+            }
+        }
+    }
+
+    private func categoryGroup(id: String, label: String, count: Int, bytes: Int64,
+                               largest: Int64, protected: Bool) -> some View {
+        let open = expandedCategoryID == id
+        return VStack(alignment: .leading, spacing: NotchSpace.tight) {
             Button {
-                if expandedCategoryID == id { expandedCategoryID = nil } else { expandedCategoryID = id; if sweep.categoryPages[id] == nil { sweep.loadCategory(id) } }
+                if open { expandedCategoryID = nil }
+                else {
+                    expandedCategoryID = id
+                    if sweep.categoryPages[id] == nil { sweep.loadCategory(id) }
+                }
             } label: {
-                HStack { Image(systemName: expandedCategoryID == id ? "chevron.down" : "chevron.right").font(.caption); VStack(alignment: .leading) { Text(label).fontWeight(.semibold); Text("^[\(count) item](inflect: true)").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(sweepFormatBytes(bytes)).foregroundStyle(.secondary) }
-            }.buttonStyle(.plain)
-            if expandedCategoryID == id {
+                HStack(spacing: NotchSpace.snug) {
+                    Image(systemName: protected ? "lock.fill" : "folder.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(protected ? AnyShapeStyle(.secondary)
+                                                   : AnyShapeStyle(NotchTint.active))
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: NotchSpace.tight) {
+                            Text(label).font(NotchType.rowTitle)
+                            Text("^[\(count) item](inflect: true)")
+                                .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                            Spacer(minLength: 8)
+                            Text(sweepFormatBytes(bytes))
+                                .font(NotchType.figure).foregroundStyle(.primary)
+                        }
+                        // How big this category is against the biggest one. A
+                        // column of byte counts is a table; a column of bars is
+                        // a ranking, which is the question being asked.
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(Color.primary.opacity(0.10))
+                                Capsule()
+                                    .fill(protected ? Color.secondary : NotchTint.active)
+                                    .frame(width: max(2, geometry.size.width
+                                        * min(1, Double(bytes) / Double(largest))))
+                            }
+                        }
+                        .frame(height: 3)
+                    }
+                    Image(systemName: open ? "chevron.down" : "chevron.forward")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, NotchSpace.tight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if open {
                 if let page = sweep.categoryPages[id] {
                     ForEach(page.targets) { target in targetRow(target, protected: protected) }
-                    if page.nextOffset != nil { Button("Load 25 more") { sweep.loadMoreCategory(id) }.font(.caption) }
-                } else { ProgressView("Loading \(label.lowercased())") }
+                    if page.nextOffset != nil {
+                        Button("Load 25 more") { sweep.loadMoreCategory(id) }
+                            .controlSize(.small)
+                            .padding(.leading, 26)
+                    }
+                } else {
+                    ProgressView("Loading \(label.lowercased())")
+                        .font(NotchType.rowDetail)
+                        .padding(.leading, 26)
+                }
             }
-        }.padding(12).background(Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 
     private func targetRow(_ target: BoringSweepTarget, protected: Bool) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            if protected { Image(systemName: "lock.fill").foregroundStyle(.secondary).frame(width: 18) }
-            else { Button { sweep.toggle(target) } label: { Image(systemName: sweep.snapshot?.selectedIDs.contains(target.id) == true ? "checkmark.circle.fill" : "circle").foregroundStyle(Color.effectiveAccent) }.buttonStyle(.plain).accessibilityLabel("Select \(target.title)") }
-            VStack(alignment: .leading, spacing: 2) { HStack { Text(target.title).fontWeight(.medium); Spacer(); Text(sweepFormatBytes(target.bytes)).foregroundStyle(.secondary) }; Text(target.summary).font(.caption).foregroundStyle(.secondary).lineLimit(2); Text(target.defaultReclaim).font(.caption2).foregroundStyle(.secondary) }
-        }.padding(.vertical, 3)
+        HStack(alignment: .top, spacing: NotchSpace.snug) {
+            if protected {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary).frame(width: 16)
+            } else {
+                Button { sweep.toggle(target) } label: {
+                    Image(systemName: sweep.snapshot?.selectedIDs.contains(target.id) == true
+                          ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 14))
+                        .foregroundStyle(sweep.snapshot?.selectedIDs.contains(target.id) == true
+                                         ? AnyShapeStyle(Color.effectiveAccent)
+                                         : AnyShapeStyle(.tertiary))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Select \(target.title)")
+                .frame(width: 16)
+            }
+            VStack(alignment: .leading, spacing: NotchSpace.hair) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(target.title).font(NotchType.rowTitle)
+                    Spacer(minLength: 8)
+                    Text(sweepFormatBytes(target.bytes))
+                        .font(NotchType.figure).foregroundStyle(.secondary)
+                }
+                Text(target.summary)
+                    .font(NotchType.rowDetail).foregroundStyle(.secondary).lineLimit(2)
+                Text(target.defaultReclaim)
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.leading, 26)
+        .padding(.vertical, 3)
     }
 
     private var cleanupBar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading) { Text("\(sweep.snapshot?.selectedIDs.count ?? 0) selected").fontWeight(.medium); Text(sweepFormatBytes(sweep.snapshot?.selectedBytes ?? 0)).font(.caption).foregroundStyle(.secondary) }
-            Spacer(); Button("Clear") { sweep.clearSelection() }.disabled((sweep.snapshot?.selectedIDs.isEmpty ?? true)); Button("Select recommended") { sweep.selectRecommended() }; Button("Review cleanup") { sweep.prepareReclaim() }.buttonStyle(.borderedProminent).disabled((sweep.snapshot?.selectedBytes ?? 0) == 0)
-        }.padding(12).background(.bar)
+        SettingsActionBar {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(sweepFormatBytes(sweep.snapshot?.selectedBytes ?? 0))
+                    .font(NotchType.rowTitle).fontWeight(.medium)
+                    .contentTransition(.numericText())
+                Text("^[\(sweep.snapshot?.selectedIDs.count ?? 0) item](inflect: true) selected")
+                    .font(NotchType.rowDetail).foregroundStyle(.secondary)
+            }
+        } trailing: {
+            Button("Clear") { sweep.clearSelection() }
+                .disabled(sweep.snapshot?.selectedIDs.isEmpty ?? true)
+            Button("Select recommended") { sweep.selectRecommended() }
+            Button("Review cleanup") { sweep.prepareReclaim() }
+                .buttonStyle(.borderedProminent)
+                .disabled((sweep.snapshot?.selectedBytes ?? 0) == 0)
+        }
     }
 
+    // MARK: - History
+
     private var history: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if sweep.snapshot?.includesHistory != true { ProgressView("Loading completed cleanups") }
-            else {
-                metric("Measured space freed", sweepFormatBytes(sweep.snapshot?.history.cumulativeFreedBytes ?? 0))
-                ForEach((sweep.snapshot?.history.entries ?? []).prefix(10)) { entry in HStack { VStack(alignment: .leading) { Text(entry.date.formatted(date: .abbreviated, time: .shortened)); Text("\(entry.itemCount) items").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(sweepFormatBytes(entry.measuredFreedBytes)) } }
-                if let regrowth = sweep.snapshot?.regrowth, !regrowth.isEmpty { Divider(); Text("Learned regrowth").fontWeight(.semibold); ForEach(regrowth.prefix(8)) { item in HStack { Text(item.path).lineLimit(1); Spacer(); Text("\(item.count) times · \(sweepFormatBytes(item.lastBytes))").font(.caption).foregroundStyle(.secondary) } }; Button("Clear learned history", role: .destructive) { sweep.clearRegrowth() } }
+        VStack(alignment: .leading, spacing: NotchSpace.stack) {
+            if sweep.snapshot?.includesHistory != true {
+                ProgressView("Loading completed cleanups").font(NotchType.rowDetail)
+            } else {
+                SettingCard {
+                    SettingsStatRow {
+                        SettingsStatTile(
+                            value: sweepFormatBytes(sweep.snapshot?.history.cumulativeFreedBytes ?? 0),
+                            label: "Measured space freed",
+                            caption: "Across every cleanup you have run")
+                        SettingsStatTile(
+                            value: "\(sweep.snapshot?.history.entries.count ?? 0)",
+                            label: "Cleanups")
+                    }
+                }
+                SettingCard("Recent cleanups") {
+                    let entries = Array((sweep.snapshot?.history.entries ?? []).prefix(10))
+                    if entries.isEmpty {
+                        SettingsEmptyState(symbol: "clock.arrow.circlepath",
+                                           title: "Nothing reclaimed yet",
+                                           detail: "Cleanups you run will be listed here with what they actually freed.")
+                    } else {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            if index > 0 { Divider().opacity(0.35) }
+                            SettingFact(title: entry.date.formatted(date: .abbreviated, time: .shortened),
+                                        value: sweepFormatBytes(entry.measuredFreedBytes))
+                        }
+                    }
+                }
+                if let regrowth = sweep.snapshot?.regrowth, !regrowth.isEmpty {
+                    SettingCard("Learned regrowth",
+                                detail: "Paths that come back after a cleanup. Sweep uses this to decide what is worth recommending.") {
+                        ForEach(Array(regrowth.prefix(8).enumerated()), id: \.element.id) { index, item in
+                            if index > 0 { Divider().opacity(0.35) }
+                            SettingFact(title: item.path,
+                                        value: "\(item.count)× · \(sweepFormatBytes(item.lastBytes))")
+                        }
+                        HStack {
+                            Button("Clear learned history", role: .destructive) { sweep.clearRegrowth() }
+                                .controlSize(.small)
+                            Spacer()
+                        }
+                    }
+                }
             }
         }
     }
 
+    // MARK: - Options
+
     private var options: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            SettingCard("Scanner") {
-                VStack(alignment: .leading, spacing: 12) {
-                    unitField("Minimum item size", value: $minimumValue, unit: $minimumUnit)
-                    intervalField("Refresh interval", value: $refreshValue, unit: $refreshUnit)
-                    pathEditor("Additional scan locations", paths: $scanRoots, placeholder: "/Users/me/Library/Caches")
-                    pathEditor("Excluded locations", paths: $exclusions, placeholder: "/Users/me/Library/Application Support")
-                }
+        VStack(alignment: .leading, spacing: NotchSpace.stack) {
+            SettingsColumns {
+                scannerCard
+            } trailing: {
+                whereCard
             }
-            SettingCard("Service lifetime",
-                        detail: "A scan is long-running, so this decides how much of it survives you navigating away.") {
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("", selection: $sweep.lifetime) {
-                        ForEach(SweepProcessLifetime.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .labelsHidden().frame(width: 240)
-                    Text("Leaving Sweep ends the scan · Closing Settings ends it · Keep until Boring quits lets it finish.")
-                        .font(NotchType.rowDetail).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            lifetimeCard
             if let migration = sweep.snapshot?.migration {
                 SettingCard(tint: migration.complete ? nil : NotchTint.attention) {
                     Label(migration.message,
@@ -233,32 +376,189 @@ struct SweepSettings: View {
         }
     }
 
-    private var optionsBar: some View { HStack { Button("Discard") { optionsLoaded = false; loadOptions() }; Spacer(); Button("Save and rescan") { saveOptions(); router?.popToRoot() }.buttonStyle(.borderedProminent) }.padding(12).background(.bar) }
+    /// The threshold was a text field plus a unit picker, which meant choosing it
+    /// was: type a number, choose a unit, press Save, run a scan, find out. The
+    /// slider is logarithmic because the useful range spans four orders of
+    /// magnitude and a linear one would spend nine tenths of its travel between
+    /// 1 GB and 10 GB.
+    private var scannerCard: some View {
+        SettingCard("Scanner") {
+            NotchSlider(value: Binding(get: { log2(max(thresholdBytes, 1)) },
+                                       set: { thresholdBytes = pow(2, $0) }),
+                        range: 20...33,
+                        step: 0.5,
+                        label: "Ignore anything smaller than",
+                        format: { sweepFormatBytes(Int64(pow(2, $0))) },
+                        ends: ("1 MB", "8 GB"))
+            Text("Smaller items are never listed, which is what keeps a scan from returning a hundred thousand rows. Applies from the next scan.")
+                .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-    private func metric(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value).font(NotchType.stat)
-            Text(label).font(NotchType.rowDetail).foregroundStyle(.secondary)
+            Divider().opacity(0.35)
+
+            NotchStopSlider(
+                selection: Binding(get: { nearestInterval(refreshSeconds) },
+                                   set: { refreshSeconds = $0 }),
+                stops: [
+                    .init(value: 900.0, title: "15 min"),
+                    .init(value: 3_600.0, title: "1 hour"),
+                    .init(value: 21_600.0, title: "6 hours"),
+                    .init(value: 86_400.0, title: "A day"),
+                ],
+                label: "Rescan",
+                detail: "How stale the findings are allowed to get before the helper looks again on its own.")
         }
     }
-    private func unitField(_ label: String, value: Binding<String>, unit: Binding<SweepSizeUnit>) -> some View { HStack { Text(label); Spacer(); TextField("0", text: value).multilineTextAlignment(.trailing).frame(width: 84); Picker(label, selection: unit) { ForEach(SweepSizeUnit.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 78) } }
-    private func intervalField(_ label: String, value: Binding<String>, unit: Binding<SweepIntervalUnit>) -> some View { HStack { Text(label); Spacer(); TextField("0", text: value).multilineTextAlignment(.trailing).frame(width: 84); Picker(label, selection: unit) { ForEach(SweepIntervalUnit.allCases) { Text($0.rawValue).tag($0) } }.labelsHidden().frame(width: 92) } }
-    private func pathEditor(_ title: String, paths: Binding<[String]>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) { Text(title).fontWeight(.medium); ForEach(paths.wrappedValue.indices, id: \.self) { index in HStack { TextField(placeholder, text: Binding(get: { paths.wrappedValue[index] }, set: { paths.wrappedValue[index] = $0 })); Button(role: .destructive) { paths.wrappedValue.remove(at: index) } label: { Image(systemName: "minus.circle") }.buttonStyle(.plain) } }; Button { paths.wrappedValue.append("") } label: { Label("Add location", systemImage: "plus") }.font(.caption) }
+
+    private func nearestInterval(_ seconds: Double) -> Double {
+        [900.0, 3_600.0, 21_600.0, 86_400.0]
+            .min { abs($0 - seconds) < abs($1 - seconds) } ?? 3_600
     }
+
+    private var whereCard: some View {
+        SettingCard("Where it looks",
+                    detail: "Sweep always covers the standard caches. These are on top of that.") {
+            pathEditor("Also scan", paths: $scanRoots, add: "Add a location")
+            Divider().opacity(0.35)
+            pathEditor("Never touch", paths: $exclusions, add: "Add an exclusion")
+        }
+    }
+
+    private var lifetimeCard: some View {
+        SettingCard("Service lifetime",
+                    detail: "A scan takes minutes, so this decides how much of one survives you navigating away.") {
+            // Ordered by how much of the scan survives, so the slider's direction
+            // means something. A picker of three strings said nothing about which
+            // was the most forgiving.
+            NotchStopSlider(
+                selection: $sweep.lifetime,
+                stops: [
+                    .init(value: SweepProcessLifetime.tab, title: "Leaving Sweep",
+                          caption: "ends the scan"),
+                    .init(value: SweepProcessLifetime.settings, title: "Closing Settings",
+                          caption: "ends the scan"),
+                    .init(value: SweepProcessLifetime.app, title: "Quitting Boring",
+                          caption: "lets it finish"),
+                ],
+                detail: lifetimeDetail)
+        }
+    }
+
+    private var lifetimeDetail: String {
+        switch sweep.lifetime {
+        case .tab:
+            return "A scan stops the moment you leave Sweep, so nothing runs that you are not looking at — and nothing finishes either."
+        case .settings:
+            return "A scan keeps running while you use the rest of Settings, and stops when the window closes."
+        case .app:
+            return "A scan runs to completion in the background, whatever you do with Settings. It stops when Boring quits."
+        }
+    }
+
+    private func pathEditor(_ title: String, paths: Binding<[String]>, add: String) -> some View {
+        VStack(alignment: .leading, spacing: NotchSpace.tight) {
+            Text(title).font(NotchType.rowTitle)
+            ForEach(paths.wrappedValue.indices, id: \.self) { index in
+                HStack(spacing: NotchSpace.tight) {
+                    TextField("/Users/me/Library/Caches", text: Binding(
+                        get: { paths.wrappedValue[index] },
+                        set: { paths.wrappedValue[index] = $0 }))
+                        .textFieldStyle(.roundedBorder)
+                        .font(NotchType.mono)
+                    Button(role: .destructive) { paths.wrappedValue.remove(at: index) } label: {
+                        Image(systemName: "minus.circle")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
+                }
+            }
+            Button { paths.wrappedValue.append("") } label: {
+                Label(add, systemImage: "plus")
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private var optionsBar: some View {
+        SettingsActionBar {
+            Button("Discard") { optionsLoaded = false; loadOptions() }
+        } trailing: {
+            Button("Save and rescan") { saveOptions(); router?.popToRoot() }
+                .buttonStyle(.borderedProminent)
+        }
+    }
+
     private func loadOptions() {
         guard !optionsLoaded, let preferences = sweep.snapshot?.preferences else { return }
-        minimumUnit = bestSizeUnit(preferences.candidateThresholdBytes); minimumValue = formattedValue(Double(preferences.candidateThresholdBytes) / minimumUnit.multiplier)
-        refreshUnit = bestIntervalUnit(preferences.resurveyInterval); refreshValue = formattedValue(preferences.resurveyInterval / refreshUnit.multiplier)
-        scanRoots = preferences.extraScanRoots; exclusions = preferences.userExclusions; optionsLoaded = true
+        thresholdBytes = Double(preferences.candidateThresholdBytes)
+        refreshSeconds = preferences.resurveyInterval
+        scanRoots = preferences.extraScanRoots
+        exclusions = preferences.userExclusions
+        optionsLoaded = true
     }
+
     private func saveOptions() {
-        guard let minimum = Double(minimumValue), let interval = Double(refreshValue) else { return }
-        let paths: ([String]) -> [String] = { $0.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty } }
+        let paths: ([String]) -> [String] = {
+            $0.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        }
         optionsLoaded = false
-        sweep.apply(BoringSweepPreferences(candidateThresholdBytes: max(1, Int64(minimum * minimumUnit.multiplier)), extraScanRoots: paths(scanRoots), userExclusions: paths(exclusions), resurveyInterval: max(60, interval * refreshUnit.multiplier)))
+        sweep.apply(BoringSweepPreferences(
+            candidateThresholdBytes: max(1, Int64(thresholdBytes)),
+            extraScanRoots: paths(scanRoots),
+            userExclusions: paths(exclusions),
+            resurveyInterval: max(60, refreshSeconds)))
     }
-    private func bestSizeUnit(_ bytes: Int64) -> SweepSizeUnit { bytes >= Int64(SweepSizeUnit.gigabytes.multiplier) ? .gigabytes : bytes >= Int64(SweepSizeUnit.megabytes.multiplier) ? .megabytes : bytes >= Int64(SweepSizeUnit.kilobytes.multiplier) ? .kilobytes : .bytes }
-    private func bestIntervalUnit(_ seconds: TimeInterval) -> SweepIntervalUnit { seconds >= 3_600 ? .hours : seconds >= 60 ? .minutes : .seconds }
-    private func formattedValue(_ value: Double) -> String { value.rounded() == value ? "\(Int(value))" : String(format: "%.1f", value) }
+}
+
+/// The volume as one bar: what is used, what of that is reclaimable, what is
+/// free.
+private struct DiskBar: View {
+    let total: Int64
+    let available: Int64
+    let reclaimable: Int64
+
+    private var used: Int64 { max(0, total - available) }
+    /// Reclaimable is part of used, so it is drawn out of it rather than added
+    /// to it. Clamped because a stale snapshot can report more reclaimable than
+    /// the volume currently says is used.
+    private var reclaimableShown: Int64 { min(reclaimable, used) }
+    private var otherUsed: Int64 { used - reclaimableShown }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: NotchSpace.snug) {
+            GeometryReader { geometry in
+                let scale = geometry.size.width / CGFloat(max(total, 1))
+                HStack(spacing: 1.5) {
+                    Rectangle().fill(Color.primary.opacity(0.28))
+                        .frame(width: max(0, CGFloat(otherUsed) * scale))
+                    Rectangle().fill(NotchTint.active)
+                        .frame(width: max(0, CGFloat(reclaimableShown) * scale))
+                    Rectangle().fill(Color.primary.opacity(0.07))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+            .frame(height: 24)
+
+            HStack(spacing: NotchSpace.group) {
+                legend("Used", sweepFormatBytes(otherUsed), Color.primary.opacity(0.28))
+                legend("Reclaimable", sweepFormatBytes(reclaimableShown), NotchTint.active)
+                legend("Free", sweepFormatBytes(available), Color.primary.opacity(0.12))
+                Spacer(minLength: 0)
+            }
+        }
+        .animation(NotchMotion.settle, value: reclaimable)
+    }
+
+    private func legend(_ label: String, _ value: String, _ colour: Color) -> some View {
+        VStack(alignment: .leading, spacing: NotchSpace.hair) {
+            HStack(spacing: 5) {
+                RoundedRectangle(cornerRadius: 2).fill(colour).frame(width: 8, height: 8)
+                SettingsMicroLabel(text: label)
+            }
+            Text(value)
+                .font(NotchType.figure)
+                .foregroundStyle(.primary)
+                .padding(.leading, 13)
+        }
+    }
 }
