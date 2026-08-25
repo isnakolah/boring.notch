@@ -14,31 +14,41 @@ struct SettingsPane<Content: View>: View {
     /// whole trail instead of a single static eyebrow, so a pane cannot be wrong
     /// about where it is — it is not told, it is derived.
     var crumbs: [SettingsBreadcrumb.Crumb]?
+    /// Sibling pages this one points at, drawn as chips in the header's trailing
+    /// edge. A page that is itself the work — Sweep's clean-up list — stays
+    /// navigable without spending a card on a list of links.
+    var nav: [SettingsPage] = []
     @ViewBuilder var content: Content
 
     @Environment(\.settingsRouter) private var router
 
     /// The original initialiser. Kept so every pane written against it compiles
     /// unchanged; panes move onto the route-aware ones as they are touched.
-    init(eyebrow: String, title: String, detail: String? = nil, @ViewBuilder content: () -> Content) {
+    init(eyebrow: String, title: String, detail: String? = nil, nav: [SettingsPage] = [],
+         @ViewBuilder content: () -> Content) {
         self.eyebrow = eyebrow
         self.title = title
         self.detail = detail
         self.crumbs = nil
+        self.nav = nav
         self.content = content()
     }
 
     /// A section's landing pane.
-    init(_ section: SettingsSection, @ViewBuilder content: () -> Content) {
+    init(_ section: SettingsSection, nav: [SettingsPage] = [],
+         @ViewBuilder content: () -> Content) {
         self.eyebrow = ""
         self.title = String(localized: section.title)
         self.detail = String(localized: section.detail)
         self.crumbs = nil
+        self.nav = nav
         self.content = content()
     }
 
     /// A pushed page. Title, detail and the whole trail come from the model.
-    init(_ page: SettingsPage, titleOverride: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ page: SettingsPage, titleOverride: String? = nil, nav: [SettingsPage] = [],
+         @ViewBuilder content: () -> Content) {
+        self.nav = nav
         let section = page.section
         self.eyebrow = String(localized: section.title)
         self.title = titleOverride ?? String(localized: page.title)
@@ -64,28 +74,37 @@ struct SettingsPane<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: NotchSpace.row) {
                 VStack(alignment: .leading, spacing: 3) {
                     // A landing pane has no trail to draw: its title already
-                    // says the section name, and repeating it above itself is
-                    // the kind of chrome the eyebrow existed to avoid.
+                    // says the section name. A pushed pane draws the trail
+                    // *instead* of a title, because the trail ends in the title
+                    // — printing the leaf again underneath it was the same name
+                    // twice, one line apart, in two different type styles.
                     if let crumbs, !crumbs.isEmpty, let router {
                         SettingsBreadcrumb(
                             crumbs: crumbs,
-                            onSelect: { router.popTo(depth: $0) },
-                            onBack: router.route.path.isEmpty ? nil : { router.pop() })
-                    } else if !eyebrow.isEmpty {
-                        Text(eyebrow.uppercased())
-                            .font(NotchType.eyebrow)
-                            .foregroundStyle(.tertiary)
-                            .kerning(0.5)
+                            onSelect: { router.popTo(depth: $0) })
+                    } else {
+                        if !eyebrow.isEmpty {
+                            Text(eyebrow.uppercased())
+                                .font(NotchType.eyebrow)
+                                .foregroundStyle(.tertiary)
+                                .kerning(0.5)
+                        }
+                        Text(title).font(NotchType.paneTitle)
                     }
-                    Text(title).font(NotchType.paneTitle)
                     if let detail {
                         Text(detail)
                             .font(NotchType.paneDetail)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !nav.isEmpty {
+                    SettingsHeaderNav(pages: nav).padding(.top, 4)
+                }
                 }
                 content
             }
@@ -149,6 +168,18 @@ struct SettingCard<Content: View>: View {
             RoundedRectangle(cornerRadius: NotchRadius.card, style: .continuous)
                 .strokeBorder(cardBorder, lineWidth: 1)
         )
+        // A single hairline of light along the top edge. Without it a card is a
+        // rectangle of a slightly different grey; with it the card is lit from
+        // above like everything else on the desktop, and the stack of them reads
+        // as a stack.
+        .overlay(alignment: .top) {
+            RoundedRectangle(cornerRadius: NotchRadius.card, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(colors: [Color.white.opacity(0.10), .clear],
+                                   startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1)
+                .allowsHitTesting(false)
+        }
     }
 
     private var cardBackground: AnyShapeStyle {

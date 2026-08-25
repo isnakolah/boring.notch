@@ -94,10 +94,13 @@ enum SettingsSection: String, CaseIterable, Identifiable, Hashable, Codable {
         case .shelf: return [.localSend, .kdeConnect]
         case .pomodoro: return []
         case .copilot:
-            return [.copilotCall, .copilotIntelligence, .copilotPrompts,
-                    .copilotKnowledge, .copilotTranscription, .copilotHistory]
-        case .tutor: return [.tutorCourses, .tutorCreate, .tutorBehavior, .tutorAccess, .tutorEngine]
-        case .sweep: return [.sweepCleanUp, .sweepHistory, .sweepOptions]
+            return [.copilotCall, .copilotModels, .copilotPrompts,
+                    .copilotKnowledge, .copilotHistory, .copilotBackup]
+        case .tutor: return [.tutorCourses, .tutorCreate, .tutorBehavior, .tutorEngine]
+        // Clean Up is the landing pane, so it is not listed here. History and
+        // Options are reached from the header rather than from a card, since the
+        // landing has real work on it to get in the way of.
+        case .sweep: return [.sweepHistory, .sweepOptions]
         case .shortcuts, .privacy, .about: return []
         }
     }
