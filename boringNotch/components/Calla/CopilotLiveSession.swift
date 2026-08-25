@@ -54,6 +54,28 @@ final class CopilotLiveSession: ObservableObject {
     /// later, with the host's own startup drawn inside it.
     @Published private(set) var starting = false
 
+    /// A start was asked for and ended without a call.
+    ///
+    /// Its own state because the alternative was silence. `starting` going false
+    /// without `isLive` going true was treated as "nothing to show": the notch
+    /// unpinned, the panel was replaced by the tab with its Start button back on
+    /// it, and a start that failed became indistinguishable from one that was
+    /// never pressed. The host had already said what went wrong — it just had
+    /// nowhere to say it.
+    ///
+    /// So a failed start holds the notch exactly the way a starting one does,
+    /// and the panel says which step it got to and offers the press again.
+    @Published private(set) var startupFailed = false
+
+    /// What the host said on the way down, kept because `lastResult` is
+    /// overwritten by whatever the engine does next.
+    @Published private(set) var startupFailure: String?
+
+    /// The last step the host reported before it stopped reporting. The status
+    /// clears `startupStage` when the host goes, which would otherwise leave the
+    /// failure panel unable to say where it got to.
+    @Published private(set) var lastStartupStage: String?
+
     /// A sign-in is waiting for the user, so the notch shows a field for the code
     /// instead of a call.
     ///
@@ -76,7 +98,9 @@ final class CopilotLiveSession: ObservableObject {
 
     /// The single question `BoringViewModel.close()` and the panel's sharing
     /// type both ask.
-    var pinsNotchOpen: Bool { (isLive || starting || signInActive || prerollActive) && pinned }
+    var pinsNotchOpen: Bool {
+        (isLive || starting || startupFailed || signInActive || prerollActive) && pinned
+    }
 
     /// The size the notch should open to right now.
     var preferredOpenSize: CGSize {
@@ -96,7 +120,10 @@ final class CopilotLiveSession: ObservableObject {
         if signInActive || prerollActive { return openNotchSize }
         // A starting call uses the full live size it is about to become, so the
         // notch does not resize under the reader the moment capture begins.
-        if starting, !isLive { return CallaPanelSize.full }
+        // A failed start is drawn in the same panel as a starting one, so it
+        // takes the same size — the notch must not shrink at the moment it has
+        // something to explain.
+        if (starting || startupFailed), !isLive { return CallaPanelSize.full }
         guard isLive else { return openNotchSize }
         // Compact is genuinely smaller. Keeping the full slab for both layouts
         // meant collapsing bought nothing but empty card — the state and the
@@ -147,6 +174,17 @@ final class CopilotLiveSession: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Remembered while it is being reported, because the failure panel needs
+        // it after the host has stopped reporting anything.
+        CallaEngineClient.shared.$status
+            .map(\.copilot.startupStage)
+            .removeDuplicates()
+            .sink { [weak self] stage in
+                guard let stage else { return }
+                self?.lastStartupStage = stage
+            }
+            .store(in: &cancellables)
+
         CallaEngineClient.shared.$status
             .map(\.copilot.isSigningIn)
             .removeDuplicates()
@@ -188,18 +226,51 @@ final class CopilotLiveSession: ObservableObject {
     private func apply(starting: Bool) {
         guard starting != self.starting else { return }
         self.starting = starting
-        // Only opens the notch. Closing it is `apply(running:)`'s job: a call that
-        // comes up hands straight over to the live panel, and one that fails to
-        // come up is released by the client's launch timeout, which is the same
-        // path a stopped call takes.
+
+        // Only opens the notch. A call that comes up hands straight over to the
+        // live panel — `apply(running:)` does that, and clears this — so
+        // reaching here with `starting` false and nothing live means the start
+        // ended without a call: the host died, was refused a permission, or the
+        // client's thirty-second launch deadline expired.
+        //
+        // That used to unpin and let the notch close. It is the one moment in
+        // the whole flow where the user is definitely looking at the notch and
+        // definitely wants to be told something, so it holds instead.
         guard starting, Defaults[.callaCopilotEnabled] else {
-            if !starting, !isLive { pinned = false }
+            if !starting, !isLive {
+                if Defaults[.callaCopilotEnabled] {
+                    startupFailed = true
+                    startupFailure = CallaEngineClient.shared.status.copilot.lastResult
+                    layout = .full
+                    pinned = true
+                } else {
+                    pinned = false
+                }
+            }
             NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
             return
         }
+        clearStartupFailure()
         layout = .full
         pinned = true
         reveal()
+    }
+
+    /// Forgets a failed start. Called when one succeeds, when the reader
+    /// dismisses it, and when they press the button again.
+    func clearStartupFailure() {
+        guard startupFailed || startupFailure != nil else { return }
+        startupFailed = false
+        startupFailure = nil
+    }
+
+    /// Puts the notch back the way a dismissed call does: the panel goes, the
+    /// call does not restart, and nothing else is disturbed.
+    func dismissStartupFailure() {
+        clearStartupFailure()
+        lastStartupStage = nil
+        pinned = false
+        NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
     }
 
     private func apply(signingIn: Bool) {
@@ -229,6 +300,8 @@ final class CopilotLiveSession: ObservableObject {
             // Recording has started, so the card's central claim — that nothing is
             // being captured — has stopped being true. The live panel takes over.
             starting = false
+            clearStartupFailure()
+            lastStartupStage = nil
             prerollActive = false
             prerollTitle = nil
             prerollStartsAt = nil

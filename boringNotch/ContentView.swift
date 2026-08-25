@@ -556,11 +556,13 @@ struct ContentView: View {
                             CallaCopilotSignInView()
                         } else if copilotSession.isLive {
                             CallaCopilotLiveView()
-                        } else if copilotSession.starting {
+                        } else if copilotSession.starting || copilotSession.startupFailed {
                             // The seconds between pressing the button and the
-                            // microphone opening. Previously this was the tab
+                            // microphone opening — and, when it never opens, the
+                            // same panel saying so. Previously this was the tab
                             // with its Start button still on it, which read as
-                            // the press having been lost.
+                            // the press having been lost, whether the call was
+                            // three seconds away or never coming.
                             CallaCopilotStartingView()
                         } else {
                             CallaCopilotTabView()

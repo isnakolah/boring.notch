@@ -59,7 +59,16 @@ class SettingsWindowController: NSWindowController {
         // the traffic lights on top of the sidebar's notch preview.
         window.titleVisibility = .hidden
         window.toolbarStyle = .unified
-        window.isMovableByWindowBackground = true
+        // Off, deliberately. With it on, AppKit claims any drag that does not
+        // start on an AppKit control and moves the whole window instead —
+        // which is every custom-drawn control in this window: the sliders, the
+        // call panel's resize handles, the knowledge calendar. A SwiftUI
+        // `DragGesture` on a `Shape` is background as far as the window is
+        // concerned, so it lost the drag every time.
+        //
+        // Nothing is given up. The window keeps a real titlebar with its
+        // traffic lights — see `titleVisibility` above — so it already has a
+        // drag region, and that is the one macOS windows are dragged by.
         
         // Make it behave like a regular app window with proper Spaces support
         window.collectionBehavior = [.managed, .participatesInCycle, .fullScreenAuxiliary]
