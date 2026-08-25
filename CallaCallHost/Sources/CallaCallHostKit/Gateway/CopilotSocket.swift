@@ -113,10 +113,27 @@ public actor CopilotSocket {
 
     public private(set) var connected = false
 
-    public init(url: URL, session: URLSession = .shared) {
+    public init(url: URL, session: URLSession? = nil) {
         self.url = url
-        self.session = session
+        self.session = session ?? Self.makeSession()
         encoder.outputFormatting = [.sortedKeys]
+    }
+
+    /// Its own session rather than `URLSession.shared`.
+    ///
+    /// The shared session's 60s request timeout is the wrong number for a route
+    /// that is either reachable over Tailscale in well under a second or not
+    /// reachable at all. A `send` on a socket that never connects used to hang for
+    /// a minute, and it hung on whatever awaited it — which, before the connect
+    /// moved off the startup path, was the microphone.
+    private static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 8
+        // The socket itself is long-lived; only the establishing request is
+        // impatient. This bounds the whole connection, so it stays generous.
+        configuration.timeoutIntervalForResource = 60 * 60 * 8
+        configuration.waitsForConnectivity = false
+        return URLSession(configuration: configuration)
     }
 
     public func setHandlers(

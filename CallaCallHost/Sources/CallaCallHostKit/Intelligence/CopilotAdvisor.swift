@@ -1,4 +1,5 @@
 import Foundation
+import CallaContracts
 import IntelligenceCore
 import IntelligenceProviders
 import IntelligenceStore
@@ -121,14 +122,15 @@ public actor CopilotAdvisor {
     /// Without this a run with fallback disabled fails completely silently, which
     /// is the one situation where the reason matters most.
     public private(set) var lastFailure: String?
-    /// What the copilot is doing: `answer`, `summary`, or nothing.
-    ///
-    /// One bool used to cover both, which meant the panel said "finding an answer"
-    /// while it was actually rebuilding the account — the two take very different
-    /// amounts of time, so conflating them makes the slower one look like a stall.
-    public private(set) var workingOn: String?
-    /// A request is in flight, priority or paced.
-    public var isThinking: Bool { workingOn != nil }
+    /// Separate lane state. Question and Summary requests may overlap, while each
+    /// lane remains serial against its own warm conversation.
+    public private(set) var questionWorking = false
+    public private(set) var summaryWorking = false
+    /// Legacy single-value projection for older readers.
+    public var workingOn: String? {
+        questionWorking ? "answer" : (summaryWorking ? "summary" : nil)
+    }
+    public var isThinking: Bool { questionWorking || summaryWorking }
     /// The newest pointer answered a question rather than remarking on a statement.
     public private(set) var lastAnswerWasToAQuestion = false
 
@@ -168,6 +170,14 @@ public actor CopilotAdvisor {
         activeProvider = config.preferred
         provider = AgyProvider(configuration: .init(runtimeRoot: config.runtimeRoot))
         store = config.store
+        // Everything the user has told us about themselves before the call
+        // started. A suggestion may draw on any of it without being called
+        // invented; anything outside it has to be earned during the call.
+        claimEvidence = ClaimGuard.Evidence(sources: [
+            about,
+            background,
+            config.profile?.knowledge ?? "",
+        ])
     }
 
     /// Where knowledge is retrieved from, and where this call is recorded.
@@ -221,7 +231,7 @@ public actor CopilotAdvisor {
         async let chunks = provider.openSession(
             task: CopilotTasks.brief,
             sessionKey: briefSessionKey,
-            system: ledgerBlocks(CopilotBriefPrompt.base)
+            system: ledgerBlocks(CopilotBriefPrompt.text)
         )
         let (openedQuestion, openedChunks) = await (question, chunks)
         trace("prepare: question lane opened=\(openedQuestion) chunk lane opened=\(openedChunks)")
@@ -238,6 +248,16 @@ public actor CopilotAdvisor {
     /// elsewhere; this only decides what the local brain is asked about.
     public func ingest(turn: CallTurn) {
         turnsSeen += 1
+        // Before the local-provider guard: the transcript is evidence whether or
+        // not this call is using the local brain.
+        if turn.source == .me {
+            // Not evidence if we are not sure it was said. A misheard word
+            // vouching for an invented one is the exact failure this guards.
+            if !turn.isLowConfidence { claimEvidence.add(turn.text) }
+        } else {
+            // Name material only — never numbers, never credentials.
+            claimEvidence.addHeardNames(turn.text)
+        }
         guard config.preferred == .local, !localGaveUp else { return }
 
         // One clock, and it is the audio's.
@@ -252,17 +272,34 @@ public actor CopilotAdvisor {
         // needs to distinguish a turn never arriving from a statement never
         // completing from a request that failed.
         trace("turn seq=\(turn.seq) src=\(turn.source.rawValue) words=\(turn.text.split(separator: " ").count)")
+        // A turn the decoder was unsure of is marked rather than dropped. It
+        // still reaches the transcript and still counts as someone speaking —
+        // dropping it would make the segmenter think the room went quiet — but
+        // the model is told not to build a fact on it. Whisper renders a shaky
+        // number or name as confidently as a clear one, and the ledger's
+        // `standing` paragraph is permanent for the rest of the call.
+        let text = turn.isLowConfidence ? "\(turn.text) [unclear]" : turn.text
         let statements = segmenter.ingest(
             TranscriptTurn(
                 seq: turn.seq,
                 speaker: turn.source == .me ? .local : .remote,
                 start: turn.t0,
                 end: turn.t1,
-                text: turn.text
+                text: text
             ),
             now: audioNow()
         )
         dispatch(statements)
+    }
+
+    /// User-triggered questions may quote either speaker. They bypass remote-only
+    /// automatic detection but still serialize through question lane.
+    public func askManual(_ text: String) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.count <= 1_200, config.preferred == .local, !localGaveUp else { return }
+        let seq = max((ledger.lastSeq ?? 0) + 1, turnsSeen + 1)
+        enqueueQuestion([Statement(fromSeq: seq, toSeq: seq, speaker: .local,
+                                   text: text, span: 0, truncated: false)])
     }
 
     /// Call on a timer (~250ms) so a trailed-off sentence and a floor-delayed
@@ -284,8 +321,14 @@ public actor CopilotAdvisor {
         // the account a summary of the *answers* rather than of the call.
         statementsEmitted += statements.count
         ledger.append(statements)
-        closeChunkIfDue()
-
+        for statement in statements {
+            summaryTrigger.recordStatement()
+            let text = statement.text.lowercased()
+            if text.contains("we decided") || text.contains("we agreed") ||
+                text.contains("i commit") || text.contains("we will") {
+                pendingCommitmentOrDecision = true
+            }
+        }
         // Only a question spends a pointer request.
         //
         // Both jobs run the whole time — questions get answered, the account keeps
@@ -296,6 +339,7 @@ public actor CopilotAdvisor {
         let questions = statements.filter { $0.speaker == .remote && $0.invitesAnAnswer }
         guard !questions.isEmpty else {
             trace("no question in \(statements.count) statement(s); ledger only")
+            closeChunkIfDue()
             return
         }
         trace("PRIORITY question through seq \(questions.last?.toSeq ?? -1)")
@@ -365,7 +409,8 @@ public actor CopilotAdvisor {
     private var ledger = CallLedger()
     private var chunkInFlight = false
     private var execInFlight = false
-    private var lastChunkAt = Date()
+    private var summaryTrigger = CallSummaryTrigger()
+    private var pendingCommitmentOrDecision = false
     /// How many times the chunk lane's conversation has been rolled over. When this
     /// moves, the lane has forgotten the account and the next chunk has to restate
     /// it — the one case where the warm conversation is not enough on its own.
@@ -377,32 +422,29 @@ public actor CopilotAdvisor {
     /// the account publishes frames of its own.
     private var lastAnswerSeq = -1
 
-    /// A chunk closes as soon as there is anything to summarise and the lane is
-    /// free — one statement is enough.
+    /// What a suggestion is allowed to assert, grown as the call proceeds.
     ///
-    /// Batching was the wrong instinct here. Waiting for three statements meant the
-    /// panel sat still for fifteen seconds at a time, and a summary that arrives in
-    /// a lump every quarter minute reads as broken however fast each request is.
-    /// The lane is single-flight, so this is self-regulating: statements that arrive
-    /// while a request is out simply ride the next one, and a fast exchange batches
-    /// itself without a rule saying so.
-    ///
-    /// The timer is now only a backstop for the case where a statement arrived while
-    /// a question held the lane and nothing has happened since.
-    private static let chunkEveryStatements = 1
-    private static let chunkEverySeconds: TimeInterval = 20
+    /// Seeded from the user's own profile text and whatever knowledge was packed
+    /// for this call, then extended with every `me` turn — the user's own words
+    /// are the strongest evidence there is for what the user can claim. Never
+    /// extended with `them` turns: "Do you have a CS degree?" must not license
+    /// "I have a CS degree", and treating a question as evidence is precisely
+    /// how a leading question becomes a fabricated answer.
+    private var claimEvidence = ClaimGuard.Evidence()
+    /// Suggestions whose speakable line asserted something nothing supports.
+    public private(set) var ungroundedSuggestions = 0
+    /// Requests the fast transport could not serve. A call spending 8.5s per
+    /// pointer instead of 2.5s used to look exactly like a healthy one.
+    public private(set) var fellBackRequests = 0
 
-    /// Closes a chunk, on its own schedule and never in the pointer's way.
+    /// Closes deterministic three-statement, decision/commitment, quiet, or
+    /// sixty-second summaries. This runs alongside Question on its own warm lane.
     ///
-    /// Deferred while a question is in flight: the two lanes are separate
-    /// conversations but one resident language server, and the answer is the only
-    /// thing anybody is waiting for. It goes as soon as the answer is published.
     private func closeChunkIfDue() {
         guard !chunkInFlight, !ledger.tail.isEmpty else { return }
-        guard !askInFlight else { return }
-        let dueByCount = ledger.tail.count >= Self.chunkEveryStatements
-        let dueByTime = Date().timeIntervalSince(lastChunkAt) >= Self.chunkEverySeconds
-        guard dueByCount || dueByTime else { return }
+        guard summaryTrigger.isDue(
+            now: Date(), commitmentOrDecision: pendingCommitmentOrDecision,
+            answerInFlight: false) else { return }
 
         chunkInFlight = true
         let material = ledger.takeTail()
@@ -412,12 +454,11 @@ public actor CopilotAdvisor {
     private func closeChunk(_ material: [Statement]) async {
         // Reported separately from answering: this is the slower job, and a panel
         // that claims to be finding an answer for four seconds reads as stuck.
-        let wasWorkingOn = workingOn
-        workingOn = wasWorkingOn ?? "summary"
+        summaryWorking = true
         onActivity?()
         defer {
             chunkInFlight = false
-            workingOn = wasWorkingOn
+            summaryWorking = false
             onActivity?()
         }
 
@@ -442,7 +483,7 @@ public actor CopilotAdvisor {
         let request = IntelligenceRequest(
             task: CopilotTasks.brief,
             sessionKey: briefSessionKey,
-            system: ledgerBlocks(CopilotBriefPrompt.base),
+            system: ledgerBlocks(CopilotBriefPrompt.text),
             input: input
         )
         do {
@@ -461,7 +502,8 @@ public actor CopilotAdvisor {
                 openQuestions: object["open_questions"] as? [String],
                 throughSeq: material.last?.toSeq ?? -1
             )
-            lastChunkAt = Date()
+            summaryTrigger.didSummarize()
+            pendingCommitmentOrDecision = false
             trace("""
             chunk closed in \(Int(response.attribution.latency * 1000))ms from \
             \(material.count) statements -> \(points.count) points \
@@ -492,19 +534,18 @@ public actor CopilotAdvisor {
     }
 
     private func fold(_ chunks: [CallLedger.Chunk]) async {
-        let wasWorkingOn = workingOn
-        workingOn = wasWorkingOn ?? "summary"
+        summaryWorking = true
         onActivity?()
         defer {
             execInFlight = false
-            workingOn = wasWorkingOn
+            summaryWorking = false
             onActivity?()
         }
         let previous = ledger.standing.isEmpty ? "(nothing yet)" : ledger.standing
         let request = IntelligenceRequest(
             task: CopilotTasks.exec,
             sessionKey: nil,
-            system: ledgerBlocks(CopilotExecPrompt.base),
+            system: ledgerBlocks(CopilotExecPrompt.text),
             input: """
             Summary so far:
             \(previous)
@@ -541,16 +582,38 @@ public actor CopilotAdvisor {
     private func publishLedgerToPanel() {
         let summary = ledger.panelSummary()
         guard !summary.isEmpty || !ledger.openQuestions.isEmpty else { return }
+
+        // The cursor is the account's, not the last answer's.
+        //
+        // This reused `lastSuggestion` wholesale, so every account frame carried
+        // the `afterSeq` of whatever question was answered last. On a call that
+        // ran seven minutes past its final question, the panel and the archive
+        // both kept reporting `after_seq: 68` at turn 190 — anything keyed on
+        // that cursor cannot tell a fresh frame from a repeat.
+        let cursor = max(ledger.lastSeq ?? turnsSeen, lastSuggestion?.afterSeq ?? 0)
         var frame = lastSuggestion ?? CopilotFrame.Suggestion(
             callID: config.callID,
-            afterSeq: ledger.lastSeq ?? turnsSeen,
+            afterSeq: cursor,
             headline: "",
             angles: [],
             confirm: [],
             latencyMs: 0
         )
+        frame.afterSeq = cursor
         frame.summary = summary
         frame.openQuestions = ledger.openQuestions
+
+        // An account that has not changed is not news. Republishing it wrote the
+        // same record to suggestions.jsonl every few seconds — twenty-five
+        // byte-identical lines in one call — and woke every reader for nothing.
+        if let previous = lastSuggestion,
+           previous.summary == frame.summary,
+           previous.openQuestions == frame.openQuestions,
+           previous.headline == frame.headline {
+            lastSuggestion = frame
+            return
+        }
+
         lastSuggestion = frame
         onSuggestion?(frame, activeProvider)
     }
@@ -567,20 +630,47 @@ public actor CopilotAdvisor {
     /// thousand vectors), so this is on the critical path without being on the
     /// budget. It never throws: a store that cannot answer returns nothing and the
     /// call proceeds exactly as it did before there was one.
+    /// What the knowledge base has to say about this moment.
+    ///
+    /// Scoped on the meeting when there is one and on the persona otherwise —
+    /// **not** gated on it. This used to open `guard let meeting = …else { return
+    /// [] }`, which meant an ad-hoc call retrieved nothing at all, including
+    /// notes filed under `.always`. Across 43 recorded calls the word "recalled"
+    /// never once appears in `intelligence.log`: retrieval had never run.
+    ///
+    /// It is not an academic gap. Documents reach the model *only* through this
+    /// path — `CallaStore.promptBlock` deliberately packs typed notes whole and
+    /// gives a document nothing but a manifest line — so with retrieval off, no
+    /// attached document had ever reached the model. That is why a call where the
+    /// interviewer said "I don't see that in the CV" produced an invented
+    /// Computer Science degree with the user's actual CV sitting in the store.
     private func recall(for statements: [Statement]) async -> [String] {
-        guard let store, let meeting = config.profile?.meeting else { return [] }
+        guard let store else { return [] }
         let question = statements
             .filter { $0.speaker == .remote && $0.invitesAnAnswer }
             .map(\.text)
             .joined(separator: " ")
         let query = question.isEmpty ? statements.map(\.text).joined(separator: " ") : question
-        let hits = await store.search(
-            query: query,
-            scopes: meeting.scopes(persona: config.persona),
-            limit: 3)
-        guard !hits.isEmpty else { return [] }
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let hits = await store.search(query: query, scopes: retrievalScopes(), limit: 3)
+        guard !hits.isEmpty else {
+            trace("recalled nothing for \(query.prefix(60))")
+            return []
+        }
         trace("recalled \(hits.count) chunk(s): \(hits.map(\.title).joined(separator: ", "))")
         return hits.map { "\($0.title): \($0.text)" }
+    }
+
+    /// General to specific, matching `MeetingContext.scopes(persona:)`. The
+    /// meeting scopes are appended when a meeting is known; the first two always
+    /// apply.
+    private func retrievalScopes() -> [KnowledgeScope] {
+        if let meeting = config.profile?.meeting {
+            return meeting.scopes(persona: config.persona)
+        }
+        var scopes: [KnowledgeScope] = [.always]
+        if !config.persona.isEmpty { scopes.append(.persona(config.persona)) }
+        return scopes
     }
 
     private func ask(_ statements: [Statement]) async {
@@ -589,10 +679,10 @@ public actor CopilotAdvisor {
         let batch = statements
         let asked = batch.contains { $0.speaker == .remote && $0.invitesAnAnswer }
 
-        workingOn = "answer"
+        questionWorking = true
         onActivity?()
         defer {
-            workingOn = nil
+            questionWorking = false
             onActivity?()
         }
 
@@ -633,7 +723,9 @@ public actor CopilotAdvisor {
                 providerDetail = response.attribution.model
                 onProviderChange?(.local, providerDetail)
             }
-            trace("suggestion after seq \(afterSeq) in \(Int(response.attribution.latency * 1000))ms via \(response.attribution.model)")
+            trace("suggestion after seq \(afterSeq) in \(Int(response.attribution.latency * 1000))ms via \(response.attribution.model)"
+                + (response.attribution.fellBack ? " [SLOW TRANSPORT]" : ""))
+            if response.attribution.fellBack { fellBackRequests += 1 }
             // The pointer carries the compiled account rather than writing its own,
             // so the panel's summary is the considered one and the fast model never
             // spends output on it.
@@ -649,6 +741,27 @@ public actor CopilotAdvisor {
                 return
             }
             var published = suggestion
+            // The prompts have said "never invent employers, dates, numbers or
+            // systems the user has not mentioned" from the beginning, and a real
+            // call produced "I hold a degree in Computer Science" anyway. A
+            // sentence the user is about to say out loud to an interviewer needs
+            // something more mechanical than an instruction behind it.
+            let verdict = ClaimGuard.check(
+                headline: published.headline,
+                angles: published.angles,
+                against: claimEvidence.adding(recalled))
+            if !verdict.isGrounded {
+                ungroundedSuggestions += 1
+                advisorLog.notice(
+                    "withheld an unsupported claim after seq \(afterSeq, privacy: .public): \(verdict.unsupported.joined(separator: ", "), privacy: .public)")
+                trace("UNGROUNDED after seq \(afterSeq): \(verdict.unsupported.joined(separator: ", "))")
+                // The angles survive. They are fragments of direction — "name the
+                // bottleneck", "give the result first" — and are worth keeping
+                // even when the sentence built on them was not earned. What is
+                // dropped is the part that reads as ready to speak.
+                published.headline = ""
+                published.confirm = []
+            }
             published.summary = ledger.panelSummary()
             published.openQuestions = ledger.openQuestions
             lastSuggestion = published
@@ -704,17 +817,19 @@ public actor CopilotAdvisor {
     public func summarise() async -> CopilotFrame.Suggestion? {
         guard config.preferred == .local, !localGaveUp else { return nil }
 
+        // The closing pass gets its own system prompt rather than the live
+        // pointer's: it is writing notes to be read weeks later, not a sentence
+        // to be said in two seconds, and the length and shape rules for those are
+        // opposites. It was inheriting the pointer's block, which is part of why
+        // its output never looked like notes.
         let request = IntelligenceRequest(
             task: CopilotTasks.summary,
             sessionKey: config.callID,
-            system: blocks,
+            system: ledgerBlocks(CopilotSummaryPrompt.text),
             input: """
-            The call has ended. Here is the account kept during it:
+            Here is the account kept during the call:
 
             \(ledger.closingBrief(with: segmenter.drain(now: audioNow())))
-
-            Rewrite it as the user's own notes: what was agreed, what was promised \
-            by whom, and what is still open.
             """,
             tier: .deep,
             exactModel: config.summaryModel
@@ -722,17 +837,31 @@ public actor CopilotAdvisor {
         do {
             let response = try await provider.respond(to: request)
             guard let payload = response.payload else { return nil }
-            return try CopilotSuggestionDecoder.decode(
-                payload,
+            let closing = try CopilotClosingSummary.decode(payload)
+            // Kept so the recap can be built from the deep model's own words
+            // rather than from the fast lane's running account.
+            if !closing.overview.isEmpty { self.closingSummary = closing }
+            advisorLog.notice(
+                "closing summary in \(response.attribution.latency, format: .fixed(precision: 1), privacy: .public)s via \(response.attribution.model, privacy: .public)")
+            // Still published as a frame so the panel shows the closing account,
+            // which is what it has always done.
+            return CopilotFrame.Suggestion(
                 callID: config.callID,
                 afterSeq: turnsSeen,
-                latency: response.attribution.latency
-            )
+                headline: "",
+                angles: [],
+                confirm: [],
+                summary: closing.overview,
+                openQuestions: closing.openQuestions,
+                latencyMs: Int((response.attribution.latency * 1000).rounded()))
         } catch {
             advisorLog.error("summary pass failed: \(String(describing: error), privacy: .public)")
             return nil
         }
     }
+
+    /// The end-of-call pass's result, once it has one.
+    public private(set) var closingSummary: CopilotClosingSummary?
 
     public func shutdown() async {
         await provider.closeSession(briefSessionKey)

@@ -141,10 +141,22 @@ public actor WhisperEngine {
     /// `audioCtx`: `nil` uses the live-tuned formula, `0` means whisper's full
     /// 1500-token context, a positive value is an explicit override. See
     /// `computeAudioCtx` for why only two values are actually safe.
+    /// `vadModelPath`: when set, whisper runs Silero over the whole buffer first
+    /// and decodes only the speech spans.
+    ///
+    /// This matters for long recordings and not at all for short ones. A call leg
+    /// is mostly silence — the other party talking is silence on the microphone —
+    /// and whisper answers a 30-second window of nothing by inventing a plausible
+    /// sentence. The first archive pass over a 928-second lecture opened with
+    /// "We'll be right back." before the speaker had said a word. The live path
+    /// does not need this: its clips are already VAD-bounded by the time they
+    /// arrive.
     public func transcribe(
         samples rawSamples: [Float],
         language: String = "en",
         audioCtx: Int32? = nil,
+        vadModelPath: String? = nil,
+        initialPrompt: String? = nil,
         isCancelled: (@Sendable () -> Bool)? = nil
     ) throws -> [TranscriptSegment] {
         guard let ctx else { throw Failure.modelLoadFailed("(no model loaded)") }
@@ -166,6 +178,12 @@ public actor WhisperEngine {
         params.n_threads = max(1, Int32(ProcessInfo.processInfo.activeProcessorCount - 2))
         params.suppress_blank = true
         params.no_speech_thold = 0.3
+        // Non-speech tokens off. Without this whisper writes its annotations
+        // into the text — `[BLANK_AUDIO]`, `(coughing)`, `(upbeat music)` — and
+        // they arrive as call turns indistinguishable from something a person
+        // said. 65 of them reached the transcript across 54 recorded calls, and
+        // the copilot was asked to advise on them.
+        params.suppress_nst = true
 
         // A CoreML-compiled encoder has a fixed (1, mel, 3000) input shape and
         // ignores audio_ctx entirely — asking it to truncate yields zero
@@ -191,6 +209,44 @@ public actor WhisperEngine {
         }
         params.abort_callback_user_data = boxPtr
 
+        // Names and recent context, biasing the decoder.
+        //
+        // `no_context` stays true — letting whisper carry its own decoded text
+        // forward across utterances is what makes it loop when it goes wrong.
+        // `initial_prompt` gives the conditioning without the feedback: it is
+        // prepended to the decode window and never grows on its own output.
+        //
+        // This is the largest single lever on proper nouns. A live leg decoding
+        // 1-3 second fragments in isolation has no way to know the other party is
+        // called Amaka, that the product is Lojice, or that the last fragment
+        // ended mid-clause — and every one of those came back mangled in the
+        // recorded calls.
+        let promptCString = initialPrompt
+            .map { String($0.suffix(Self.initialPromptCharacterLimit)) }
+            .flatMap { $0.isEmpty ? nil : strdup($0) }
+        defer { if let promptCString { free(promptCString) } }
+        if let promptCString {
+            params.initial_prompt = UnsafePointer(promptCString)
+        }
+
+        // Held until after `whisper_full` returns: the struct stores the pointer,
+        // it does not copy the string.
+        let vadPathCString = vadModelPath.map { strdup($0) } ?? nil
+        defer { if let vadPathCString { free(vadPathCString) } }
+        if let vadPathCString {
+            params.vad = true
+            params.vad_model_path = UnsafePointer(vadPathCString)
+            var vadParams = whisper_vad_default_params()
+            vadParams.threshold = 0.5
+            vadParams.min_speech_duration_ms = 250
+            vadParams.min_silence_duration_ms = 400
+            // Padding on both sides so a span never starts mid-phoneme, and a
+            // little overlap so a word straddling two spans survives in one.
+            vadParams.speech_pad_ms = 200
+            vadParams.samples_overlap = 0.15
+            params.vad_params = vadParams
+        }
+
         let lang = Self.languageParams(for: language)
         let langCString = strdup(lang.language)
         defer { free(langCString) }
@@ -207,10 +263,14 @@ public actor WhisperEngine {
         var segments: [TranscriptSegment] = []
         segments.reserveCapacity(count)
         for index in 0..<count {
-            let t0 = Double(whisper_full_get_segment_t0(ctx, Int32(index))) / 100.0
-            let t1 = Double(whisper_full_get_segment_t1(ctx, Int32(index))) / 100.0
-            let text = whisper_full_get_segment_text(ctx, Int32(index)).flatMap { String(cString: $0) } ?? ""
-            segments.append(TranscriptSegment(start: t0, end: t1, text: text))
+            let segment = Int32(index)
+            let t0 = Double(whisper_full_get_segment_t0(ctx, segment)) / 100.0
+            let t1 = Double(whisper_full_get_segment_t1(ctx, segment)) / 100.0
+            let text = whisper_full_get_segment_text(ctx, segment).flatMap { String(cString: $0) } ?? ""
+            segments.append(TranscriptSegment(
+                start: t0, end: t1, text: text,
+                confidence: Self.meanTokenProbability(ctx: ctx, segment: segment),
+                noSpeech: Double(whisper_full_get_segment_no_speech_prob(ctx, segment))))
         }
         return segments
     }
@@ -250,6 +310,34 @@ public actor WhisperEngine {
         defer { free(langCString) }
         params.language = UnsafePointer(langCString)
         _ = silence.withUnsafeBufferPointer { whisper_full(ctx, params, $0.baseAddress, Int32($0.count)) }
+    }
+
+    /// whisper uses at most `n_text_ctx / 2` prompt tokens — about 224, so
+    /// roughly 900 characters. Anything longer is silently dropped from the
+    /// front, so it is trimmed from the front here too: the tail is the part
+    /// nearest the audio and the part worth keeping.
+    static let initialPromptCharacterLimit = 800
+
+    /// How sure the decoder was about this segment, as the mean of its tokens'
+    /// probabilities.
+    ///
+    /// Timestamp and other special tokens are skipped: they are usually near
+    /// certain and would drag a shaky segment's score upward, which is exactly
+    /// backwards for a number whose whole job is to spot a guess.
+    static func meanTokenProbability(ctx: OpaquePointer, segment: Int32) -> Double? {
+        let count = whisper_full_n_tokens(ctx, segment)
+        guard count > 0 else { return nil }
+        var total = 0.0
+        var counted = 0
+        for index in 0..<count {
+            let data = whisper_full_get_token_data(ctx, segment, index)
+            // Everything at or above the end-of-text id is a special token.
+            guard data.id < whisper_token_eot(ctx) else { continue }
+            total += Double(data.p)
+            counted += 1
+        }
+        guard counted > 0 else { return nil }
+        return total / Double(counted)
     }
 
     static func coreMLSiblingPath(for modelURL: URL) -> String {

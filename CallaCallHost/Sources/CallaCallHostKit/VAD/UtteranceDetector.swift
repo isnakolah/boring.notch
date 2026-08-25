@@ -11,6 +11,21 @@ import Foundation
 /// there are two cutoffs — an adaptive absolute one and an envelope-relative
 /// one — and a frame must clear both to count as speech.
 public final class UtteranceDetector {
+    /// How long a pause has to be before the utterance is considered finished.
+    ///
+    /// Raised from 500ms. At half a second an ordinary mid-sentence pause — the
+    /// gap before a name, the beat after "so" — closes the utterance, and whisper
+    /// is then asked to decode a two-word fragment with no context. Measured
+    /// across 54 recorded calls: 19% of all turns were three words or fewer and
+    /// 6% were a single word, and one sentence routinely arrived as five turns
+    /// ("So, actually, if solving." / "problems that I have a better
+    /// understanding." / "It's something that's..." / "really, uh..." / "really
+    /// resonated with me.").
+    ///
+    /// The cost is latency: an answer waits an extra 200ms after the other party
+    /// stops. That is worth it — the question is usually one clause, and the
+    /// alternative is answering half of it.
+    ///
     /// Emitted with the utterance samples and its start time in seconds from
     /// the beginning of the stream.
     public var onUtterance: ((_ samples: [Float], _ startSeconds: Double) -> Void)?
@@ -51,7 +66,7 @@ public final class UtteranceDetector {
         sampleRate: Double = WhisperAudioFormat.sampleRate,
         frameMs: Double = 30,
         rmsThreshold: Float = 0.012,
-        silenceMs: Double = 500,
+        silenceMs: Double = 700,
         minUtteranceMs: Double = 200,
         maxUtteranceMs: Double = 10_000,
         preRollMs: Double = 200,

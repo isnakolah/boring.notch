@@ -1,4 +1,5 @@
 import CallaCallHostKit
+import CallaContracts
 import IntelligenceCore
 import IntelligenceStore
 import CoreGraphics
@@ -30,6 +31,11 @@ func complain(_ message: String) {
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 
+// Point every prompt lookup at the user's own pack before any subcommand runs.
+// Editing a file under `<runtime>/copilot/prompts` then changes what the next
+// call sends, with no rebuild and no restart of anything but the host.
+CopilotLocalPrompt.pack = PromptPack(overrideDirectory: CallHostPaths.promptsDirectory)
+
 func usage() -> Never {
     let text = """
     CallaCallHost
@@ -41,6 +47,22 @@ func usage() -> Never {
       CallaCallHost transcribe <file> [opts]    Transcribe an audio file
       CallaCallHost archive <call-id>           Re-transcribe a finished call with large-v3-turbo
       CallaCallHost retranscribe --call <id>    Same, as the engine spells it
+      CallaCallHost eval [--corpus <dir>]       Score every recorded call: WER, echo leak,
+                                                fragmentation, artifacts, ungrounded claims
+                                                (--gate exits non-zero on a regression)
+      CallaCallHost repair-archives             Rebuild WAV headers left unfinalized by a
+                                                host that exited without closing the archive
+      CallaCallHost recall --query <text>       Ask the knowledge base what a call would
+                                                retrieve for a question [--persona <name>]
+      CallaCallHost replay --call <id>          Re-run a recorded call through the live
+                                                pipeline and write transcript-replay.jsonl
+      CallaCallHost prompts export              Write the effective prompts where they can
+                                                be edited [--force to overwrite]
+      CallaCallHost prompts lint                Check every prompt still carries its
+                                                output contract
+      CallaCallHost prompts show <path>         Print one effective prompt
+      CallaCallHost guard --say <text>          Check a suggested line against the knowledge
+                                                base [--persona <name>] [--said <text>]
       CallaCallHost permissions [--check]       Request and report mic / screen recording status
                                                 (--check reports without prompting)
       CallaCallHost probe-gateway --gateway <url>
@@ -55,10 +77,14 @@ func usage() -> Never {
       --tier <tier>       fast | balanced | deep — live model tier (default balanced)
       --summary-model <m> Exact model for the end-of-call pass
       --no-fallback       Do not let the gateway answer when local fails
+      --gateway-standby <mode>
+                          off | on-failure | warm (default warm) — when the
+                          gateway socket opens. Never blocks capture.
       --no-system-audio   Microphone only
       --prewarm           Load the model, open both agy lanes and pack the
                           knowledge, but do not record. Capture starts when the
                           engine writes prewarm-release.json.
+      --generation <n>    Engine run number; rejects stale lifecycle events.
 
     RECORD OPTIONS:
       --seconds <n>       How long to capture (default 30)
@@ -169,6 +195,17 @@ func liveTier() -> ModelTier {
     ModelTier(rawValue: value(for: "--tier") ?? "") ?? .balanced
 }
 
+/// When the gateway socket opens. Unrecognised spellings warm it, which is what
+/// every host did before this was a choice.
+func gatewayStandby() -> GatewayStandby {
+    GatewayStandby.named(value(for: "--gateway-standby")) ?? .warm
+}
+
+func callGeneration() -> Int {
+    guard let raw = value(for: "--generation"), let value = Int(raw), value >= 0 else { return 0 }
+    return value
+}
+
 func resolveModel() -> WhisperModel {
     guard let name = value(for: "--model") else { return .smallEn }
     guard let model = WhisperModel.named(name) else {
@@ -242,21 +279,51 @@ case "serve":
     // Read before anything slow: the engine writes and closes the pipe right
     // after spawning, and this is the only chance to take it.
     let profile = CallProfile.readFromStandardInput()
+    let standby = gatewayStandby()
+    let generation = callGeneration()
+    // Fixed now rather than inside `CallSession.Configuration`, because the notch
+    // has to be told which call is starting before there is a session to ask.
+    let callID = "call-\(UUID().uuidString.lowercased().prefix(16))"
+
+    // The first thing this process does that anyone else can see.
+    //
+    // The engine reports a call as running only once a status file with a matching
+    // generation exists, and nothing wrote one until the whole of `start()` had
+    // finished — so for the first couple of seconds the notch had no way to know
+    // the button had done anything. This says "a host exists and it is starting",
+    // which is both true and immediately useful.
+    CallBootStatus.write(callID: callID, generation: generation, persona: persona,
+                         prewarm: prewarm, stage: .launching, standby: standby)
 
     // Asked for even on a prewarm. The point of arming two minutes early is that
     // a permission the user has to grant is discovered *then* rather than in the
     // opening seconds of the meeting — and TCC keys the grant to this executable,
     // so nobody else can ask on its behalf.
+    CallBootStatus.write(callID: callID, generation: generation, persona: persona,
+                         prewarm: prewarm, stage: .permissions, standby: standby)
     guard await MicrophoneRecorder.requestAccess() else {
         HostPermissions.probeAndWrite(mic: false, screen: await SystemAudioRecorder.hasPermission())
         complain("microphone access denied\n")
         exit(1)
     }
-    HostPermissions.probeAndWrite(mic: true, screen: await SystemAudioRecorder.hasPermission())
 
     do {
-        let modelURL = try await ensureModel(model)
-        let gate = await SpeechGateFactory.makeBundledGate()
+        // Two independent fixed costs, so they are paid at the same time: the
+        // model comes off disk while the Silero weights are being loaded.
+        async let modelTask = ensureModel(model)
+        async let gateTask = SpeechGateFactory.makeBundledGate()
+        let modelURL = try await modelTask
+        let gate = await gateTask
+
+        // Screen recording is only ever *reported* here — `SystemAudioRecorder`
+        // asks the real question again when it starts a stream, and that answer is
+        // the one that decides whether the other party is captured. Enumerating
+        // shareable content is a trip through the window server, so it no longer
+        // sits between the user pressing a button and the microphone opening.
+        Task.detached(priority: .utility) {
+            HostPermissions.probeAndWrite(
+                mic: true, screen: await SystemAudioRecorder.hasPermission())
+        }
 
         // Opened here rather than inside the session so a store that cannot be
         // opened — a corrupt file, a full disk — costs the knowledge and the
@@ -274,6 +341,7 @@ case "serve":
         if let store { Task { await store.prepare() } }
 
         let config = CallSession.Configuration(
+            callID: callID,
             persona: persona,
             gatewayURL: gateway,
             model: model,
@@ -281,18 +349,69 @@ case "serve":
             profile: profile,
             provider: copilotProvider(),
             fallbackToGateway: !arguments.contains("--no-fallback"),
+            gatewayStandby: standby,
             liveTier: liveTier(),
             summaryModel: value(for: "--summary-model"),
             store: store,
-            prewarm: prewarm)
+            prewarm: prewarm,
+            generation: generation)
         let session = try CallSession(config: config, modelURL: modelURL, speechGate: gate)
-        try await session.start()
-        print(prewarm ? "prewarmed call \(config.callID)" : "serving call \(config.callID)")
-
         // A DispatchSource handler runs even though the default SIGINT
         // disposition is ignored, which is what lets the async teardown finish
         // instead of the process dying mid-write.
         let stopped = Stopped()
+        let control = CallHostControlChannel()
+        try control.start { command in
+            guard command.contractVersion == CallaContract.version,
+                  command.callID == config.callID,
+                  command.generation == config.generation else {
+                let snapshot = CallLifecycleSnapshot(
+                    callID: config.callID, generation: config.generation, state: .failed,
+                    actionableError: "Stale call control was rejected")
+                return CallHostEvent(callID: config.callID, generation: config.generation,
+                                     kind: .fatal, snapshot: snapshot)
+            }
+            switch command.kind {
+            case .start, .snapshot:
+                let snapshot = await session.lifecycleSnapshot()
+                return CallHostEvent(callID: config.callID, generation: config.generation,
+                                     kind: .ready, snapshot: snapshot)
+            case .release:
+                do {
+                    try await session.beginCapture()
+                    let snapshot = await session.lifecycleSnapshot()
+                    return CallHostEvent(callID: config.callID, generation: config.generation,
+                                         kind: .captureState, snapshot: snapshot)
+                } catch {
+                    let snapshot = CallLifecycleSnapshot(
+                        callID: config.callID, generation: config.generation, state: .failed,
+                        actionableError: error.localizedDescription)
+                    return CallHostEvent(callID: config.callID, generation: config.generation,
+                                         kind: .fatal, snapshot: snapshot)
+                }
+            case .answer:
+                guard let text = command.text, text.count <= 1_200 else {
+                    let snapshot = CallLifecycleSnapshot(
+                        callID: config.callID, generation: config.generation, state: .failed,
+                        actionableError: "Selected text was rejected")
+                    return CallHostEvent(callID: config.callID, generation: config.generation,
+                                         kind: .fatal, snapshot: snapshot)
+                }
+                await session.answerSelectedText(text)
+                let snapshot = await session.lifecycleSnapshot()
+                return CallHostEvent(callID: config.callID, generation: config.generation,
+                                     kind: .answer, snapshot: snapshot)
+            case .stop:
+                await session.stop()
+                stopped.trigger()
+                let snapshot = await session.lifecycleSnapshot()
+                return CallHostEvent(callID: config.callID, generation: config.generation,
+                                     kind: .finished, snapshot: snapshot)
+            }
+        }
+        try await session.start()
+        print(prewarm ? "prewarmed call \(config.callID)" : "serving call \(config.callID)")
+
         signal(SIGINT, SIG_IGN)
         signal(SIGTERM, SIG_IGN)
         let sources = [SIGINT, SIGTERM].map { code -> DispatchSourceSignal in
@@ -306,6 +425,7 @@ case "serve":
         defer { sources.forEach { $0.cancel() } }
 
         await stopped.wait()
+        control.stop()
         await session.stop()
         print("call ended")
         // `_exit` rather than falling off the end of main.
@@ -592,11 +712,284 @@ case "archive", "retranscribe":
             callDirectory: directory,
             modelURL: modelURL,
             modelName: model.displayName,
-            language: model.languageHint) { print($0) }
+            language: model.languageHint,
+            store: try? CallaStore(path: CallHostPaths.storeFile)) { print($0) }
         print("wrote \(result.turns) turns in \(String(format: "%.1f", result.duration))s")
         print(directory.appendingPathComponent("transcript-archive.jsonl").path)
     } catch {
         complain("archive failed: \(error.localizedDescription)\n")
+        exit(1)
+    }
+
+case "guard":
+    // The claim guard, from outside. Answers "would the copilot have been
+    // allowed to put this sentence on screen", against the same evidence a real
+    // call would assemble.
+    guard let line = value(for: "--say") else { usage() }
+    let guardPersona = value(for: "--persona") ?? "generic"
+    var guardEvidence = ClaimGuard.Evidence()
+    if let said = value(for: "--said") { guardEvidence.add(said) }
+    if let heard = value(for: "--heard") { guardEvidence.addHeardNames(heard) }
+
+    var recalledTitles: [String] = []
+    if let store = try? CallaStore(path: CallHostPaths.storeFile) {
+        await store.prepare()
+        var scopes: [KnowledgeScope] = [.always]
+        if !guardPersona.isEmpty { scopes.append(.persona(guardPersona)) }
+        if let eventID = value(for: "--event") { scopes.append(.event(eventID)) }
+        // Retrieved against the line being checked, which is the same query shape
+        // the advisor uses.
+        let hits = await store.search(
+            query: value(for: "--question") ?? line, scopes: scopes, limit: 3)
+        for hit in hits {
+            guardEvidence.add(hit.title)
+            guardEvidence.add(hit.text)
+            recalledTitles.append(hit.title)
+        }
+    }
+
+    let verdict = ClaimGuard.check(line, against: guardEvidence)
+    print("line     \(line)")
+    print("recalled \(recalledTitles.isEmpty ? "nothing" : recalledTitles.joined(separator: ", "))")
+    if verdict.isGrounded {
+        print("verdict  GROUNDED — would be shown as speakable")
+        exit(0)
+    }
+    print("verdict  UNSUPPORTED — headline withheld, angles kept")
+    print("missing  \(verdict.unsupported.joined(separator: ", "))")
+    exit(1)
+
+case "prompts":
+    // Prompt wording is the part of this system most worth iterating on and
+    // least worth a rebuild, so it lives in files. These three subcommands are
+    // the whole interface: take a copy, check a copy, see what is effective.
+    let promptPack = PromptPack(overrideDirectory: CallHostPaths.promptsDirectory)
+    switch arguments.count > 1 ? arguments[1] : "lint" {
+    case "export":
+        do {
+            try FileManager.default.createDirectory(
+                at: CallHostPaths.promptsDirectory, withIntermediateDirectories: true)
+            let written = try promptPack.export(
+                to: CallHostPaths.promptsDirectory,
+                overwrite: arguments.contains("--force"))
+            if written.isEmpty {
+                print("already exported; nothing overwritten (use --force to replace)")
+            } else {
+                print("wrote \(written.count) file(s) to \(CallHostPaths.promptsDirectory.path)")
+                for path in written { print("  \(path)") }
+            }
+            exit(0)
+        } catch {
+            complain("export failed: \(error.localizedDescription)\n")
+            exit(1)
+        }
+
+    case "lint":
+        let problems = promptPack.lint(
+            requiredPersonas: ["generic", "interview", "sales", "support"])
+        guard !problems.isEmpty else {
+            let personas = promptPack.personaIDs()
+            print("prompts OK — \(PromptPack.ID.allCases.count) prompts, personas: \(personas.joined(separator: ", "))")
+            exit(0)
+        }
+        for problem in problems { complain("\(problem.path): \(problem.detail)\n") }
+        exit(1)
+
+    case "show":
+        guard arguments.count > 2 else { usage() }
+        let path = arguments[2]
+        if let id = PromptPack.ID(rawValue: path) {
+            print(promptPack.text(id))
+        } else {
+            print(promptPack.persona(path))
+        }
+        exit(0)
+
+    default:
+        usage()
+    }
+
+case "replay":
+    // The live path, re-run over audio that is already on disk. This is what
+    // makes a change to the endpointer, the echo test or the decoder prompt
+    // measurable: `eval` then scores the replayed transcript against the
+    // large-model archive pass exactly as it scores the original.
+    guard let replayID = value(for: "--call") ?? (arguments.count > 1 ? arguments[1] : nil) else { usage() }
+    let replayDirectory = CallHostPaths.callsDirectory
+        .appendingPathComponent(replayID, isDirectory: true)
+    guard FileManager.default.fileExists(atPath: replayDirectory.path) else {
+        complain("no such call: \(replayID)\n")
+        exit(1)
+    }
+    do {
+        let replayModel = resolveModel()
+        let replayModelURL = try await ensureModel(replayModel)
+        let gate = await SpeechGateFactory.makeBundledGate()
+        print("replaying \(replayID) through \(replayModel.displayName)…")
+        let result = try await PipelineReplay.replay(
+            callDirectory: replayDirectory,
+            modelURL: replayModelURL,
+            modelName: replayModel.displayName,
+            language: replayModel.languageHint,
+            speechGate: gate) { print($0) }
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let body = try result.turns
+            .map { String(data: try encoder.encode($0), encoding: .utf8) ?? "" }
+            .joined(separator: "\n")
+        let output = replayDirectory.appendingPathComponent("transcript-replay.jsonl")
+        try (body + "\n").write(to: output, atomically: true, encoding: .utf8)
+
+        print("\(result.turns.count) turns, \(result.echoDropped) dropped as speaker bleed, in \(String(format: "%.1f", result.duration))s")
+        if !result.correlations.isEmpty {
+            let sorted = result.correlations.sorted()
+            func quantile(_ fraction: Double) -> Float {
+                sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))]
+            }
+            print(String(
+                format: "echo correlation over %d mic utterances: p10 %.2f  p50 %.2f  p90 %.2f  max %.2f",
+                sorted.count, quantile(0.1), quantile(0.5), quantile(0.9), sorted.last!))
+        }
+        print(output.path)
+        exit(0)
+    } catch {
+        complain("replay failed: \(error.localizedDescription)\n")
+        exit(1)
+    }
+
+case "recall":
+    // Retrieval was gated on a calendar meeting, so it never ran on an ad-hoc
+    // call and no attached document had ever reached the model. This is how you
+    // check that from outside, without starting a call.
+    guard let query = value(for: "--query") else { usage() }
+    let recallPersona = value(for: "--persona") ?? "generic"
+    do {
+        let store = try CallaStore(path: CallHostPaths.storeFile)
+        await store.prepare()
+        var scopes: [KnowledgeScope] = [.always]
+        if !recallPersona.isEmpty { scopes.append(.persona(recallPersona)) }
+        if let eventID = value(for: "--event") { scopes.append(.event(eventID)) }
+        if let seriesID = value(for: "--series") { scopes.append(.series(seriesID)) }
+
+        let hits = await store.search(query: query, scopes: scopes, limit: 5)
+        print("query   \(query)")
+        print("scopes  \(scopes.map(\.debugLabel).joined(separator: ", "))")
+        print("")
+        if hits.isEmpty {
+            print("no hits — nothing in scope would reach the model for this question")
+            if let notes = try? await store.notes(), !notes.isEmpty {
+                print("")
+                print("the store does hold \(notes.count) note(s), scoped:")
+                for note in notes {
+                    print("  \(note.scope.debugLabel.padding(toLength: 20, withPad: " ", startingAt: 0)) \(note.title)")
+                }
+                print("")
+                print("a note reaches an ad-hoc call only when it is scoped `always` or to the persona.")
+            }
+            exit(1)
+        }
+        for hit in hits {
+            print("• \(hit.title)")
+            print("  \(hit.text.replacingOccurrences(of: "\n", with: " ").prefix(240))")
+        }
+        exit(0)
+    } catch {
+        complain("recall failed: \(error.localizedDescription)\n")
+        exit(1)
+    }
+
+case "repair-archives":
+    // `AVAudioFile` only patches its RIFF lengths on deinit, and this host exits
+    // with `_exit(0)` — so almost every WAV ever recorded claims to hold no audio
+    // over megabytes of speech. The samples were never lost; nothing could read
+    // past the header to reach them.
+    let repairRoot = value(for: "--corpus").map { URL(fileURLWithPath: $0) }
+        ?? CallHostPaths.callsDirectory
+    let entries = (try? FileManager.default.contentsOfDirectory(
+        at: repairRoot, includingPropertiesForKeys: nil)) ?? []
+    var repaired = 0, healthy = 0, failed = 0, recoveredSeconds = 0.0
+    for directory in entries.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+        for name in ["mic.wav", "system.wav"] {
+            let wav = directory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: wav.path) else { continue }
+            do {
+                if try WAVRepair.repairIfNeeded(at: wav) {
+                    repaired += 1
+                    let bytes = (try? FileManager.default
+                        .attributesOfItem(atPath: wav.path)[.size] as? NSNumber)??.doubleValue ?? 0
+                    recoveredSeconds += max(0, bytes - 4096) / 4 / WhisperAudioFormat.sampleRate
+                } else {
+                    healthy += 1
+                }
+            } catch {
+                failed += 1
+                complain("  \(directory.lastPathComponent)/\(name): \(error.localizedDescription)\n")
+            }
+        }
+    }
+    print("repaired \(repaired), already valid \(healthy), failed \(failed)")
+    if repaired > 0 {
+        print(String(format: "recovered %.1f hours of audio", recoveredSeconds / 3600))
+    }
+    exit(failed > 0 ? 1 : 0)
+
+case "eval":
+    // Offline. Every number below comes from files `CallArchive` already wrote
+    // for every call ever recorded, so a sweep costs no inference and no API
+    // calls — which is what makes it cheap enough to run on every change.
+    let corpus = value(for: "--corpus").map { URL(fileURLWithPath: $0) }
+        ?? CallHostPaths.callsDirectory
+    guard FileManager.default.fileExists(atPath: corpus.path) else {
+        complain("no corpus at \(corpus.path)\n")
+        exit(1)
+    }
+    do {
+        let calls = try CallCorpus.load(root: corpus)
+        guard !calls.isEmpty else {
+            complain("no calls with a transcript under \(corpus.path)\n")
+            exit(1)
+        }
+
+        // The same evidence the live guard will get: the user's profile text and
+        // whatever the knowledge base holds. Without it every proper noun in
+        // every suggestion reads as invented, which is true of none of them.
+        var evidence = ClaimGuard.Evidence()
+        if let store = try? CallaStore(path: CallHostPaths.storeFile),
+           let notes = try? await store.notes() {
+            for note in notes {
+                evidence.add(note.title)
+                evidence.add(note.body)
+            }
+            print("evidence: \(notes.count) knowledge note(s)")
+        }
+
+        let report = EvalReport(
+            generatedAt: Date(),
+            calls: calls.map { CallEvaluator.score($0, evidence: evidence) })
+        print(report.render())
+
+        // `--gate` turns the sweep into a check: non-zero when a headline number
+        // has crossed the line. This is what CI runs.
+        if arguments.contains("--gate") {
+            let failures = report.failures()
+            guard failures.isEmpty else {
+                complain("\n" + failures.map { "FAIL: \($0)" }.joined(separator: "\n") + "\n")
+                exit(1)
+            }
+            print("\ngates passed")
+        }
+
+        if let out = value(for: "--json") {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(report).write(to: URL(fileURLWithPath: out), options: .atomic)
+            print("\nwrote \(out)")
+        }
+        exit(0)
+    } catch {
+        complain("eval failed: \(error.localizedDescription)\n")
         exit(1)
     }
 

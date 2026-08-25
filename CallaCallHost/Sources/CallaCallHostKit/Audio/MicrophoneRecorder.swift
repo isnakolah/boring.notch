@@ -76,11 +76,57 @@ public final class MicrophoneRecorder: @unchecked Sendable {
         }
     }
 
+    /// Whether the OS is cancelling speaker bleed for us.
+    ///
+    /// Read after `start()`; false either because it was turned off or because
+    /// the current device could not do it.
+    public private(set) var voiceProcessingActive = false
+
+    /// Apple's echo cancellation. **Off by default, and it should stay off.**
+    ///
+    /// `setVoiceProcessingEnabled` looks like an input-side setting and is not.
+    /// It swaps the engine onto the Voice-Processing I/O audio unit, which is
+    /// *duplex*: it takes over the output device as well, ducks everything the
+    /// Mac is playing, and reshapes it for a phone call. Turning it on made the
+    /// meeting itself nearly inaudible — the one sound the user actually needed
+    /// — and left the microphone tap delivering nothing, so the call recorded
+    /// zero turns.
+    ///
+    /// Nothing is lost by leaving it off. `EchoReference` is what the measured
+    /// suppression comes from: it caught 67 of 69 echo utterances on a
+    /// speaker-mode call and left 102% of a headset call's turns intact, and it
+    /// did all of that on recorded audio that never had voice processing applied.
+    /// This layer contributed nothing to any number and cost the user the call.
+    public var voiceProcessingEnabled = false
+
     private func buildEngineLocked() throws {
         // A fresh engine per session: reusing one leaves the input node silent
         // after the first stop/start cycle.
         let engine = AVAudioEngine()
         let input = engine.inputNode
+
+        // Hardware echo cancellation, asked for before the format is read —
+        // enabling it changes the input node's format, so reading first would
+        // build the converter against a format that is about to be replaced.
+        //
+        // This removes the speakers from the microphone signal at the source,
+        // which is the only place it can be removed cleanly. `EchoReference`
+        // catches what survives; the two are layered on purpose, because voice
+        // processing is unavailable on some devices and imperfect on the rest.
+        voiceProcessingActive = false
+        if voiceProcessingEnabled {
+            micLog.notice("enabling voice processing — this also takes over audio output")
+            do {
+                try input.setVoiceProcessingEnabled(true)
+                voiceProcessingActive = true
+            } catch {
+                // Not fatal, and not rare: some aggregate and virtual devices
+                // refuse. The correlation layer still applies.
+                micLog.notice(
+                    "voice processing unavailable on this device: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
         let nativeFormat = input.inputFormat(forBus: 0)
         guard nativeFormat.sampleRate > 0, nativeFormat.channelCount > 0 else {
             throw AudioError.noInputDevice
@@ -110,7 +156,7 @@ public final class MicrophoneRecorder: @unchecked Sendable {
         engine.prepare()
         try engine.start()
         self.engine = engine
-        micLog.notice("microphone started at \(nativeFormat.sampleRate, privacy: .public)Hz x\(nativeFormat.channelCount, privacy: .public)")
+        micLog.notice("microphone started at \(nativeFormat.sampleRate, privacy: .public)Hz x\(nativeFormat.channelCount, privacy: .public), echo cancellation \(self.voiceProcessingActive ? "on" : "off", privacy: .public)")
     }
 
     private func handleConfigurationChangeLocked() {

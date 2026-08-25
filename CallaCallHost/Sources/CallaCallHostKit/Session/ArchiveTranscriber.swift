@@ -1,4 +1,5 @@
 import Foundation
+import IntelligenceStore
 import os.log
 
 private let archiveLog = Logger(subsystem: "theboringteam.boringnotch.callhost", category: "retranscribe")
@@ -26,6 +27,7 @@ public enum ArchiveTranscriber {
         modelURL: URL,
         modelName: String,
         language: String = "en",
+        store: CallaStore? = nil,
         progress: (@Sendable (String) -> Void)? = nil
     ) async throws -> Result {
         let started = Date()
@@ -44,7 +46,14 @@ public enum ArchiveTranscriber {
 
             // audioCtx 0: the whole recording, no truncation. The live path's
             // 750 only holds for clips under 15s.
-            let segments = try await engine.transcribe(samples: samples, language: language, audioCtx: 0)
+            //
+            // VAD on, unlike the live path: this buffer is a whole call leg and
+            // is mostly silence, which whisper fills with invented sentences.
+            let segments = try await engine.transcribe(
+                samples: samples,
+                language: language,
+                audioCtx: 0,
+                vadModelPath: SpeechGateFactory.bundledModelPath())
             for segment in segments {
                 let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
@@ -67,6 +76,21 @@ public enum ArchiveTranscriber {
         }
         let output = callDirectory.appendingPathComponent("transcript-archive.jsonl")
         try (lines.joined(separator: "\n") + "\n").write(to: output, atomically: true, encoding: .utf8)
+
+        // Into the store as its own revision, beside the live pass rather than
+        // over it. Without this the better transcript existed only as a file
+        // nothing read: History, the recap and any note filed from it all went on
+        // using the live text.
+        if let store {
+            try? await store.replace(
+                turns: ordered.map {
+                    StoredTurn(seq: $0.seq, source: $0.source.rawValue,
+                               t0: $0.t0, t1: $0.t1, text: $0.text,
+                               revision: StoredTurn.archiveRevision)
+                },
+                callID: callDirectory.lastPathComponent,
+                revision: StoredTurn.archiveRevision)
+        }
 
         let elapsed = Date().timeIntervalSince(started)
         archiveLog.notice("re-transcribed \(callDirectory.lastPathComponent, privacy: .public): \(ordered.count, privacy: .public) turns in \(elapsed, privacy: .public)s")

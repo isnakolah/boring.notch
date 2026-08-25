@@ -65,6 +65,11 @@ public enum AudioConvert {
     /// Reads any audio file the system can decode and returns whisper-shaped
     /// samples. Used by the offline transcribe path and the archive re-run.
     public static func loadAsWhisperSamples(url: URL) throws -> [Float] {
+        // Every call recorded before the archive learned to finalize its own
+        // header left a WAV that claims to hold no audio. The bytes are intact;
+        // repairing on read is what makes the existing corpus readable at all,
+        // and it is a no-op for a well-formed file.
+        try? WAVRepair.repairIfNeeded(at: url)
         let file = try AVAudioFile(forReading: url)
         let frames = AVAudioFrameCount(file.length)
         guard frames > 0,

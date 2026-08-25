@@ -45,12 +45,56 @@ public final class SystemAudioRecorder: NSObject, @unchecked Sendable {
         return nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" && nsError.code == -3801
     }
 
+    /// Bundle ids whose audio is the call. Empty means "everything on screen".
+    ///
+    /// Capturing the whole display makes every sound the Mac produces part of the
+    /// other party's transcript: music, a video in another tab, a notification
+    /// chime. Whisper transcribes song lyrics as diligently as speech, and the
+    /// copilot is then asked what to say about them. Narrowing to the app that is
+    /// actually on the call removes that at the source.
+    ///
+    /// Falls back to the whole display when none of these are running, because a
+    /// call through an app nobody listed still has to be captured.
+    public var callBundleIDs: Set<String> = []
+
+    /// Apps whose audio is plausibly a call.
+    ///
+    /// Mirrors the notch app's own `MeetingDetector` list. Duplicated rather than
+    /// shared because the host is a separate process that must not depend on the
+    /// app's target — and because being wrong here is cheap in one direction
+    /// only: an app missing from this list falls back to whole-display capture,
+    /// which is exactly today's behaviour.
+    public static let knownCallApps: Set<String> = [
+        "us.zoom.xos", "us.zoom.ZoomClips",
+        "com.microsoft.teams", "com.microsoft.teams2",
+        "Cisco-Systems.Spark", "com.cisco.webexmeetingsapp", "com.webex.meetingmanager",
+        "com.tinyspeck.slackmacgap",
+        "com.hnc.Discord",
+        "com.apple.FaceTime",
+        "com.ringcentral.glip",
+        "com.gotomeeting.GoToMeeting",
+        "net.whatsapp.WhatsApp",
+        "ru.keepcoder.Telegram", "org.telegram.desktop",
+        "org.whispersystems.signal-desktop",
+        "com.skype.skype",
+        "com.google.Chrome.app.kjgfgldnnfoeklkmfkjfagphfepbbdan",
+        // Browsers, because most calls are web-based. This is also why the
+        // narrowing is worth less than it looks on a browser call: the music tab
+        // and the meeting tab are the same application.
+        "com.apple.Safari", "com.apple.SafariTechnologyPreview",
+        "com.google.Chrome", "com.google.Chrome.beta",
+        "com.google.Chrome.dev", "com.google.Chrome.canary",
+        "com.brave.Browser", "company.thebrowser.Browser", "app.zen-browser.zen",
+        "org.mozilla.firefox", "com.microsoft.edgemac", "com.operasoftware.Opera",
+        "com.vivaldi.Vivaldi", "com.apple.WebKit.GPU",
+    ]
+
     public func start() async throws {
         guard !running else { return }
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         guard let display = content.displays.first else { throw AudioError.noInputDevice }
-        let filter = SCContentFilter(display: display, excludingWindows: [])
+        let filter = Self.filter(for: content, display: display, bundleIDs: callBundleIDs)
 
         let config = SCStreamConfiguration()
         // ScreenCaptureKit requires a video stream even when only audio is
@@ -86,6 +130,32 @@ public final class SystemAudioRecorder: NSObject, @unchecked Sendable {
             systemLog.error("stopCapture failed: \(error.localizedDescription, privacy: .public)")
         }
         sampleQueue.sync { converter = nil }
+    }
+}
+
+extension SystemAudioRecorder {
+    /// The narrowest filter that still contains the call.
+    ///
+    /// `SCContentFilter(display:including:exceptingWindows:)` captures only the
+    /// named applications' audio. Anything else the Mac plays — the music the
+    /// user forgot was running — stays out of the transcript.
+    static func filter(
+        for content: SCShareableContent,
+        display: SCDisplay,
+        bundleIDs: Set<String>
+    ) -> SCContentFilter {
+        guard !bundleIDs.isEmpty else {
+            return SCContentFilter(display: display, excludingWindows: [])
+        }
+        let applications = content.applications.filter {
+            bundleIDs.contains($0.bundleIdentifier)
+        }
+        guard !applications.isEmpty else {
+            // None of them are running. Capturing nothing would be a silent call.
+            return SCContentFilter(display: display, excludingWindows: [])
+        }
+        return SCContentFilter(
+            display: display, including: applications, exceptingWindows: [])
     }
 }
 

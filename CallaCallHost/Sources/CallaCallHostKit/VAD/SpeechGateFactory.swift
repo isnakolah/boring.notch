@@ -6,6 +6,12 @@ private let gateLog = Logger(subsystem: "theboringteam.boringnotch.callhost", ca
 public enum SpeechGateFactory {
     public static let bundledModelName = "ggml-silero-v5.1.2"
 
+    /// Where the bundled Silero weights live, for callers that hand the path to
+    /// whisper rather than driving the gate themselves.
+    public static func bundledModelPath() -> String? {
+        Bundle.module.path(forResource: bundledModelName, ofType: "bin")
+    }
+
     /// Loads the bundled Silero model.
     ///
     /// Returns nil rather than throwing: without the gate the pipeline still

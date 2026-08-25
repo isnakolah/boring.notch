@@ -96,7 +96,18 @@ public enum CopilotTasks {
 /// between a fast copilot and a slow one. The Gateway keeps its own wording when
 /// it is answering.
 public enum CopilotLocalPrompt {
-    public static let base = """
+    /// The pack these prompts are read from.
+    ///
+    /// Set once at startup so the host honours the user's own edits under
+    /// `<runtime>/copilot/prompts`; unset it and everything falls back to the
+    /// bundled wording.
+    public nonisolated(unsafe) static var pack = PromptPack()
+
+    public static var base: String { pack.text(.liveBase) }
+
+    /// The wording that shipped, kept only so the Settings pane can offer
+    /// "start from the default" without reaching into the pack.
+    public static let bundledBase = """
     You sit beside someone during a live call and tell them what to say next.
 
     You see a running transcript labelled `Me:` (the user) and `Them:` (everyone \
@@ -139,9 +150,15 @@ public enum CopilotLocalPrompt {
     - The last line is what to answer. Answer that, not the parts above it.
     """
 
-    /// The Gateway's per-persona blocks are not in this repository, so these are
-    /// local-only wording, kept short on purpose.
+    /// The persona block, from the pack. Adding a persona is dropping a file
+    /// into `live/personas/`; an unknown one falls back to `generic`.
     public static func persona(_ persona: String) -> String {
+        pack.persona(persona)
+    }
+
+    /// The wording that shipped. Unused at runtime — `persona(_:)` reads the
+    /// pack — and kept as the reference the pack files were extracted from.
+    static func bundledPersona(_ persona: String) -> String {
         switch persona {
         case "interview":
             // The most demanding persona, and the one with the least time to read.
@@ -209,7 +226,7 @@ public enum CopilotLocalPrompt {
     /// 1200/2000/8000 limits, and `PromptComposer` clamps anyway.
     public static func blocks(persona: String, profile: CallProfile?) -> PromptBlocks {
         PromptBlocks(
-            base: profile?.baseGuidance?.isEmpty == false ? profile!.baseGuidance! : base,
+            base: profile?.baseGuidance?.isEmpty == false ? profile!.baseGuidance! : Self.base,
             role: profile?.personaGuidance?.isEmpty == false
                 ? profile!.personaGuidance!
                 : Self.persona(persona),
@@ -237,6 +254,12 @@ public enum CopilotLocalPrompt {
 
 /// The prompt for the chunk lane — the growing account.
 public enum CopilotBriefPrompt {
+    /// From `lanes/brief.md`.
+    public static var text: String { CopilotLocalPrompt.pack.text(.laneBrief) }
+
+    /// The wording that shipped, kept as the reference `lanes/brief.md` was
+    /// extracted from. `text` is what is actually sent.
+    ///
     /// Summarises the newest chunk of a call and nothing else.
     ///
     /// This lane is one warm conversation for the whole call, so it has already
@@ -279,6 +302,12 @@ public enum CopilotBriefPrompt {
 
 /// The prompt for the exec lane — the fold.
 public enum CopilotExecPrompt {
+    /// From `lanes/exec.md`.
+    public static var text: String { CopilotLocalPrompt.pack.text(.laneExec) }
+
+    /// The wording that shipped, kept as the reference `lanes/exec.md` was
+    /// extracted from. `text` is what is actually sent.
+    ///
     /// Compresses the oldest points into one standing paragraph.
     ///
     /// Read by the same person mid-call, but about the part of the conversation
@@ -302,6 +331,47 @@ public enum CopilotExecPrompt {
         "",
         "Never invent numbers, names or commitments that were not said.",
     ].joined(separator: "\n")
+}
+
+/// The end-of-call pass's own shape.
+///
+/// `CopilotTasks.summary` declares the keys `summary` and `open_questions`, and
+/// was being decoded by `CopilotSuggestionDecoder`, which looks for `headline`,
+/// `angles` and `confirm`. Those are always absent, so the deep model's work
+/// arrived as a frame that was empty in every field anyone reads — and the
+/// durable recap was then built from the ledger instead. The most expensive pass
+/// in the system was decoration.
+public struct CopilotClosingSummary: Sendable, Equatable {
+    public var overview: String
+    public var openQuestions: [String]
+
+    public init(overview: String, openQuestions: [String]) {
+        self.overview = overview
+        self.openQuestions = openQuestions
+    }
+
+    private struct Payload: Decodable {
+        let summary: String?
+        let open_questions: [String]?
+        /// Tolerated because the fast lane's shape is what a mis-prompted model
+        /// tends to fall back to, and an overview is worth having either way.
+        let headline: String?
+    }
+
+    public static func decode(_ payload: Data) throws -> CopilotClosingSummary {
+        let decoded = try JSONDecoder().decode(Payload.self, from: payload)
+        let overview = (decoded.summary ?? decoded.headline ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return CopilotClosingSummary(
+            overview: overview,
+            openQuestions: decoded.open_questions ?? [])
+    }
+}
+
+/// The prompt for the end-of-call pass.
+public enum CopilotSummaryPrompt {
+    /// From `lanes/summary.md`.
+    public static var text: String { CopilotLocalPrompt.pack.text(.laneSummary) }
 }
 
 /// Turns a contract payload into the frame the whole app already speaks.

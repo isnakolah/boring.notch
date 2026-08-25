@@ -50,4 +50,16 @@ public final class CaptureLeg: @unchecked Sendable {
     public func reset() {
         queue.sync { detector.reset() }
     }
+
+    /// Blocks until everything already handed to `ingest` has been endpointed.
+    ///
+    /// `ingest` is asynchronous, which is right for a live tap — a capture
+    /// callback must never wait. It is wrong for a replay, where the feed loop
+    /// would otherwise push a whole call through in milliseconds while the
+    /// detector was still on its first minute, and any consumer that reasons
+    /// about *when* an utterance happened would be handed nonsense. Pacing the
+    /// feed with this barrier reproduces real-time ordering without real time.
+    public func waitForPendingWork() {
+        queue.sync {}
+    }
 }

@@ -14,6 +14,7 @@ let package = Package(
         .executable(name: "CallaCallHost", targets: ["CallaCallHost"]),
     ],
     dependencies: [
+        .package(path: "../CallaContracts"),
         // The app's intelligence layer. A local package rather than shared source
         // paths, because SPM refuses a target path outside its own package root
         // and the app, the XPC engine and this host all need the same types.
@@ -33,6 +34,7 @@ let package = Package(
             name: "CallaCallHostKit",
             dependencies: [
                 "whisper",
+                .product(name: "CallaContracts", package: "CallaContracts"),
                 .product(name: "IntelligenceCore", package: "Intelligence"),
                 .product(name: "IntelligenceProviders", package: "Intelligence"),
                 .product(name: "IntelligenceStore", package: "Intelligence"),
@@ -44,7 +46,7 @@ let package = Package(
             resources: [.copy("Resources/ggml-silero-v5.1.2.bin")]),
         .executableTarget(
             name: "CallaCallHost",
-            dependencies: ["CallaCallHostKit"]),
+            dependencies: ["CallaCallHostKit", .product(name: "CallaContracts", package: "CallaContracts")]),
         .testTarget(
             name: "CallaCallHostKitTests",
             dependencies: ["CallaCallHostKit"]),

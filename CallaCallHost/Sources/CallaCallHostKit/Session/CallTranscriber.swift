@@ -25,6 +25,9 @@ public actor CallTranscriber {
     /// speech is what gets sacrificed.
     private let backlogLimit: Int
 
+    /// Names and per-leg recent text, biasing each decode.
+    private var context: DecodingContext
+
     private var nextSeq = 0
     private var pendingWork = 0
     private var chain: Task<Void, Never>?
@@ -39,8 +42,10 @@ public actor CallTranscriber {
         modelURL: URL,
         modelName: String,
         language: String = "en",
-        backlogLimit: Int = 3
+        backlogLimit: Int = 3,
+        vocabulary: [String] = []
     ) {
+        context = DecodingContext(vocabulary: vocabulary)
         self.engine = engine
         self.speechGate = speechGate
         self.modelURL = modelURL
@@ -103,6 +108,67 @@ public actor CallTranscriber {
 
     // MARK: - Internal
 
+    /// Joins segments that belong to one utterance.
+    ///
+    /// A boundary is kept only where the text actually finished — terminal
+    /// punctuation, or a real gap. Everything else is stitched back together,
+    /// with the confidences averaged by duration so a long confident span is not
+    /// dragged down by a short shaky one.
+    static func merge(_ segments: [TranscriptSegment]) -> [TranscriptSegment] {
+        guard segments.count > 1 else { return segments }
+        var merged: [TranscriptSegment] = []
+        for segment in segments {
+            guard var previous = merged.last else {
+                merged.append(segment)
+                continue
+            }
+            let text = segment.text.trimmingCharacters(in: .whitespaces)
+            let previousText = previous.text.trimmingCharacters(in: .whitespaces)
+            let ended = previousText.last.map { ".!?…".contains($0) } ?? false
+            let gap = segment.start - previous.end
+            guard !ended, gap < mergeGapSeconds, !previousText.isEmpty, !text.isEmpty else {
+                merged.append(segment)
+                continue
+            }
+
+            let previousSpan = max(0.01, previous.end - previous.start)
+            let span = max(0.01, segment.end - segment.start)
+            previous.text = previousText + " " + text
+            previous.end = segment.end
+            previous.confidence = weighted(
+                previous.confidence, previousSpan, segment.confidence, span)
+            // The stricter of the two: if any part of a merged turn looked like
+            // silence, the whole thing is suspect.
+            previous.noSpeech = [previous.noSpeech, segment.noSpeech].compactMap { $0 }.max()
+            merged[merged.count - 1] = previous
+        }
+        return merged
+    }
+
+    /// Segments closer than this are one utterance. whisper's own splits are
+    /// typically contiguous, so this only has to be larger than zero to catch
+    /// them, and small enough not to swallow a real pause.
+    static let mergeGapSeconds: Double = 0.4
+
+    private static func weighted(
+        _ lhs: Double?, _ lhsSpan: Double, _ rhs: Double?, _ rhsSpan: Double
+    ) -> Double? {
+        switch (lhs, rhs) {
+        case let (left?, right?): return (left * lhsSpan + right * rhsSpan) / (lhsSpan + rhsSpan)
+        case let (left?, nil): return left
+        case let (nil, right?): return right
+        case (nil, nil): return nil
+        }
+    }
+
+    /// Whether a segment is too uncertain to condition the next decode on, or to
+    /// let into the ledger as established fact.
+    private func turnIsAGuess(_ segment: TranscriptSegment) -> Bool {
+        if let noSpeech = segment.noSpeech, noSpeech > 0.6 { return true }
+        guard let confidence = segment.confidence else { return false }
+        return confidence < CallTurn.lowConfidence
+    }
+
     private func process(
         samples: [Float],
         source: TurnSource,
@@ -142,8 +208,16 @@ public actor CallTranscriber {
                 ? samples + [Float](repeating: 0, count: minimum - samples.count)
                 : samples
 
-            let segments = try await engine.transcribe(
-                samples: padded, language: language, audioCtx: nil)
+            let decoded = try await engine.transcribe(
+                samples: padded,
+                language: language,
+                audioCtx: nil,
+                initialPrompt: context.prompt(for: source))
+            // whisper splits a single utterance into several segments at its own
+            // internal boundaries, which are not sentence boundaries. Publishing
+            // each as a turn fragments one clause across several rows of the
+            // panel and several inputs to the segmenter.
+            let segments = Self.merge(decoded)
             guard !stopped else { return }
 
             let transcribedAt = Date()
@@ -167,16 +241,31 @@ public actor CallTranscriber {
             for segment in segments {
                 let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { continue }
+                // `suppress_nst` stops most of these at the decoder; a bracketed
+                // line that still gets through is an annotation about the audio,
+                // not a thing anyone said, and it must not become a turn.
+                guard !CallEvaluator.isArtifact(text) else {
+                    transcriberLog.debug("dropped a non-speech annotation: \(text, privacy: .public)")
+                    continue
+                }
                 // Anything starting past the real audio is a hallucination on
                 // the zero-padding we just added.
                 guard segment.start < originalDuration else { continue }
+
+                // Conditioning the next fragment on a guess is how one bad
+                // decode becomes several, so only text the model was reasonably
+                // sure of is carried forward. The turn itself is still published
+                // — the transcript is the record, and a hedged line in it beats a
+                // hole.
+                if !turnIsAGuess(segment) { context.record(text, for: source) }
 
                 let turn = CallTurn(
                     seq: nextSeq,
                     source: source,
                     t0: startSeconds + segment.start,
                     t1: startSeconds + segment.end,
-                    text: text)
+                    text: text,
+                    confidence: segment.confidence)
                 nextSeq += 1
                 onTurn?(turn)
             }

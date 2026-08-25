@@ -115,6 +115,16 @@ public final class CallArchive: @unchecked Sendable {
             // AVAudioFile finalizes its header on deinit, so dropping the
             // references here is what makes the WAVs playable.
             writers.removeAll()
+            // ...except when it does not. This host ends a call with `_exit(0)`
+            // to keep whisper.cpp's Metal teardown out of static destruction, and
+            // a host that is killed never reaches this method at all — so on 63
+            // of the first 66 calls recorded, the deinit never ran and both WAVs
+            // were left declaring zero audio bytes over megabytes of speech.
+            // Patching the lengths from the file's own size costs microseconds
+            // and does not depend on anything running later.
+            for source in TurnSource.allCases {
+                try? WAVRepair.repairIfNeeded(at: url(for: source))
+            }
         }
     }
 
