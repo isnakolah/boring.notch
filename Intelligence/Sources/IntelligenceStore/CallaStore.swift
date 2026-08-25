@@ -89,6 +89,10 @@ public actor CallaStore {
         try database.query(sql, bindings, row: row)
     }
 
+    func scalarInt(_ sql: String, _ bindings: [SQLiteValue] = []) throws -> Int? {
+        try database.scalarInt(sql, bindings)
+    }
+
     // MARK: - Knowledge
 
     /// Creates or replaces a note and rebuilds its chunks.
@@ -308,14 +312,50 @@ public actor CallaStore {
         scored.sort { $0.score == $1.score ? $0.id < $1.id : $0.score > $1.score }
 
         let byID = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0) })
+
+        // Diversify across notes, and never return the same passage twice.
+        //
+        // A question gets three chunks, which is a very small budget, and without
+        // this one document takes all of it. On this machine "what is your
+        // academic background" returned five passages from a research report —
+        // filed twice, so half the results were literally the same bytes — while
+        // the CV that answers the question was never reached. One passage per
+        // note first, then fill any remaining slots in score order.
         var hits: [KnowledgeHit] = []
-        for entry in scored.prefix(limit) {
+        var usedNotes = Set<String>()
+        var seenText = Set<String>()
+        var runnersUp: [(chunk: Candidate, score: Double)] = []
+
+        for entry in scored {
+            guard hits.count < limit else { break }
             guard let chunk = byID[entry.id] else { continue }
+            let fingerprint = Self.passageFingerprint(chunk.text)
+            guard seenText.insert(fingerprint).inserted else { continue }
+            guard usedNotes.insert(chunk.noteID).inserted else {
+                runnersUp.append((chunk, entry.score))
+                continue
+            }
             hits.append(KnowledgeHit(
                 noteID: chunk.noteID, title: chunk.title, text: chunk.text,
                 source: chunk.source, score: entry.score))
         }
+        for runnerUp in runnersUp where hits.count < limit {
+            hits.append(KnowledgeHit(
+                noteID: runnerUp.chunk.noteID, title: runnerUp.chunk.title,
+                text: runnerUp.chunk.text, source: runnerUp.chunk.source,
+                score: runnerUp.score))
+        }
         return hits
+    }
+
+    /// Identifies a passage by its words alone, so the same document imported
+    /// twice cannot occupy two slots. Whitespace and case differ between imports
+    /// of the same file; the words do not.
+    static func passageFingerprint(_ text: String) -> String {
+        text.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .prefix(40)
+            .joined(separator: " ")
     }
 
     private struct Candidate {
@@ -363,12 +403,44 @@ public actor CallaStore {
     }
 
     /// Chunk ids in BM25 order, filtered to the candidate set.
+    /// Chunk ids in BM25 order, restricted to what is in scope.
+    ///
+    /// The scope restriction is part of the query, not a filter over its result.
+    /// It used to be `ORDER BY bm25 LIMIT 50` followed by `rows.filter(allowed)`,
+    /// which truncates the *corpus* to fifty rows and only then asks which of
+    /// them this call is allowed to see. One large document is enough to fill
+    /// those fifty on its own, and everything in scope behind it is discarded
+    /// before it is ever considered — on this machine a research report crowded
+    /// out the CV for "what is your academic background", so the lexical leg
+    /// contributed nothing and the answer was invented instead.
     private func lexicalOrder(_ query: String, allowed: Set<Int>) throws -> [(Int, Int)] {
-        guard let match = Self.ftsQuery(query) else { return [] }
-        let rows = try database.query(
-            "SELECT rowid FROM knowledge_fts WHERE knowledge_fts MATCH ? ORDER BY bm25(knowledge_fts) LIMIT 50",
-            [.text(match)]) { $0.int(0) }
-        return rows.filter(allowed.contains).enumerated().map { ($0.offset, $0.element) }
+        guard let match = Self.ftsQuery(query), !allowed.isEmpty else { return [] }
+
+        // SQLite's bound-parameter ceiling is comfortably above any personal
+        // corpus, but a fallback keeps a pathological store working rather than
+        // throwing mid-call.
+        let parameterCeiling = 900
+        let rows: [Int]
+        if allowed.count <= parameterCeiling {
+            let placeholders = Array(repeating: "?", count: allowed.count).joined(separator: ",")
+            var bindings: [SQLiteValue] = [.text(match)]
+            bindings.append(contentsOf: allowed.sorted().map { SQLiteValue.int($0) })
+            rows = try database.query(
+                """
+                SELECT rowid FROM knowledge_fts
+                WHERE knowledge_fts MATCH ? AND rowid IN (\(placeholders))
+                ORDER BY bm25(knowledge_fts) LIMIT 50
+                """,
+                bindings) { $0.int(0) }
+        } else {
+            // Take a deep slice and filter, which is the old behaviour with
+            // enough headroom that scope can no longer be starved out.
+            let deep = try database.query(
+                "SELECT rowid FROM knowledge_fts WHERE knowledge_fts MATCH ? ORDER BY bm25(knowledge_fts) LIMIT 5000",
+                [.text(match)]) { $0.int(0) }
+            rows = Array(deep.filter(allowed.contains).prefix(50))
+        }
+        return rows.enumerated().map { ($0.offset, $0.element) }
     }
 
     /// Chunk ids in cosine order. Empty when no backend is loaded, which is what

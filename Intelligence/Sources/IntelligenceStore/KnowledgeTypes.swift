@@ -58,6 +58,14 @@ public enum KnowledgeScope: Equatable, Sendable {
         }
     }
 
+    /// For diagnostics. A note's scope is the difference between reaching the
+    /// model and being invisible, and "series/6oo6acr…" is the shortest way to
+    /// say which.
+    public var debugLabel: String {
+        guard let key else { return kind }
+        return "\(kind)/\(key.prefix(12))"
+    }
+
     init?(kind: String, key: String?) {
         switch kind {
         case "always": self = .always

@@ -1,4 +1,5 @@
 import Foundation
+import CallaContracts
 
 /// A call, as stored. The transcript and the suggestions hang off it by id.
 ///
@@ -58,19 +59,45 @@ public struct CallRecord: Codable, Sendable, Equatable, Identifiable {
 }
 
 public struct StoredTurn: Codable, Sendable, Equatable {
+    /// Which transcription pass this row came from.
+    ///
+    /// 0 is the live pass — what the copilot actually saw, and therefore the only
+    /// honest thing to show alongside a suggestion. 1 is the archive pass, which
+    /// is materially more accurate and is what History and any filed note should
+    /// use. Kept side by side rather than one overwriting the other.
+    public static let liveRevision = 0
+    public static let archiveRevision = 1
+
     public var seq: Int
+    public var revision: Int
     /// `me` or `them`, matching the host's own `CallTurn.source`.
     public var source: String
     public var t0: Double
     public var t1: Double
     public var text: String
+    /// Mean per-token probability from whisper, when the pass recorded one.
+    public var confidence: Double?
+    /// whisper's own estimate that this span is not speech at all.
+    public var noSpeech: Double?
 
-    public init(seq: Int, source: String, t0: Double, t1: Double, text: String) {
+    public init(
+        seq: Int,
+        source: String,
+        t0: Double,
+        t1: Double,
+        text: String,
+        revision: Int = StoredTurn.liveRevision,
+        confidence: Double? = nil,
+        noSpeech: Double? = nil
+    ) {
         self.seq = seq
+        self.revision = revision
         self.source = source
         self.t0 = t0
         self.t1 = t1
         self.text = text
+        self.confidence = confidence
+        self.noSpeech = noSpeech
     }
 }
 
@@ -174,15 +201,43 @@ public extension CallaStore {
     func record(turn: StoredTurn, callID: String) throws {
         try run(
             """
-            INSERT INTO call_turn(call_id, seq, source, t0, t1, text) VALUES(?, ?, ?, ?, ?, ?)
-            ON CONFLICT(call_id, seq) DO UPDATE SET
-              source = excluded.source, t0 = excluded.t0, t1 = excluded.t1, text = excluded.text
+            INSERT INTO call_turn(call_id, seq, revision, source, t0, t1, text, confidence, no_speech)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(call_id, revision, seq) DO UPDATE SET
+              source = excluded.source, t0 = excluded.t0, t1 = excluded.t1,
+              text = excluded.text, confidence = excluded.confidence,
+              no_speech = excluded.no_speech
             """,
-            [.text(callID), .int(turn.seq), .text(turn.source),
-             .double(turn.t0), .double(turn.t1), .text(turn.text)])
+            [.text(callID), .int(turn.seq), .int(turn.revision), .text(turn.source),
+             .double(turn.t0), .double(turn.t1), .text(turn.text),
+             .double(turn.confidence), .double(turn.noSpeech)])
+        // Counts the live pass only. `turn_count` is what History shows and what
+        // the recap's spans are expressed against, and an archive import must not
+        // appear to double the length of a call.
         try run(
-            "UPDATE call SET turn_count = (SELECT COUNT(*) FROM call_turn WHERE call_id = ?) WHERE id = ?",
-            [.text(callID), .text(callID)])
+            """
+            UPDATE call SET turn_count =
+              (SELECT COUNT(*) FROM call_turn WHERE call_id = ? AND revision = ?)
+            WHERE id = ?
+            """,
+            [.text(callID), .int(StoredTurn.liveRevision), .text(callID)])
+    }
+
+    /// Replaces one revision of a call's transcript wholesale.
+    ///
+    /// Used by the archive pass, whose `seq` numbering is its own — it
+    /// re-transcribes both legs independently and interleaves them by time, so
+    /// its seq 7 has no relationship to the live pass's seq 7. Deleting the
+    /// revision first is what keeps a shorter re-run from leaving a tail of rows
+    /// behind from a longer one.
+    func replace(turns: [StoredTurn], callID: String, revision: Int) throws {
+        try run("DELETE FROM call_turn WHERE call_id = ? AND revision = ?",
+                [.text(callID), .int(revision)])
+        for turn in turns {
+            var row = turn
+            row.revision = revision
+            try record(turn: row, callID: callID)
+        }
     }
 
     /// Appends a suggestion. Not deduplicated: the same `after_seq` legitimately
@@ -280,13 +335,38 @@ public extension CallaStore {
             [.text(eventID)], row: Self.call)
     }
 
-    func turns(forCall callID: String, since seq: Int = -1) throws -> [StoredTurn] {
-        try query(
-            "SELECT seq, source, t0, t1, text FROM call_turn WHERE call_id = ? AND seq > ? ORDER BY seq",
-            [.text(callID), .int(seq)]) { row in
+    /// One revision of a call's transcript.
+    ///
+    /// Defaults to the best available: the archive pass when it has run, the live
+    /// one otherwise. History and the recap want the accurate transcript; the
+    /// live panel, which is showing turns as they arrive against suggestions that
+    /// were made from them, passes `revision: 0` explicitly.
+    func turns(
+        forCall callID: String,
+        since seq: Int = -1,
+        revision: Int? = nil
+    ) throws -> [StoredTurn] {
+        let resolved = try revision ?? bestRevision(forCall: callID)
+        return try query(
+            """
+            SELECT seq, source, t0, t1, text, confidence, no_speech, revision
+            FROM call_turn WHERE call_id = ? AND revision = ? AND seq > ? ORDER BY seq
+            """,
+            [.text(callID), .int(resolved), .int(seq)], row: { row in
                 StoredTurn(seq: row.int(0), source: row.string(1),
-                           t0: row.double(2), t1: row.double(3), text: row.string(4))
-            }
+                           t0: row.double(2), t1: row.double(3), text: row.string(4),
+                           revision: row.int(7),
+                           confidence: row.doubleIfPresent(5),
+                           noSpeech: row.doubleIfPresent(6))
+            })
+    }
+
+    /// The highest revision this call has, so a caller that just wants "the
+    /// transcript" gets the best one without having to know the pass ran.
+    func bestRevision(forCall callID: String) throws -> Int {
+        try scalarInt(
+            "SELECT MAX(revision) FROM call_turn WHERE call_id = ?",
+            [.text(callID)]) ?? StoredTurn.liveRevision
     }
 
     func suggestions(forCall callID: String) throws -> [StoredSuggestion] {
@@ -311,6 +391,73 @@ public extension CallaStore {
                 CallSummary(callID: callID, standing: row.string(0),
                             points: Self.split(row.text(1)), openQuestions: Self.split(row.text(2)))
             }.first
+    }
+
+    // MARK: - Reviewed recap
+
+    /// Saves an editable recap beside call history. This never writes a
+    /// knowledge note; approval is an explicit second action.
+    func save(recapDraft: CallRecapDraft) throws {
+        let items = try JSONEncoder().encode(recapDraft.items)
+        guard let itemsJSON = String(data: items, encoding: .utf8) else { return }
+        try run(
+            """
+            INSERT INTO call_recap_draft(call_id, overview, items_json, provider, model, failure, review_state)
+            VALUES(?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(call_id) DO UPDATE SET overview = excluded.overview,
+              items_json = excluded.items_json, provider = excluded.provider,
+              model = excluded.model, failure = excluded.failure,
+              review_state = excluded.review_state, reviewed_at = NULL, note_id = NULL
+            """,
+            [.text(recapDraft.callID), .text(recapDraft.overview), .text(itemsJSON),
+             .text(recapDraft.provider), .text(recapDraft.model), .text(recapDraft.failure),
+             .text(recapDraft.reviewState.rawValue)])
+    }
+
+    func recapDraft(forCall callID: String) throws -> CallRecapDraft? {
+        try query(
+            "SELECT overview, items_json, provider, model, failure, review_state FROM call_recap_draft WHERE call_id = ?",
+            [.text(callID)]) { row in
+                let items = row.text(1).flatMap { try? JSONDecoder().decode([SourcedCallItem].self, from: Data($0.utf8)) } ?? []
+                let review = CallRecapDraft.ReviewState(rawValue: row.string(5)) ?? .pending
+                return CallRecapDraft(callID: callID, overview: row.string(0), items: items,
+                                      provider: row.text(2), model: row.text(3), failure: row.text(4),
+                                      reviewState: review)
+            }.first
+    }
+
+    /// Approval is sole path from draft to reusable meeting knowledge. Rejection
+    /// remains history only; deletion is caller-owned and does not touch legacy
+    /// summaries or transcript.
+    @discardableResult
+    func approve(recapDraftFor callID: String, meeting: MeetingContext?) async throws -> KnowledgeNote? {
+        guard var draft = try recapDraft(forCall: callID) else { return nil }
+        draft.reviewState = .approved
+        guard let scope = Self.summaryScope(for: meeting) else {
+            try run("UPDATE call_recap_draft SET review_state = ?, reviewed_at = ? WHERE call_id = ?",
+                    [.text(draft.reviewState.rawValue), .date(Date()), .text(callID)])
+            return nil
+        }
+        let record = try call(id: callID)
+        let date = record?.startedAt ?? Date()
+        let title = record?.eventTitle ?? meeting?.title ?? "Call recap"
+        let body = ([draft.overview] + draft.items.map { "\($0.kind.rawValue): \($0.text)" })
+            .filter { !$0.isEmpty }.joined(separator: "\n")
+        let note = KnowledgeNote(id: "note-recap-\(callID)", title: title, body: body,
+                                 source: .callSummary, scope: scope, createdAt: date)
+        let stored = try await upsert(note)
+        try run("UPDATE call_recap_draft SET review_state = ?, reviewed_at = ?, note_id = ? WHERE call_id = ?",
+                [.text(draft.reviewState.rawValue), .date(Date()), .text(stored.id), .text(callID)])
+        return stored
+    }
+
+    func reject(recapDraftFor callID: String) throws {
+        try run("UPDATE call_recap_draft SET review_state = ?, reviewed_at = ? WHERE call_id = ?",
+                [.text(CallRecapDraft.ReviewState.rejected.rawValue), .date(Date()), .text(callID)])
+    }
+
+    func delete(recapDraftFor callID: String) throws {
+        try run("DELETE FROM call_recap_draft WHERE call_id = ?", [.text(callID)])
     }
 
     private static let callColumns = """

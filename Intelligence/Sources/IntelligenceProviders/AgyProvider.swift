@@ -63,8 +63,11 @@ public actor AgyProvider: IntelligenceProvider {
     }
 
     private var sessions: [String: Session] = [:]
-    /// Sessions with an open in flight. See `openSession`.
-    private var opening: Set<String> = []
+    /// Opens in flight, keyed by session. A task rather than a flag so a caller
+    /// that arrives mid-open can *wait for* the conversation instead of merely
+    /// being told one is coming — see `respond(to:)`, which used to bootstrap a
+    /// second one alongside it.
+    private var opening: [String: Task<Bool, Never>] = [:]
 
     public init(
         configuration: Configuration,
@@ -136,6 +139,20 @@ public actor AgyProvider: IntelligenceProvider {
             throw IntelligenceFailure.providerMissing("agy is not installed")
         }
         let key = try sessionKey(for: request)
+
+        // Join a warm-up that is still running rather than racing it.
+        //
+        // `openSession` is started as the call begins and takes several seconds:
+        // the host boot plus a ~15k-token bootstrap. A question arriving inside
+        // that window used to find `conversationID == nil`, decide it was a
+        // bootstrap, and open a *second* conversation — paying the same cost
+        // twice, on the one request where latency is the whole point, and then
+        // overwriting whichever finished first. Waiting costs nothing that was
+        // not already being spent.
+        if let inFlight = opening[key] {
+            _ = await inFlight.value
+        }
+
         var session = sessions[key] ?? Session(conversationID: nil, estimatedTokens: 0, rollovers: 0)
 
         // Rollover before the request, not after: the point is to keep *this*
@@ -206,7 +223,12 @@ public actor AgyProvider: IntelligenceProvider {
                 provider: .localAgy,
                 model: exchange.model,
                 latency: Date().timeIntervalSince(started),
-                fellBack: false,
+                // The slow print transport costs ~8.5s against the fast path's
+                // ~2.5s, which on a live call is the difference between a pointer
+                // that arrives in time and one that does not. Reporting `false`
+                // unconditionally made a degraded call indistinguishable from a
+                // healthy one in every log and every attribution.
+                fellBack: usedFallbackTransport,
                 rollovers: session.rollovers
             ),
             usage: exchange.usage ?? Usage(
@@ -277,16 +299,45 @@ public actor AgyProvider: IntelligenceProvider {
         sessionKey: String,
         system: PromptBlocks
     ) async -> Bool {
-        guard let fastTransport else { return false }
+        guard fastTransport != nil else { return false }
         guard sessions[sessionKey]?.conversationID == nil else { return true }
         // Now that warm-up runs concurrently with the call, the first statement can
         // arrive mid-open. Actors do not hold isolation across an await, so without
         // this both paths would pass the check above and open two conversations —
         // paying the ~15k-token bootstrap twice and discarding one of them.
-        guard !opening.contains(sessionKey) else { return true }
-        opening.insert(sessionKey)
-        defer { opening.remove(sessionKey) }
+        return await openTask(task: task, sessionKey: sessionKey, system: system).value
+    }
 
+    /// The in-flight open for a session, started if there is not one already.
+    ///
+    /// Every caller joins the same task, so the bootstrap is paid once no matter
+    /// how many of them arrive while it is running.
+    private func openTask(
+        task: IntelligenceTask,
+        sessionKey: String,
+        system: PromptBlocks
+    ) -> Task<Bool, Never> {
+        if let existing = opening[sessionKey] { return existing }
+        let opened = Task { [weak self] in
+            guard let self else { return false }
+            let result = await self.performOpen(task: task, sessionKey: sessionKey, system: system)
+            await self.finishOpen(sessionKey)
+            return result
+        }
+        opening[sessionKey] = opened
+        return opened
+    }
+
+    private func finishOpen(_ sessionKey: String) {
+        opening.removeValue(forKey: sessionKey)
+    }
+
+    private func performOpen(
+        task: IntelligenceTask,
+        sessionKey: String,
+        system: PromptBlocks
+    ) async -> Bool {
+        guard let fastTransport else { return false }
         let priming = IntelligenceRequest(
             task: task,
             sessionKey: sessionKey,

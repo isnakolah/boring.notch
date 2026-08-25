@@ -1,0 +1,5 @@
+{
+  "id": "calla-default",
+  "version": 1,
+  "description": "Default Calla copilot prompts. Copy this directory to ~/Library/Application Support/boringNotch/Calla/copilot/prompts to override any file; anything you do not copy keeps the built-in wording."
+}

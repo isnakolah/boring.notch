@@ -189,6 +189,14 @@ struct SQLiteRow {
     /// unwrap something the schema already guarantees.
     func string(_ index: Int32) -> String { text(index) ?? "" }
 
+    /// A nullable REAL column. `double(_:)` returns 0 for NULL, which for a
+    /// confidence score is a real and very wrong value — it reads as "the model
+    /// was certain this was nothing" rather than "this pass did not measure".
+    func doubleIfPresent(_ index: Int32) -> Double? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
+        return sqlite3_column_double(statement, index)
+    }
+
     func date(_ index: Int32) -> Date? {
         guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
         return Date(timeIntervalSince1970: sqlite3_column_double(statement, index))

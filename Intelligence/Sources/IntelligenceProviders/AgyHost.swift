@@ -259,8 +259,15 @@ public actor AgyHost {
             // holding the language server. Signalling only the wrapper orphans a
             // ~190MB resident process per call, and those orphans go on writing
             // port lines into later hosts' logs.
-            Self.terminateTree(of: process.processIdentifier)
+            let pid = process.processIdentifier
+            Self.terminateTree(of: pid)
             process.terminate()
+            // And then make sure. This path already ran at the end of every call
+            // — `CallSession` calls `advisor.shutdown()` — yet agy was still
+            // found alive days later, because agy does not act on SIGTERM. A
+            // shutdown that only asks is not a shutdown, so the tree is checked
+            // and killed outright a moment later.
+            Self.killTreeIfAlive(of: pid)
         }
         process = nil
         endpoint = nil
@@ -277,6 +284,40 @@ public actor AgyHost {
             terminateTree(of: child)
             kill(child, SIGTERM)
         }
+    }
+
+    /// The follow-up SIGTERM cannot do: agy ignores it.
+    ///
+    /// Collected before signalling, because a dying wrapper reparents its child
+    /// to launchd and the tree walk would then find nothing to kill.
+    static func killTreeIfAlive(of pid: Int32) {
+        var tree: [Int32] = []
+        func collect(_ parent: Int32) {
+            for child in childPIDs(of: parent) {
+                collect(child)
+                tree.append(child)
+            }
+        }
+        collect(pid)
+        tree.append(pid)
+        usleep(300_000)
+        for victim in tree where kill(victim, 0) == 0 {
+            kill(victim, SIGKILL)
+        }
+    }
+
+    /// A process's full command line, so a sweep can tell one run from another.
+    static func commandLine(of pid: Int32) -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "command=", "-p", String(pid)]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return "" }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// Direct children of `pid`, via `pgrep -P`.
@@ -308,7 +349,57 @@ public actor AgyHost {
         let keep = current.lastPathComponent
         for entry in entries
         where entry.lastPathComponent != keep && entry.lastPathComponent.hasPrefix("run-") {
+            reapOrphan(matching: entry.lastPathComponent, keeping: keep)
             try? manager.removeItem(at: entry)
+        }
+        // Directories are only half the ledger. An orphan whose directory was
+        // already pruned by an earlier sweep is invisible to the loop above and
+        // simply lives on — the machine this was found on had four, the oldest
+        // six days. So sweep by workspace path too, which every run of ours
+        // carries in its command line.
+        reapOrphan(matching: workspace.path, keeping: keep)
+    }
+
+    /// Kills the `agy` left behind by a run that is gone.
+    ///
+    /// `stop()` already signals the whole tree — but only when it runs. A host
+    /// that is killed rather than asked to quit (a crash, a redeploy, a logout)
+    /// never gets there, and its `agy` is reparented to launchd and simply keeps
+    /// running: four of them were found alive on one machine, three of them six
+    /// days old, each holding a language server worth of memory. Sweeping the
+    /// directory without sweeping the process was half a cleanup.
+    ///
+    /// Matched on the run directory in the command line, which is unique per run
+    /// and names a directory about to be deleted — so this can only ever signal
+    /// a process belonging to a run that has already ended, never a live one.
+    static func reapOrphan(matching marker: String, keeping current: String) {
+        guard !marker.isEmpty else { return }
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = ["-f", marker]
+        let pipe = Pipe()
+        pgrep.standardOutput = pipe
+        pgrep.standardError = FileHandle.nullDevice
+        guard (try? pgrep.run()) != nil else { return }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        pgrep.waitUntilExit()
+        let ours = ProcessInfo.processInfo.processIdentifier
+        for pid in String(decoding: data, as: UTF8.self)
+            .split(whereSeparator: { $0.isWhitespace })
+            .compactMap({ Int32($0) })
+        where pid != ours {
+            // Never the run this host is using: the workspace sweep matches every
+            // run under the path, the current one included.
+            guard !commandLine(of: pid).contains(current) else { continue }
+            terminateTree(of: pid)
+            kill(pid, SIGTERM)
+            // agy does not die on SIGTERM. The four orphans found on this machine
+            // all ignored it and had to be SIGKILLed by hand, so a reaper that
+            // only asks politely reaps nothing. The process is already parentless
+            // and its run directory is being deleted underneath it — there is no
+            // graceful shutdown left to protect.
+            usleep(200_000)
+            if kill(pid, 0) == 0 { kill(pid, SIGKILL) }
         }
     }
 }

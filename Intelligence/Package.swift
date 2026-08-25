@@ -18,18 +18,25 @@ let package = Package(
         .library(name: "IntelligenceProviders", targets: ["IntelligenceProviders"]),
         .library(name: "IntelligenceStore", targets: ["IntelligenceStore"]),
     ],
+    dependencies: [
+        .package(path: "../CallaContracts"),
+    ],
     targets: [
-        .target(name: "IntelligenceCore"),
+        // The prompt pack ships as files so it can be edited, diffed and
+        // overridden without a rebuild. `PromptPack` falls back to compiled-in
+        // wording if the resource is ever missing, so this is a convenience for
+        // the reader rather than a load-bearing dependency.
+        .target(name: "IntelligenceCore", resources: [.copy("Resources/Prompts")]),
         .target(name: "IntelligenceProviders", dependencies: ["IntelligenceCore"]),
         // Knowledge and call history on SQLite. Deliberately not folded into
         // IntelligenceCore: this one links SQLite3 and NaturalLanguage and owns a
         // file on disk, and Core's whole value is that it does neither.
         .target(
             name: "IntelligenceStore",
-            dependencies: ["IntelligenceCore"],
+            dependencies: ["IntelligenceCore", .product(name: "CallaContracts", package: "CallaContracts")],
             linkerSettings: [.linkedLibrary("sqlite3")]),
         .testTarget(name: "IntelligenceCoreTests", dependencies: ["IntelligenceCore"]),
         .testTarget(name: "IntelligenceProvidersTests", dependencies: ["IntelligenceProviders"]),
-        .testTarget(name: "IntelligenceStoreTests", dependencies: ["IntelligenceStore"]),
+        .testTarget(name: "IntelligenceStoreTests", dependencies: ["IntelligenceStore", .product(name: "CallaContracts", package: "CallaContracts")]),
     ]
 )

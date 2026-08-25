@@ -9,7 +9,7 @@ import Foundation
 enum Schema {
     /// Bump this and append to `migrations` — never edit a migration that has
     /// shipped, because someone's file has already run it.
-    static let current = 2
+    static let current = 4
 
     static func migrate(_ database: SQLiteDatabase) throws {
         let version = try database.scalarInt("PRAGMA user_version") ?? 0
@@ -24,7 +24,7 @@ enum Schema {
         }
     }
 
-    private static let migrations: [Int: String] = [1: v1, 2: v2]
+    private static let migrations: [Int: String] = [1: v1, 2: v2, 3: v3, 4: v4]
 
     /// Attached documents.
     ///
@@ -40,6 +40,65 @@ enum Schema {
     ALTER TABLE knowledge_note ADD COLUMN origin_kind TEXT;
     ALTER TABLE knowledge_note ADD COLUMN byte_size INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE knowledge_note ADD COLUMN page_count INTEGER NOT NULL DEFAULT 0;
+    """
+
+    /// Review state is deliberately separate from live suggestions and legacy
+    /// call_summary. Nothing written here is retrieval knowledge until approval.
+    private static let v3 = """
+    CREATE TABLE IF NOT EXISTS call_recap_draft (
+      call_id       TEXT PRIMARY KEY REFERENCES call(id) ON DELETE CASCADE,
+      overview      TEXT NOT NULL,
+      items_json    TEXT NOT NULL,
+      provider      TEXT,
+      model         TEXT,
+      failure       TEXT,
+      review_state  TEXT NOT NULL DEFAULT 'pending',
+      reviewed_at   REAL,
+      note_id       TEXT REFERENCES knowledge_note(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS call_recap_review ON call_recap_draft(review_state);
+    """
+
+    /// A call gets transcribed more than once.
+    ///
+    /// The live pass trades accuracy for latency — a small model, truncated
+    /// encoder context, one VAD-bounded fragment at a time. The archive pass runs
+    /// afterwards with `large-v3-turbo` over the whole recording and is markedly
+    /// better; on this machine the live microphone leg scores 68.8% word error
+    /// against it. That better transcript existed already and had nowhere to go:
+    /// `call_turn` was keyed on `(call_id, seq)`, so importing it would have
+    /// overwritten the record of what the copilot actually saw during the call.
+    ///
+    /// Both are worth keeping. Revision 0 is what was on screen and what every
+    /// suggestion was reasoning over; revision 1 is what was really said, and is
+    /// what History and any note filed from a recap should rest on.
+    ///
+    /// `confidence` and `no_speech` come from whisper's own token probabilities.
+    /// A turn the model was unsure of should not become established fact in a
+    /// summary, and until now nothing downstream could tell.
+    ///
+    /// Written as a rebuild rather than `ALTER TABLE ADD COLUMN` plus a rebuild:
+    /// the primary key has to change, which SQLite cannot do in place, and the
+    /// new table already declares every column — so the ALTERs would only have
+    /// added the same three names twice.
+    private static let v4 = """
+    CREATE TABLE call_turn_v4 (
+      call_id    TEXT NOT NULL REFERENCES call(id) ON DELETE CASCADE,
+      seq        INTEGER NOT NULL,
+      revision   INTEGER NOT NULL DEFAULT 0,
+      source     TEXT NOT NULL,
+      t0         REAL NOT NULL,
+      t1         REAL NOT NULL,
+      text       TEXT NOT NULL,
+      confidence REAL,
+      no_speech  REAL,
+      PRIMARY KEY (call_id, revision, seq)
+    );
+    INSERT INTO call_turn_v4(call_id, seq, revision, source, t0, t1, text, confidence, no_speech)
+      SELECT call_id, seq, 0, source, t0, t1, text, NULL, NULL FROM call_turn;
+    DROP TABLE call_turn;
+    ALTER TABLE call_turn_v4 RENAME TO call_turn;
+    CREATE INDEX IF NOT EXISTS call_turn_call ON call_turn(call_id, revision, seq);
     """
 
     private static let v1 = """

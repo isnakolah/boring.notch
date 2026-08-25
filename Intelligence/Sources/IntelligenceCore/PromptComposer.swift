@@ -41,7 +41,8 @@ public enum PromptComposer {
     /// first piece of real input.
     public static func bootstrap(
         for request: IntelligenceRequest,
-        limits: Limits = .standard
+        limits: Limits = .standard,
+        pack: PromptPack = PromptPack()
     ) -> String {
         var sections: [String] = []
 
@@ -63,9 +64,9 @@ public enum PromptComposer {
         let guidance = clamp(request.system.taskGuidance, to: limits.taskGuidance)
         if !guidance.isEmpty { sections.append("## Task\n\(guidance)") }
 
-        sections.append(houseRules)
+        sections.append(pack.text(.houseRules))
 
-        if let contract = contractInstruction(request.task.contract) {
+        if let contract = pack.contractInstruction(request.task.contract) {
             sections.append(contract)
         }
 
@@ -81,30 +82,16 @@ public enum PromptComposer {
 
     /// Sent once, in the bootstrap. Keeps the model from reaching for tools it
     /// has no business using — the workspace it runs in is deliberately empty.
-    static let houseRules = """
-    ## Rules
-    Answer directly from the input. Never call tools, never read or write files, \
-    never search. No preamble, no closing remarks, no restating the question.
-    """
+    ///
+    /// The wording lives in `composer/house-rules.md`; this reads whatever is
+    /// effective, so an override is visible to callers that ask here.
+    static var houseRules: String { PromptPack().text(.houseRules) }
 
-    static func contractInstruction(_ contract: OutputContract) -> String? {
-        switch contract {
-        case .freeform:
-            return nil
-        case let .json(keys):
-            return """
-            ## Output
-            Reply with a single JSON object and nothing else. Required keys: \
-            \(keys.map { "`\($0)`" }.joined(separator: ", ")).
-            """
-        case let .sentinelJSON(keys, marker):
-            return """
-            ## Output
-            Reply with a single JSON object and nothing else. Required keys: \
-            \(keys.map { "`\($0)`" }.joined(separator: ", ")). \
-            After the object, output a final line containing exactly \(marker)
-            """
-        }
+    static func contractInstruction(
+        _ contract: OutputContract,
+        pack: PromptPack = PromptPack()
+    ) -> String? {
+        pack.contractInstruction(contract)
     }
 
     /// Truncates on a word boundary and says so, rather than cutting mid-word and
