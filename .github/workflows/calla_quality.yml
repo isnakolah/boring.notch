@@ -1,0 +1,58 @@
+name: Calla quality
+
+# The call pipeline's own checks. The app build does not cover these: the
+# transcription host and the intelligence layer are SwiftPM packages, and until
+# now nothing ran their tests or checked that the prompts still carry the output
+# contract they are parsed against.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'CallaCallHost/**'
+      - 'Intelligence/**'
+      - 'CallaContracts/**'
+      - '.github/workflows/calla_quality.yml'
+  pull_request:
+    paths:
+      - 'CallaCallHost/**'
+      - 'Intelligence/**'
+      - 'CallaContracts/**'
+      - '.github/workflows/calla_quality.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: calla-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          # The whisper.cpp xcframework is a ~1GB binary target; fetching it on
+          # every run is most of the wall clock.
+          path: |
+            CallaCallHost/.build
+            Intelligence/.build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('**/Package.resolved', '**/Package.swift') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+
+      - name: Contracts
+        run: swift test --package-path CallaContracts
+
+      - name: Intelligence
+        run: swift test --package-path Intelligence
+
+      - name: Call host
+        run: swift test --package-path CallaCallHost
+
+      - name: Prompts carry their output contract
+        # A prompt edited into losing its `{{marker}}` still reads fine and its
+        # output never parses; the only symptom in the app is that the notch goes
+        # quiet. This is the check that turns that into a failing build.
+        run: swift run --package-path CallaCallHost CallaCallHost prompts lint

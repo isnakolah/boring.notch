@@ -166,7 +166,7 @@ start of the call**, opened concurrently in `CopilotAdvisor.prepare()`:
 | Lane | Task | Conversation | Tier | Fires |
 |---|---|---|---|---|
 | Question | `copilot.suggest` | `<callID>` | fast (`flash_lite`) | a remote question flushes |
-| Chunk | `copilot.brief` | `<callID>#brief` | balanced (`flash`) | 4 statements or 90s |
+| Chunk | `copilot.brief` | `<callID>#brief` | balanced (`flash`) | 3 statements, a decision or commitment, 20s quiet, or 60s |
 | Fold | `copilot.exec` | fresh each time | balanced | the account passes 12 points |
 
 The panel's bottom switcher chooses which lane is *on screen*; both run either way.
@@ -206,9 +206,14 @@ The question lane is single-flight, and not only for pacing: `AgyProvider` reads
 session's state before its await and writes it back after, so two concurrent
 requests on one conversation key can bootstrap twice and lose the conversation id
 between them. One question is answered at a time and only the newest is queued
-behind it — by the time a model answers, an older question has been overtaken. A
-chunk never closes while a question is in flight, either: two conversations, one
-resident server, and the answer is the only thing anyone is waiting for.
+behind it — by the time a model answers, an older question has been overtaken.
+
+The chunk lane is *not* interlocked with the question lane. It has its own warm
+conversation, and `closeChunkIfDue` passes `answerInFlight: false` unconditionally,
+so a chunk can close while an answer is still being waited on. The two share one
+resident server, so a chunk closing at the wrong moment can sit in front of an
+answer; that has not been worth an interlock, because the chunk lane runs on the
+balanced tier and the question lane is almost always idle when a question lands.
 
 One more thing that is latency and not intelligence: the app learns of a suggestion
 by polling the engine, so that poll drops to 0.6s while a call is running

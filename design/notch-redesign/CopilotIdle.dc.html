@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #0A0A0C; }
+    a { color: #0A84FF; } a:hover { color: #409CFF; }
+    .rounded { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; }
+    .caps { font: 700 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; }
+    .plane { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.07); }
+    .check { width: 13px; height: 13px; flex: none; }
+  </style>
+</helmet>
+
+<div style="width: 512px; height: 168px; background: #0A0A0C; border-radius: 0 0 24px 24px; box-sizing: border-box; padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; position: relative;">
+
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 40px; background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0)); pointer-events: none;"></div>
+  <div style="position: absolute; right: 20px; bottom: -30px; width: 190px; height: 110px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,159,10,0.30), rgba(255,159,10,0)); filter: blur(18px); pointer-events: none;"></div>
+
+  <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+    <span style="width: 7px; height: 7px; border-radius: 50%; background: transparent; border: 1px solid rgba(255,255,255,0.42); box-sizing: border-box; flex: none;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Call copilot · Not in a call</span>
+    <span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.12);"></span>
+    <span style="display: flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 7px; background: rgba(255,255,255,0.08); flex: none;">
+      <span style="font: 500 10px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Sales call</span>
+      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+    </span>
+    <span style="width: 22px; height: 22px; border-radius: 7px; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; flex: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.62)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    </span>
+  </div>
+
+  <div class="plane" style="padding: 11px 14px; display: flex; flex-direction: column; gap: 9px; position: relative;">
+    <span style="font: 600 15px/1.25 system-ui, -apple-system, sans-serif; color: #FFFFFF; letter-spacing: -0.01em;">Only your side would be heard</span>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px;">
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <svg class="check" viewBox="0 0 24 24" fill="none" stroke="#30D158" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>
+        <span style="font: 400 11px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Microphone allowed</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <svg class="check" viewBox="0 0 24 24" fill="none" stroke="#FF9F0A" stroke-width="2.6" stroke-linecap="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.2"/></svg>
+        <span style="font: 400 11px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Screen recording not allowed</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <svg class="check" viewBox="0 0 24 24" fill="none" stroke="#30D158" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>
+        <span style="font: 400 11px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Signed in · answers on this Mac</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 7px;">
+        <svg class="check" viewBox="0 0 24 24" fill="none" stroke="#30D158" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5.5 5.5L20 6.5"/></svg>
+        <span style="font: 400 11px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Speech model ready · small</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 9px; position: relative;">
+    <span style="height: 34px; border-radius: 11px; background: #FF9F0A; box-shadow: 0 4px 16px rgba(255,159,10,0.40); display: flex; align-items: center; gap: 8px; padding: 0 15px; flex: none;">
+      <span style="font: 600 12px/1 system-ui, -apple-system, sans-serif; color: #1A1200;">Allow screen recording</span>
+    </span>
+    <span style="display: flex; align-items: center; height: 34px; padding: 0 13px; border-radius: 11px; background: rgba(255,255,255,0.08); flex: none;">
+      <span style="font: 500 11px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Start anyway</span>
+    </span>
+    <span style="flex-grow: 1;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Next: Acme review, 15:30</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

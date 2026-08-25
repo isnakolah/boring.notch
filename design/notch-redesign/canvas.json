@@ -1,0 +1,44 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Notch — layered glass" },
+    { "id": "page-2", "name": "Directions (settled)" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Notch Glass — the system", "page": "page-1", "x": 0, "y": 0, "w": 920, "h": 660 },
+
+    { "file": "PomodoroRunning.dc.html", "title": "Pomodoro · running", "page": "page-1", "x": 0, "y": 800, "w": 512, "h": 168 },
+    { "file": "PomodoroIdle.dc.html", "title": "Pomodoro · idle — same skeleton", "page": "page-1", "x": 612, "y": 800, "w": 512, "h": 168 },
+
+    { "file": "TutorTeaching.dc.html", "title": "Tutor · teaching", "page": "page-1", "x": 0, "y": 1108, "w": 512, "h": 168 },
+    { "file": "TutorIdle.dc.html", "title": "Tutor · ready", "page": "page-1", "x": 612, "y": 1108, "w": 512, "h": 168 },
+
+    { "file": "CopilotClosed.dc.html", "title": "Copilot · notch closed, call running", "page": "page-1", "x": 0, "y": 1416, "w": 353, "h": 34 },
+    { "file": "CopilotIdle.dc.html", "title": "Copilot · default, no call", "page": "page-1", "x": 453, "y": 1416, "w": 512, "h": 168 },
+
+    { "file": "CopilotCollapsed.dc.html", "title": "Copilot · live, collapsed", "page": "page-1", "x": 0, "y": 1724, "w": 600, "h": 340 },
+    { "file": "CopilotExpanded.dc.html", "title": "Copilot · live, expanded", "page": "page-1", "x": 700, "y": 1724, "w": 600, "h": 340 },
+
+    { "file": "DirectionATimer.dc.html", "title": "A · Instrument — Pomodoro", "page": "page-2", "x": 0, "y": 0, "w": 512, "h": 168 },
+    { "file": "DirectionACall.dc.html", "title": "A · Instrument — Copilot live", "page": "page-2", "x": 612, "y": 0, "w": 600, "h": 340 },
+    { "file": "DirectionBTimer.dc.html", "title": "B · Layered glass — Pomodoro (chosen)", "page": "page-2", "x": 0, "y": 480, "w": 512, "h": 168 },
+    { "file": "DirectionBCall.dc.html", "title": "B · Layered glass — Copilot live (chosen)", "page": "page-2", "x": 612, "y": 480, "w": 600, "h": 340 },
+    { "file": "DirectionCTimer.dc.html", "title": "C · Editorial slab — Pomodoro", "page": "page-2", "x": 0, "y": 960, "w": 512, "h": 168 },
+    { "file": "DirectionCCall.dc.html", "title": "C · Editorial slab — Copilot live", "page": "page-2", "x": 612, "y": 960, "w": 600, "h": 340 }
+  ],
+  "annotations": [
+    { "id": "rule-system", "page": "page-1", "x": -330, "y": 0, "w": 270, "text": "THE SYSTEM\n\nLayered glass, applied. Every surface below is built from this sheet and nothing else.\n\nRules:\n1. Four ink steps. If a value is not 1.0 / 0.70 / 0.42 / 0.12, it does not ship.\n2. Six type sizes. A seventh needs a reason written down.\n3. One bloom per surface, behind the live element only. No bloom when nothing is live.\n4. The lip glow is the top 40pt, always, on every tab.\n5. Bottom 14pt stays empty — the notch curves inward there. One modifier, not three copies." },
+
+    { "id": "rule-pomodoro", "page": "page-1", "x": -330, "y": 800, "w": 270, "text": "POMODORO — ONE SKELETON, TWO STATES\n\nThe frame never changes shape. Countdown left, title in the same slot, Today panel right, controls on the bottom rail.\n\nIdle differs by ink, not by layout: the figure drops to 0.42 and shows the preset length, the rail sits empty, the transport collapses to one Start.\n\nRules:\n1. Nothing moves between idle and running — no morph, no height change.\n2. Custom minutes live in the bottom rail, never in a row that expands.\n3. Today is always visible. It is the reason to start another block." },
+
+    { "id": "rule-tutor", "page": "page-1", "x": -330, "y": 1108, "w": 270, "text": "TUTOR — THE STEP, THEN THE WAY OUT\n\nOne plane holds what the lesson wants right now. The header carries state and progress so the plane never has to.\n\nRules:\n1. The step is the title, at 15pt. The course name is context and stays at 11pt.\n2. Two controls, ever: leave the lesson, and ask about it.\n3. Idle shows the next lesson, not a catalogue. The library is a settings pane.\n4. Blocked states (runtime stale, app not running) go in the header's trailing slot as caps, not a banner." },
+
+    { "id": "rule-copilot-default", "page": "page-1", "x": -330, "y": 1416, "w": 270, "text": "COPILOT — CLOSED, AND DEFAULT\n\nCLOSED (353×34, drawn either side of the physical notch): who is talking, how long it has run, and a dot when an answer is waiting. Nothing else fits and nothing else is worth interrupting for.\n\nDEFAULT — no call (512×168): a pre-flight, not a settings page. The question is \"will this work?\", so the headline names the one thing that is broken and the primary button fixes exactly that. Four readiness facts, two columns.\n\nRules:\n1. The headline is the blocker, or \"Ready to listen\" — never a feature name.\n2. The primary button names the fix. \"Start call\" only when nothing is missing.\n3. Persona and history sit in the header. They are not decisions worth a row." },
+
+    { "id": "rule-copilot-live", "page": "page-1", "x": -330, "y": 1724, "w": 270, "text": "COPILOT — LIVE, COLLAPSED vs EXPANDED\n\nBoth are 600×340: a call keeps the full slab. Collapsing drops the transcript, never the panel — shrinking the notch mid-call reads as the call having ended.\n\nCOLLAPSED (default): one answer at 19pt, one supporting line, and the last thing they said in tertiary. That is the whole surface. Read it in the half-second before you have to speak.\n\nEXPANDED: the answer keeps the left 330pt at 16pt; the transcript earns the rest. Three turns, newest at full ink, the two before it at 0.42. Nothing older — the archive is a settings pane.\n\nRules:\n1. One answer on screen at a time. A second suggestion replaces the first, it does not stack.\n2. Angles are capped at two lines of 78 characters, ellipsised. The slab never grows.\n3. The state caps say what is being heard — \"Hearing both sides\", \"Only you\" — never \"Connected\".\n4. Same four controls in both layouts, same order. Only the transcript verb flips." },
+
+    { "id": "dir-a", "page": "page-2", "x": -330, "y": 0, "w": 270, "text": "A · INSTRUMENT PANEL — not chosen\n\nHairline rules, one hero figure, accent only on the live thing. Most information per pt, but dense, and it asks the most of the typography across 16 languages." },
+    { "id": "dir-b", "page": "page-2", "x": -330, "y": 480, "w": 270, "text": "B · LAYERED GLASS — CHOSEN\n\nStacked translucent planes, a lit lip at the top edge, accent bloom behind whatever is live, 34–38px targets.\n\nBuilt out on page one. The cost accepted: planes and padding eat the 168pt slab, so the timer keeps one preset chip instead of a row, and the live panel shows three turns rather than five." },
+    { "id": "dir-c", "page": "page-2", "x": -330, "y": 960, "w": 270, "text": "C · EDITORIAL SLAB — not chosen\n\nOne 58pt figure carries the frame. Calmest of the three and unmistakable across a room, but the transcript falls to a single truncated line, which is the wrong trade mid-call." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

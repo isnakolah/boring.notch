@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #0A0A0C; }
+    a { color: #0A84FF; } a:hover { color: #409CFF; }
+    .rounded { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; }
+    .caps { font: 600 10px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; }
+  </style>
+</helmet>
+
+<div style="width: 512px; height: 168px; background: #0A0A0C; border-radius: 0 0 24px 24px; box-sizing: border-box; padding: 16px 26px 16px; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="display: flex; align-items: flex-start; gap: 20px;">
+    <span class="rounded" style="font-size: 58px; font-weight: 700; line-height: 0.92; color: #FFFFFF; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; flex: none;">24:31</span>
+    <span style="flex-grow: 1;"></span>
+    <div style="display: flex; align-items: center; gap: 14px; flex: none; padding-top: 8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.62)" stroke-width="2.2" stroke-linecap="round"><path d="M8 5v14M16 5v14"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5l11 7-11 7z"/><path d="M20 5v14"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.42)"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: rgba(255,255,255,0.12); margin: 14px 0 12px;"></div>
+
+  <div style="display: flex; align-items: baseline; gap: 12px;">
+    <span class="caps" style="color: #0A84FF;">Focus</span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Block 2</span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">3 today</span>
+    <span style="flex-grow: 1;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Break at 15:40</span>
+  </div>
+
+  <span style="flex-grow: 1;"></span>
+
+  <span style="font: 400 12px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Porting the notch views onto the token set</span>
+
+  <span style="height: 2px; background: rgba(255,255,255,0.12); display: block; position: relative; overflow: hidden; margin-top: 12px;">
+    <span style="position: absolute; inset: 0 32% 0 0; background: rgba(255,255,255,0.85);"></span>
+  </span>
+
+</div>
+</x-dc>
+</body>
+</html>

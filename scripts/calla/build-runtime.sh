@@ -9,6 +9,20 @@ CONFIGURATION="${CONFIGURATION:-Debug}"
 SWIFT_CONFIGURATION="debug"
 [[ "$CONFIGURATION" == "Release" ]] && SWIFT_CONFIGURATION="release"
 
+# CI builds intentionally have no TCC-capable identity. They produce a compile
+# artifact only: never install it, never claim its permissions, and never use
+# it as a deployment payload. Installed builds still require real identity.
+SIGN_CALLA_RUNTIME=1
+if [[ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" || "${EXPANDED_CODE_SIGN_IDENTITY}" == "-" ]]; then
+  if [[ "${CALLA_UNSIGNED_BUILD:-0}" == "1" ]]; then
+    SIGN_CALLA_RUNTIME=0
+    echo "Calla runtime: unsigned CI artifact (deployment-ineligible)"
+  else
+    echo "missing expanded Boring signing identity for embedded Calla runtime" >&2
+    exit 78
+  fi
+fi
+
 xcrun swift build --package-path "$PACKAGE" -c "$SWIFT_CONFIGURATION" >/dev/null
 BINARIES="$(xcrun swift build --package-path "$PACKAGE" -c "$SWIFT_CONFIGURATION" --show-bin-path)"
 for executable in CallaTutorHost CallaOverlayHelper; do
@@ -39,12 +53,9 @@ ditto "$ROOT/Tutor/apps/macos/TutorHost/assets/blender" "$HOST_APP/Contents/Reso
 # Keep the embedded helpers under Boring's real signing identity; ad-hoc
 # signatures cannot receive the Screen Recording grant that Boring requests.
 # Nested bundle first: the host's seal has to cover the renderer inside it.
-if [[ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" && "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]]; then
+if [[ "$SIGN_CALLA_RUNTIME" == "1" ]]; then
   codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$HELPER_APP"
   codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$HOST_APP"
-else
-  echo "missing expanded Boring signing identity for embedded Calla runtime" >&2
-  exit 78
 fi
 # The live-call capture host. A separate SwiftPM package because it pulls a
 # whisper.cpp xcframework that the Tutor host has no use for, but it ships in
@@ -80,10 +91,14 @@ if [[ -d "$CALLHOST_PACKAGE" ]]; then
       /bin/rm -rf "$EMBEDDED_WHISPER/Versions/A/Headers" "$EMBEDDED_WHISPER/Versions/A/Modules" \
         "$EMBEDDED_WHISPER/Headers" "$EMBEDDED_WHISPER/Modules" \
         "$EMBEDDED_WHISPER/Versions/A/_CodeSignature"
-      codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$EMBEDDED_WHISPER"
+      if [[ "$SIGN_CALLA_RUNTIME" == "1" ]]; then
+        codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$EMBEDDED_WHISPER"
+      fi
     fi
     chmod 700 "$CALLHOST_APP/Contents/MacOS/CallaCallHost"
-    codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$CALLHOST_APP"
+    if [[ "$SIGN_CALLA_RUNTIME" == "1" ]]; then
+      codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" "$CALLHOST_APP"
+    fi
   else
     echo "missing CallaCallHost executable" >&2
     exit 78
@@ -111,7 +126,7 @@ chmod 700 "$HOST_APP/Contents/MacOS/CallaTutorHost" "$HELPER_APP/Contents/MacOS/
 # entitlements Xcode applied, and whichever of the two signatures lands last
 # must still carry them.
 ENTITLEMENTS="$ROOT/BoringCallaEngine/BoringCallaEngine.entitlements"
-if [[ -n "${CODESIGNING_FOLDER_PATH:-}" && -d "${CODESIGNING_FOLDER_PATH}" ]]; then
+if [[ "$SIGN_CALLA_RUNTIME" == "1" && -n "${CODESIGNING_FOLDER_PATH:-}" && -d "${CODESIGNING_FOLDER_PATH}" ]]; then
   if [[ -f "$ENTITLEMENTS" ]]; then
     codesign --force --sign "$EXPANDED_CODE_SIGN_IDENTITY" \
       --entitlements "$ENTITLEMENTS" "$CODESIGNING_FOLDER_PATH"

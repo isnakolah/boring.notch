@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #0A0A0C; }
+    a { color: #0A84FF; } a:hover { color: #409CFF; }
+    .rounded { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; }
+    .caps { font: 700 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; }
+    .plane { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.07); }
+    .mono { font: 400 10px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: rgba(255,255,255,0.42); }
+    .lbl { font: 400 11px/1.3 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70); }
+  </style>
+</helmet>
+
+<div style="width: 920px; height: 660px; background: #0A0A0C; box-sizing: border-box; padding: 26px 28px; display: flex; flex-direction: column; gap: 16px; overflow: hidden;">
+
+  <div style="display: flex; align-items: baseline; gap: 12px;">
+    <span class="rounded" style="font-size: 20px; font-weight: 700; color: #FFFFFF; letter-spacing: -0.01em;">Notch Glass</span>
+    <span class="lbl" style="color: rgba(255,255,255,0.42);">The vocabulary the four notch surfaces are drawn from. 4 ink steps replacing 27 opacities, 6 type sizes replacing 14.</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+
+    <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 11px;">
+      <span class="caps" style="color: rgba(255,255,255,0.42);">Surfaces</span>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 11px;">
+          <span style="width: 34px; height: 22px; border-radius: 6px; background: #0A0A0C; border: 1px solid rgba(255,255,255,0.10); flex: none;"></span>
+          <span class="lbl" style="flex-grow: 1;">Void — the hole in the display</span>
+          <span class="mono">#0A0A0C</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px;">
+          <span class="plane" style="width: 34px; height: 22px; border-radius: 6px; flex: none;"></span>
+          <span class="lbl" style="flex-grow: 1;">Plane — one thing you can act on</span>
+          <span class="mono">white 5.5%</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px;">
+          <span style="width: 34px; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); flex: none;"></span>
+          <span class="lbl" style="flex-grow: 1;">Recessed — context behind the act</span>
+          <span class="mono">white 3%</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px;">
+          <span style="width: 34px; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.08); flex: none;"></span>
+          <span class="lbl" style="flex-grow: 1;">Chip / control</span>
+          <span class="mono">white 8–10%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 11px;">
+      <span class="caps" style="color: rgba(255,255,255,0.42);">Ink — four steps, no others</span>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: baseline; gap: 11px;">
+          <span style="font: 400 12px/1.3 system-ui, -apple-system, sans-serif; color: #FFFFFF; flex-grow: 1;">Primary — the answer you came for</span>
+          <span class="mono">1.00</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 11px;">
+          <span style="font: 400 12px/1.3 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70); flex-grow: 1;">Secondary — the sentence explaining it</span>
+          <span class="mono">0.70</span>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 11px;">
+          <span style="font: 400 12px/1.3 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.42); flex-grow: 1;">Tertiary — labels, units, what is off</span>
+          <span class="mono">0.42</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 11px;">
+          <span style="height: 1px; background: rgba(255,255,255,0.12); flex-grow: 1;"></span>
+          <span class="mono">0.12 hairline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;">
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Type — six sizes, SF Rounded for figures and titles</span>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px;">
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span class="rounded" style="font-size: 36px; font-weight: 700; line-height: 1; color: #FFFFFF; font-variant-numeric: tabular-nums;">24:31</span>
+        <span class="mono">hero · 36 rounded bold · one per surface</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span class="rounded" style="font-size: 22px; font-weight: 700; line-height: 1; color: #FFFFFF; font-variant-numeric: tabular-nums;">3</span>
+        <span class="mono">figure · 22 rounded bold · a count</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span style="font: 600 15px/1.2 system-ui, -apple-system, sans-serif; color: #FFFFFF;">Ask who signs</span>
+        <span class="mono">title · 15 semibold · the thing to read</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span style="font: 400 12px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">What are you working on?</span>
+        <span class="mono">row · 12 · fields and turns</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span style="font: 400 11px/1.2 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">1h 20m focused today</span>
+        <span class="mono">detail · 11 · explanation, figures</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px;">
+        <span class="caps" style="color: rgba(255,255,255,0.70);">Focus · Block 2</span>
+        <span class="mono">caps · 9 bold · 0.09em tracking</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+    <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 11px;">
+      <span class="caps" style="color: rgba(255,255,255,0.42);">Light — what makes it glass</span>
+      <div style="display: flex; gap: 12px;">
+        <div style="flex-grow: 1; height: 62px; border-radius: 10px; background: rgba(255,255,255,0.03); position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 7px 9px;">
+          <div style="position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0));"></div>
+          <span class="mono" style="position: relative;">lip — 40px, white 9% → 0</span>
+        </div>
+        <div style="flex-grow: 1; height: 62px; border-radius: 10px; background: rgba(255,255,255,0.03); position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 7px 9px;">
+          <div style="position: absolute; left: 34%; top: 4px; width: 96px; height: 62px; border-radius: 50%; background: radial-gradient(closest-side, rgba(10,132,255,0.45), rgba(10,132,255,0)); filter: blur(12px);"></div>
+          <span class="mono" style="position: relative;">bloom — behind the live thing only</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px;">
+        <span class="mono">plane 14 · chip 10 · rail 3–6 · rhythm 6/10/14</span>
+      </div>
+    </div>
+
+    <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 11px;">
+      <span class="caps" style="color: rgba(255,255,255,0.42);">Tint — colour only where it means something</span>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #0A84FF; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Accent / focus</span><span class="mono">#0A84FF</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #30D158; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Healthy</span><span class="mono">#30D158</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #3DCCA8; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Break</span><span class="mono">#3DCCA8</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #FF9F0A; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Attention</span><span class="mono">#FF9F0A</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #57B8F5; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Long break</span><span class="mono">#57B8F5</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><span style="width: 9px; height: 9px; border-radius: 50%; background: #FF453A; flex: none;"></span><span class="lbl" style="flex-grow: 1;">Stopped</span><span class="mono">#FF453A</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="plane" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;">
+    <span class="caps" style="color: rgba(255,255,255,0.42);">Chrome — one header for every tab, fixed insets 10 / 16 / 14</span>
+    <div style="height: 34px; border-radius: 10px; background: rgba(255,255,255,0.03); display: flex; align-items: center; gap: 8px; padding: 0 12px;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #0A84FF; box-shadow: 0 0 10px rgba(10,132,255,0.9); flex: none;"></span>
+      <span class="caps" style="color: rgba(255,255,255,0.70);">Surface · state</span>
+      <span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.12);"></span>
+      <span class="rounded" style="font-size: 11px; color: rgba(255,255,255,0.70); font-variant-numeric: tabular-nums;">figure</span>
+      <span style="width: 22px; height: 22px; border-radius: 7px; background: rgba(255,255,255,0.08); flex: none;"></span>
+      <span style="width: 22px; height: 22px; border-radius: 7px; background: rgba(255,255,255,0.08); flex: none;"></span>
+    </div>
+    <span class="mono">live dot · name and state in caps · rule · one figure · at most two controls. The bottom 14pt stays clear of the notch's inward curve — one modifier, not three copies of the fix.</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #0A0A0C; }
+    a { color: #0A84FF; } a:hover { color: #409CFF; }
+    .rounded { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; }
+    .caps { font: 700 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; }
+    .plane { background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.07); }
+    .chip { height: 34px; padding: 0 13px; border-radius: 11px; background: rgba(255,255,255,0.08); display: flex; align-items: center; gap: 7px; font: 500 11px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70); flex: none; }
+  </style>
+</helmet>
+
+<div style="width: 600px; height: 340px; background: #0A0A0C; border-radius: 0 0 24px 24px; box-sizing: border-box; padding: 10px 16px 14px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; position: relative;">
+
+  <div style="position: absolute; left: 0; right: 0; top: 0; height: 44px; background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0)); pointer-events: none;"></div>
+  <div style="position: absolute; left: 60px; top: 70px; width: 380px; height: 200px; border-radius: 50%; background: radial-gradient(closest-side, rgba(10,132,255,0.26), rgba(10,132,255,0)); filter: blur(30px); pointer-events: none;"></div>
+
+  <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+    <span style="width: 7px; height: 7px; border-radius: 50%; background: #30D158; box-shadow: 0 0 10px rgba(48,209,88,0.9); flex: none;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.70);">Hearing both sides</span>
+    <span style="flex-grow: 1; height: 1px; background: rgba(255,255,255,0.12);"></span>
+    <span class="rounded" style="font-size: 11px; color: rgba(255,255,255,0.70); font-variant-numeric: tabular-nums;">12:04</span>
+    <span style="width: 22px; height: 22px; border-radius: 7px; background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; flex: none;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.62)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h6l5-4v14l-5-4H4z"/><path d="M18 9.5a4 4 0 0 1 0 5"/></svg>
+    </span>
+  </div>
+
+  <div class="plane" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 13px; position: relative; flex-grow: 1; min-height: 0;">
+    <span class="caps" style="color: #0A84FF;">Say this</span>
+    <span style="font: 600 19px/1.32 system-ui, -apple-system, sans-serif; color: #FFFFFF; letter-spacing: -0.015em;">Ask who signs the order before you name a number — they have not said, and the quarter closes in three weeks.</span>
+    <div style="display: flex; gap: 9px; align-items: flex-start;">
+      <span style="width: 4px; align-self: stretch; border-radius: 2px; background: rgba(255,255,255,0.14); flex: none;"></span>
+      <span style="font: 400 12px/1.45 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.70);">Two blockers are already on the table: the SOC 2 letter, and a seat count nobody owns.</span>
+    </div>
+    <span style="flex-grow: 1;"></span>
+    <div style="display: flex; align-items: baseline; gap: 10px;">
+      <span class="caps" style="color: rgba(255,255,255,0.42); flex: none;">Them, just now</span>
+      <span style="font: 400 11.5px/1.3 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.42); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Finance wants the security letter first, then it goes to Dana.</span>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 9px; position: relative;">
+    <span class="chip">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      Ask
+      <span class="rounded" style="font-size: 10px; color: rgba(255,255,255,0.42);">⌥Space</span>
+    </span>
+    <span class="chip">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.70)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      Show transcript
+    </span>
+    <span style="flex-grow: 1;"></span>
+    <span class="chip" style="background: rgba(255,69,58,0.16); color: #FF453A; font-weight: 600;">End call</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

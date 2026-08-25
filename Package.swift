@@ -14,6 +14,14 @@ let package = Package(
         .target(
             name: "CallaNotchPresentation",
             path: "boringNotch/components/Calla",
+            exclude: [
+                "CallaCalendarBindings.swift", "CallaCopilotLiveView.swift", "CallaCopilotSignInView.swift",
+                "CallaCopilotTabView.swift", "CallaEngineClient.swift", "CallaKnowledge.swift",
+                "CallaKnowledgeAttach.swift", "CallaKnowledgeDropView.swift", "CallaKnowledgeFocus.swift",
+                "CallaKnowledgeLibrary.swift", "CallaTabView.swift", "CopilotLiveSession.swift",
+                "CopilotNotchBadge.swift", "KnowledgeDocumentReader.swift", "NotchDropChooserView.swift",
+                "NotchDropRouter.swift"
+            ],
             sources: ["CallaNotchPresentation.swift", "CallaCopilotPresentation.swift"]
         ),
         .testTarget(

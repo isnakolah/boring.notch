@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    body { margin: 0; background: #0A0A0C; }
+    a { color: #0A84FF; } a:hover { color: #409CFF; }
+    .rounded { font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, sans-serif; }
+    .caps { font: 700 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: 0.09em; text-transform: uppercase; }
+    .turn { font: 400 11px/1.35 system-ui, -apple-system, sans-serif; }
+  </style>
+</helmet>
+
+<div style="width: 600px; height: 340px; background: #0A0A0C; border-radius: 0 0 24px 24px; box-sizing: border-box; padding: 10px 18px 14px; display: flex; flex-direction: column; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; gap: 8px;">
+    <span style="width: 6px; height: 6px; border-radius: 50%; background: #30D158; flex: none;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.62);">Call copilot</span>
+    <span class="caps" style="color: #30D158;">Listening</span>
+    <span style="flex-grow: 1;"></span>
+    <span class="caps" style="color: rgba(255,255,255,0.42);">This Mac</span>
+    <span class="rounded" style="font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.62); font-variant-numeric: tabular-nums;">12:04</span>
+    <span style="width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; flex: none;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+    </span>
+  </div>
+
+  <div style="height: 1px; background: rgba(255,255,255,0.12); margin: 9px 0 0;"></div>
+
+  <div style="display: flex; gap: 0; flex-grow: 1; min-height: 0; padding-top: 12px;">
+
+    <div style="display: flex; flex-direction: column; gap: 10px; width: 330px; flex: none; padding-right: 16px; min-width: 0;">
+      <div style="display: flex; flex-direction: column; gap: 5px;">
+        <span class="caps" style="color: #0A84FF;">Say next</span>
+        <span style="font: 600 15px/1.28 system-ui, -apple-system, sans-serif; color: #FFFFFF; letter-spacing: -0.01em;">Their procurement cycle closes in three weeks, so ask who signs before you talk price.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; gap: 7px; align-items: flex-start;">
+          <span style="width: 3px; align-self: stretch; background: rgba(255,255,255,0.12); flex: none; border-radius: 2px;"></span>
+          <span style="font: 400 11px/1.4 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62);">They named two blockers already: the SOC 2 letter and a seat count nobody owns.</span>
+        </div>
+        <div style="display: flex; gap: 7px; align-items: flex-start;">
+          <span style="width: 3px; align-self: stretch; background: rgba(255,255,255,0.12); flex: none; border-radius: 2px;"></span>
+          <span style="font: 400 11px/1.4 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62);">Budget was described as approved, not allocated — worth one clarifying question.</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="width: 1px; background: rgba(255,255,255,0.12); flex: none;"></div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px; flex-grow: 1; padding-left: 16px; min-width: 0;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="caps" style="color: rgba(255,255,255,0.42);">Transcript</span>
+        <span style="flex-grow: 1;"></span>
+        <span class="rounded" style="font-size: 10px; color: rgba(255,255,255,0.42); font-variant-numeric: tabular-nums;">31 turns</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 9px; min-width: 0;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="caps" style="color: rgba(255,255,255,0.42);">Them</span>
+          <span class="turn" style="color: rgba(255,255,255,0.42);">…so we would need it signed off before the quarter turns.</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="caps" style="color: rgba(255,255,255,0.42);">You</span>
+          <span class="turn" style="color: rgba(255,255,255,0.42);">That is doable. What does sign-off look like on your side?</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span class="caps" style="color: #30D158;">Them · now</span>
+          <span class="turn" style="color: rgba(255,255,255,1);">Finance wants the security letter first, then it goes to Dana.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 1px; background: rgba(255,255,255,0.12); margin-top: 10px;"></div>
+
+  <div style="display: flex; align-items: center; gap: 14px; padding-top: 10px;">
+    <span style="display: flex; align-items: center; gap: 6px;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.62)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span style="font: 400 11px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62);">Ask a question</span>
+      <span class="rounded" style="font-size: 10px; color: rgba(255,255,255,0.42);">⌥Space</span>
+    </span>
+    <span style="flex-grow: 1;"></span>
+    <span style="font: 400 11px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62);">Transcript</span>
+    <span style="font: 400 11px/1 system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.62);">Recap</span>
+    <span style="display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,69,58,0.6);">
+      <span style="font: 600 11px/1 system-ui, -apple-system, sans-serif; color: #FF453A;">End call</span>
+    </span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>
