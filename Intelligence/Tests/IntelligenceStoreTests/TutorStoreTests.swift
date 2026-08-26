@@ -86,6 +86,31 @@ final class TutorStoreTests: XCTestCase {
         XCTAssertEqual(page.entries.single?.state, .completed)
         XCTAssertEqual(page.entries.single?.actualProvider, .gateway)
     }
+
+    func testCaptureFailureIsRetainedWithoutBecomingPending() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("calla-tutor-terminal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("calla.sqlite")
+        let store = try CallaStore(path: path)
+        let database = try SQLiteDatabase(path: path.path)
+        let now = Date().timeIntervalSince1970
+        try database.run(
+            "INSERT INTO tutor_course_revision(course_key, revision, lifecycle, title, target_bundle_id, artifact_digest, created_at, updated_at) VALUES('blender.lamp', 'rev-1', 'published', 'Lamp basics', 'org.blenderfoundation.blender', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ?, ?)",
+            [.double(now), .double(now)])
+        try await store.createTutorRun(TutorRunRecord(
+            runID: "run-1", courseKey: "blender.lamp", revision: "rev-1", generation: 0,
+            status: .active, lessonID: "lesson-1", stepID: "step-1"))
+
+        try await store.recordTerminalTutorFeedback(TutorFeedbackRecord(
+            id: "feedback-1", runID: "run-1", generation: 0, kind: "verification_unknown",
+            question: nil, context: "held step", state: .failed, selectedProvider: .local,
+            errorCode: "target_not_frontmost"))
+        let page = try await store.tutorFeedbackHistory()
+        XCTAssertEqual(page.entries.single?.state, .failed)
+        XCTAssertEqual(page.entries.single?.errorCode, "target_not_frontmost")
+        XCTAssertEqual(page.entries.single?.captureID, nil)
+    }
 }
 
 private extension Array {
