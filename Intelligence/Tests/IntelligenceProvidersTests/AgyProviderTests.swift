@@ -215,4 +215,89 @@ final class AgyProviderTests: XCTestCase {
         XCTAssertEqual(AgyProvider.estimateTokens(String(repeating: "x", count: 400)), 100)
         XCTAssertEqual(AgyProvider.estimateTokens(""), 1)
     }
+
+    func testTutorJPEGUsesPrivateAtReferenceWithoutBase64OrFileURL() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agy-tutor-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fast = RecordingTransport()
+        let slow = RecordingTransport(reply: #"{"message":"Check lamp position","assessment":"needs_help","basis":"screenshot"}"#)
+        let provider = AgyProvider(
+            configuration: .init(runtimeRoot: root),
+            binary: "/usr/bin/true",
+            transports: (fast: fast, slow: slow)
+        )
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9])
+        let request = IntelligenceRequest(
+            task: .tutorFeedback,
+            sessionKey: "run-1",
+            system: .init(base: "Return Tutor JSON."),
+            input: "Why did this fail?",
+            attachments: [.init(
+                identifier: "capture-1",
+                mimeType: "image/jpeg",
+                bytes: jpeg,
+                pixelWidth: 2,
+                pixelHeight: 2,
+                purpose: "target-window"
+            )]
+        )
+
+        let response = try await provider.respond(to: request)
+        XCTAssertTrue(response.text.contains("Check lamp position"))
+        XCTAssertTrue(fast.calls.isEmpty, "Tutor images never reach resident transport")
+        let prompt = try XCTUnwrap(slow.calls.first?.prompt)
+        XCTAssertTrue(prompt.contains("@capture-"))
+        XCTAssertFalse(prompt.contains("file://"))
+        XCTAssertFalse(prompt.contains(jpeg.base64EncodedString()))
+        XCTAssertFalse(prompt.contains("/agy/print/capture-"))
+        let leftovers = try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("agy/print"),
+            includingPropertiesForKeys: nil
+        )
+        XCTAssertFalse(leftovers.contains { $0.lastPathComponent.hasPrefix("capture-") })
+    }
+
+    func testTutorAttachmentArgumentsRemainPrintOnlyAndSandboxed() {
+        let arguments = AgyPrintTransport.tutorAttachmentArguments(
+            prompt: "Inspect @capture-12345678-1234-1234-1234-123456789abc.jpg",
+            model: "gemini-3.7-flash-low"
+        )
+        XCTAssertEqual(arguments.first, "--print")
+        XCTAssertTrue(arguments.contains("--sandbox"))
+        XCTAssertTrue(arguments.contains("--mode"))
+        XCTAssertTrue(arguments.contains("plan"))
+        XCTAssertTrue(arguments.contains("--disable-slash-commands"))
+        XCTAssertFalse(arguments.contains("--add-dir"))
+        XCTAssertFalse(arguments.contains("--dangerously-skip-permissions"))
+        XCTAssertFalse(arguments.joined(separator: " ").contains("file://"))
+        XCTAssertFalse(arguments.joined(separator: " ").contains("base64"))
+    }
+
+    func testTutorJPEGStagingUsesPrivateModesAndRejectsNonJPEG() throws {
+        let workspace = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agy-stage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        let stager = AgyAttachmentStager(workspace: workspace)
+        let jpeg = IntelligenceAttachment(
+            identifier: "capture-1", mimeType: "image/jpeg",
+            bytes: Data([0xFF, 0xD8, 0xFF, 0xD9]),
+            pixelWidth: 1, pixelHeight: 1, purpose: "target-window"
+        )
+        let staged = try stager.stageTutorJPEG(jpeg)
+        let workspaceMode = try XCTUnwrap(
+            (try FileManager.default.attributesOfItem(atPath: workspace.path)[.posixPermissions] as? NSNumber)?.intValue
+        )
+        let fileMode = try XCTUnwrap(
+            (try FileManager.default.attributesOfItem(atPath: staged.path)[.posixPermissions] as? NSNumber)?.intValue
+        )
+        XCTAssertEqual(workspaceMode & 0o777, 0o700)
+        XCTAssertEqual(fileMode & 0o777, 0o600)
+        XCTAssertThrowsError(try stager.stageTutorJPEG(.init(
+            identifier: "not-jpeg", mimeType: "image/png", bytes: Data([0x89, 0x50]),
+            pixelWidth: 1, pixelHeight: 1, purpose: "target-window"
+        )))
+        stager.cleanup(staged)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path))
+    }
 }

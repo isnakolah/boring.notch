@@ -11,7 +11,7 @@ import IntelligenceCore
 /// Flags chosen from measurements: default mode (`--mode plan` costs +790 input
 /// tokens and `--sandbox` +722, for no benefit here), and no `--json-schema`
 /// (it works, but spends an extra turn).
-public struct AgyPrintTransport: AgyTransport {
+public struct AgyPrintTransport: AgyAttachmentTransport {
     private let binary: String
     private let workspace: URL
     private let catalog: ModelCatalog
@@ -42,6 +42,27 @@ public struct AgyPrintTransport: AgyTransport {
         try await print(prompt: prompt, conversationID: conversationID, tier: tier, exactModel: exactModel, budget: budget)
     }
 
+    /// Tutor attachments deliberately do not share ordinary print mode: this
+    /// invocation is print-only, sandboxed, plan-only, and has slash commands
+    /// disabled.  The CLI resolves the relative `@filename`; no model tool or
+    /// file URL is offered.
+    func openAttachment(
+        prompt: String,
+        tier: ModelTier,
+        exactModel: String?,
+        title: String,
+        budget: TimeInterval
+    ) async throws -> AgyExchange {
+        try await print(
+            prompt: prompt,
+            conversationID: nil,
+            tier: tier,
+            exactModel: exactModel,
+            budget: budget,
+            tutorAttachment: true
+        )
+    }
+
     private struct PrintResult: Decodable {
         struct Usage: Decodable {
             let input_tokens: Int?
@@ -59,10 +80,13 @@ public struct AgyPrintTransport: AgyTransport {
         conversationID: String?,
         tier: ModelTier,
         exactModel: String?,
-        budget: TimeInterval
+        budget: TimeInterval,
+        tutorAttachment: Bool = false
     ) async throws -> AgyExchange {
         let model = exactModel ?? catalog.exactID(for: tier) ?? "gemini-3.7-flash-low"
-        var arguments = ["-p", prompt, "--model", model, "--output-format", "json"]
+        var arguments = tutorAttachment
+            ? Self.tutorAttachmentArguments(prompt: prompt, model: model)
+            : ["-p", prompt, "--model", model, "--output-format", "json"]
         if let conversationID {
             arguments += ["--conversation", conversationID]
         }
@@ -99,5 +123,10 @@ public struct AgyPrintTransport: AgyTransport {
                 Usage(inputTokens: $0.input_tokens, outputTokens: $0.output_tokens, estimated: false)
             }
         )
+    }
+
+    static func tutorAttachmentArguments(prompt: String, model: String) -> [String] {
+        ["--print", prompt, "--model", model, "--output-format", "json",
+         "--mode", "plan", "--sandbox", "--disable-slash-commands"]
     }
 }

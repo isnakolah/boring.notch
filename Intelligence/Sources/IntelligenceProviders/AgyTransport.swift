@@ -14,6 +14,18 @@ public protocol AgyTransport: Sendable {
     func send(prompt: String, conversationID: String, tier: ModelTier, exactModel: String?, budget: TimeInterval) async throws -> AgyExchange
 }
 
+/// Only the print transport can safely expand Tutor's private `@filename`
+/// attachment.  Other transports receive no filesystem reference at all.
+protocol AgyAttachmentTransport: AgyTransport {
+    func openAttachment(
+        prompt: String,
+        tier: ModelTier,
+        exactModel: String?,
+        title: String,
+        budget: TimeInterval
+    ) async throws -> AgyExchange
+}
+
 public struct AgyExchange: Sendable {
     public let conversationID: String
     public let text: String
