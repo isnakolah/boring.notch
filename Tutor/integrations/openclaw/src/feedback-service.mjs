@@ -65,7 +65,10 @@ export class TutorFeedbackServer {
     if (this.server) return;
     await fs.mkdir((await import("node:path")).dirname(this.config.feedbackSocketPath), {recursive: true, mode: 0o700});
     await fs.unlink(this.config.feedbackSocketPath).catch(() => {});
-    this.server = net.createServer((socket) => this.handle(socket));
+    // Client half-closes after sending request. Keep our writable half open
+    // until asynchronous provider response is serialized; Node's default
+    // `allowHalfOpen:false` otherwise sends FIN before `socket.end(output)`.
+    this.server = net.createServer({allowHalfOpen: true}, (socket) => this.handle(socket));
     await new Promise((resolve, reject) => { this.server.once("error", reject); this.server.listen(this.config.feedbackSocketPath, resolve); });
     // Gateway lifetime owns this listener. Keeping Node's event loop alive for
     // a best-effort auxiliary socket breaks controlled shutdown and test exit.

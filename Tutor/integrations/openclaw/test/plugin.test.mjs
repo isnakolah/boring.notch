@@ -75,6 +75,36 @@ test("Gateway feedback rejects response fields outside Tutor contract", async ()
   assert.deepEqual(result, {ok: false, code: "PROVIDER_UNAVAILABLE", message: "Gateway feedback is unavailable."});
 });
 
+test("Gateway feedback socket returns after client half-close", async () => {
+  const socketPath = path.join(TEST_STATE_DIRECTORY, "feedback-wire.sock");
+  const server = new TutorFeedbackServer({agent: {runEmbeddedAgent: async () => ({
+    model: "gateway-test", payloads: [{text: '{"message":"Check visible state.","assessment":"uncertain","basis":"screenshot"}'}],
+  })}}, {feedbackSocketPath: socketPath});
+  await server.start();
+  try {
+    const reply = await new Promise((resolve, reject) => {
+      const client = net.createConnection(socketPath);
+      let body = "";
+      client.on("data", (chunk) => { body += chunk.toString("utf8"); });
+      client.once("error", reject);
+      client.once("end", () => resolve(body));
+      client.once("connect", () => client.end(JSON.stringify({
+        protocol_version: 4, request_id: "feedback-00000002", run_id: "run-00000002", generation: 0,
+        course_key: "course-00000002", revision: "revision-00000002", lesson_id: "lesson-00000002", step_id: "step-00000002",
+        context: "Current authored step only.", image: {mime_type: "image/jpeg", bytes_base64: Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9]).toString("base64")},
+      })));
+    });
+    assert.deepEqual(JSON.parse(reply), {
+      ok: true,
+      reply: {message: "Check visible state.", assessment: "uncertain", basis: "screenshot"},
+      provider: "gateway",
+      model: "gateway-test",
+    });
+  } finally {
+    await server.stop();
+  }
+});
+
 test("course lifecycle waits for explicit owner publish after compile and Blender preflight", async () => {
   const stateDirectory = path.join(TEST_STATE_DIRECTORY, "courses-lifecycle");
   const service = new CourseLifecycleService({stateDirectory}, {
