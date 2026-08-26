@@ -2967,7 +2967,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let lifecycle = Dictionary(uniqueKeysWithValues: currentLifecycle().map { ($0.id, $0.phase) })
         let digest = SHA256.hash(data: rawData).map { String(format: "%02x", $0) }.joined()
         guard let store else { throw TutorRuntimeError.socketUnavailable }
-        let committed = awaitOnQueue {
+        let result: String = awaitOnQueue {
             do {
                 for course in manifest.courses {
                     let title = catalogue[course.courseID]?.title ?? course.courseID
@@ -2986,10 +2986,13 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                         manifestJSON: String(decoding: rawData, as: UTF8.self), digest: digest,
                         sourceEpoch: epoch, sourceSequence: sequence))
                 }
-                return true
-            } catch { return false }
+                return "ok"
+            } catch { return String(error.localizedDescription.prefix(240)) }
+        } ?? "store_timeout"
+        guard result == "ok" else {
+            throw NSError(domain: "BoringCallaEngine.TutorRuntime", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "Runtime persistence failed: \(result)"])
         }
-        guard committed == true else { throw TutorRuntimeError.socketUnavailable }
     }
 
     private func writeEngineProjection(_ name: String, _ object: Any) throws {
