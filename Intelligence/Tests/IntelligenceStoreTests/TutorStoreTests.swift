@@ -111,6 +111,29 @@ final class TutorStoreTests: XCTestCase {
         XCTAssertEqual(page.entries.single?.errorCode, "target_not_frontmost")
         XCTAssertEqual(page.entries.single?.captureID, nil)
     }
+
+    func testExactRuntimeLookupNeverSelectsAnotherRevision() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("calla-tutor-runtime-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try CallaStore(path: root.appendingPathComponent("calla.sqlite"))
+        let digest = String(repeating: "b", count: 64)
+        let old = TutorRuntimeManifestRecord(courseKey: "blender.lamp", revision: "rev-1",
+                                             manifestJSON: #"{"revision":"old"}"#, digest: digest,
+                                             sourceEpoch: "gateway-1", sourceSequence: 1)
+        let current = TutorRuntimeManifestRecord(courseKey: "blender.lamp", revision: "rev-2",
+                                                 manifestJSON: #"{"revision":"current"}"#, digest: digest,
+                                                 sourceEpoch: "gateway-1", sourceSequence: 2)
+        try await store.upsertTutorRuntimeManifest(old)
+        try await store.upsertTutorRuntimeManifest(current)
+
+        let exact = try await store.tutorRuntimeManifest(courseKey: "blender.lamp", revision: "rev-2")
+        let missing = try await store.tutorRuntimeManifest(courseKey: "blender.lamp", revision: "rev-3")
+        let records = try await store.tutorRuntimeManifestRecords()
+        XCTAssertEqual(exact, current)
+        XCTAssertNil(missing)
+        XCTAssertEqual(records.map(\.revision), ["rev-2", "rev-1"])
+    }
 }
 
 private extension Array {

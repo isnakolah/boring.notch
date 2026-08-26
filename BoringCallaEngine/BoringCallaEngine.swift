@@ -52,9 +52,22 @@ private struct TutorIntelligenceStatus: Codable {
     var activeRevision: String? = nil
     var activeGeneration: Int? = nil
     var localAgyAvailable = false
+    var localAgyVersion: String? = nil
     var localAgyAuthenticated = false
     var gatewayFeedbackAvailable = false
+    var gatewayAuthoringAvailable = false
+    var nodeTransportHealthy = false
+    var engineIngressHealthy = false
     var captureAvailable = false
+    var lastProvider: String? = nil
+    var lastModel: String? = nil
+    var lastLatencyMilliseconds: Int? = nil
+    var lastFallbackReason: String? = nil
+    var lastDeterministicVerification: String? = nil
+    var historyByteCount = 0
+    var captureCount = 0
+    var storageFailure: String? = nil
+    var protocolVersion = 4
 }
 
 /// Live-call state, folded into the same `Status` the notch already polls every
@@ -549,7 +562,12 @@ private struct RuntimeCourse: Decodable {
 private struct RuntimeLesson: Decodable {
     let id: String; let steps: [RuntimeStep]
 }
-private struct RuntimeStep: Decodable { let id: String }
+private struct RuntimeStep: Decodable {
+    let id: String
+    /// Runtime v1 always publishes authored text. Optional keeps transitional
+    /// diagnostics decodable, but missing text never grants a model authority.
+    let text: String?
+}
 private struct LearningRecord: Decodable {
     let lessonID: String; let bundleID: String; let successes: Int; let nextDueAt: Double?
     enum CodingKeys: String, CodingKey { case successes; case lessonID = "lesson_id", bundleID = "bundle_id", nextDueAt = "next_due_at" }
@@ -716,6 +734,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var tutorObservationTimer: DispatchSourceTimer?
     private var tutorCaptureVault: TutorCaptureVault?
     private var tutorCaptureFailure: String?
+    private var lastTutorVerification: String?
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -2978,7 +2997,12 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
 
     private func tutorFeedbackContext(run: TutorRunRecord, lessonID: String, stepID: String,
                                       verifierOutcome: String?, store: CallaStore) -> String {
-        let outcome = verifierOutcome.map { ", deterministic outcome \($0)" } ?? ""
+        let outcome = verifierOutcome.map { " Deterministic verifier outcome: \($0)." } ?? ""
+        let authored = storedRuntime(courseID: run.courseKey, revision: run.revision)?
+            .courses.first(where: { $0.courseID == run.courseKey && $0.courseRevision == run.revision })?
+            .lessons.first(where: { $0.id == lessonID })?
+            .steps.first(where: { $0.id == stepID })?.text
+            .map { " Authored current-step instruction: \(String($0.prefix(2_000)))." } ?? ""
         let historyPage: TutorHistoryPage? = awaitOnQueue {
             try? await store.tutorFeedbackHistory(pageSize: 6)
         } ?? nil
@@ -2990,7 +3014,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             return pair.isEmpty ? nil : pair
         }.joined(separator: " | ")
         let recent = history.isEmpty ? "" : " Recent feedback: \(String(history.prefix(8 * 1024)))"
-        return String("Course \(run.courseKey), revision \(run.revision), lesson \(lessonID), step \(stepID)\(outcome)\(recent)".prefix(16 * 1024))
+        return String("Course \(run.courseKey), revision \(run.revision), lesson \(lessonID), step \(stepID).\(authored)\(outcome)\(recent)".prefix(16 * 1024))
     }
 
     /// Re-decode Host bytes before encryption. Marker bytes do not establish
@@ -3402,18 +3426,16 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
 
     private func startEngineCourse(courseID: String, lessonID: String?) {
         guard activeTutorRun == nil else { lastResult = "Stop current Tutor run before starting another"; return }
-        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
-              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
-              let course = runtime.courses.first(where: { $0.courseID == courseID }),
+        guard let store, let published = awaitOnQueue({ try? await store.publishedTutorRevision(courseKey: courseID) }) ?? nil,
+              published.artifactDigest.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil else {
+            lastResult = "Course revision is not published locally; requesting resync"
+            return
+        }
+        guard let runtime = storedRuntime(courseID: courseID, revision: published.revision),
+              let course = runtime.courses.first(where: { $0.courseID == courseID && $0.courseRevision == published.revision }),
               let lesson = lessonID.flatMap({ wanted in course.lessons.first(where: { $0.id == wanted }) }) ?? course.lessons.first,
               let step = lesson.steps.first else {
             lastResult = "Exact course runtime is unavailable; requesting resync"
-            return
-        }
-        guard let store, let published = awaitOnQueue({ try? await store.publishedTutorRevision(courseKey: courseID) }) ?? nil,
-              published.revision == course.courseRevision,
-              published.artifactDigest.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil else {
-            lastResult = "Course revision is not published locally; requesting resync"
             return
         }
         let run = TutorRunRecord(runID: "run-" + UUID().uuidString.lowercased(), courseKey: courseID,
@@ -3444,8 +3466,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func renderEngineStep(run: TutorRunRecord) {
-        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
-              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
+        guard let runtime = storedRuntime(courseID: run.courseKey, revision: run.revision),
               let course = runtime.courses.first(where: { $0.courseID == run.courseKey && $0.courseRevision == run.revision }),
               let lesson = course.lessons.first(where: { $0.id == run.lessonID }),
               let stepID = run.stepID,
@@ -3488,6 +3509,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             return
         }
         let outcome = receipt.payload?["outcome"] as? String ?? "unknown"
+        lastTutorVerification = outcome
         guard outcome == "satisfied" else {
             guard outcome == "unsatisfied" || outcome == "unknown" else { return }
             if let store {
@@ -3509,8 +3531,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             }
             return
         }
-        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
-              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
+        guard let runtime = storedRuntime(courseID: run.courseKey, revision: run.revision),
               let course = runtime.courses.first(where: { $0.courseID == run.courseKey && $0.courseRevision == run.revision }),
               let lesson = course.lessons.first(where: { $0.id == lessonID }),
               let index = lesson.steps.firstIndex(where: { $0.id == stepID }) else {
@@ -3693,7 +3714,12 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             try process.run()
             stdin.fileHandleForWriting.write(input); stdin.fileHandleForWriting.closeFile()
             tutorFeedbackProcess = process; activeTutorFeedbackID = feedback.id; activeTutorFeedback = feedback
-            queue.asyncAfter(deadline: .now() + .seconds(15), execute: timeout)
+            // Gateway preference is deliberately one-way and gets its own
+            // twelve-second ceiling. A local-selected request keeps the full
+            // fifteen-second total budget because its single eligible fallback
+            // consumes that same end-to-end budget.
+            let deadlineSeconds = feedback.selectedProvider == .gateway ? 12 : 15
+            queue.asyncAfter(deadline: .now() + .seconds(deadlineSeconds), execute: timeout)
             lastResult = fallbackReason == nil ? "Tutor feedback requested from Gateway" : "Local feedback unavailable; requesting Gateway feedback"
         } catch {
             finishTutorFeedback(feedback, state: .failed, actualProvider: .gateway, fallbackReason: fallbackReason, errorCode: "gateway_feedback_start_failed")
@@ -3899,7 +3925,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         } else {
             preference = .local
         }
+        let agy = agyAvailability()
         let auth = agyAuthStatus()
+        let capability = currentCapabilityHandshake()
+        let statusStore = store
+        let history: TutorHistoryPage? = awaitOnQueue {
+            try? await statusStore?.tutorFeedbackHistory(pageSize: 1)
+        } ?? nil
+        let statistics: TutorHistoryStats? = awaitOnQueue {
+            try? await statusStore?.tutorHistoryStats()
+        } ?? nil
+        let latest = history?.entries.first
         return TutorIntelligenceStatus(
             selectedProvider: preference.rawValue,
             activeProvider: activeTutorFeedbackID == nil ? nil : "gateway",
@@ -3907,10 +3943,23 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             activeRunID: activeTutorRun?.runID,
             activeRevision: activeTutorRun?.revision,
             activeGeneration: activeTutorRun?.generation,
-            localAgyAvailable: agyBinaryPath() != nil,
+            localAgyAvailable: agy.available,
+            localAgyVersion: agy.version,
             localAgyAuthenticated: auth.loggedIn,
             gatewayFeedbackAvailable: gatewayReachable,
-            captureAvailable: preferences?.captureEnabled == true && hostStatus?.screenRecordingGranted == true
+            gatewayAuthoringAvailable: gatewayReachable,
+            nodeTransportHealthy: gatewayReachable && capability != nil && nodeRuntime?.isRunning == true,
+            engineIngressHealthy: engineIngress != nil,
+            captureAvailable: preferences?.captureEnabled == true && hostStatus?.screenRecordingGranted == true,
+            lastProvider: latest?.actualProvider?.rawValue,
+            lastModel: latest?.model,
+            lastLatencyMilliseconds: latest?.latencyMilliseconds,
+            lastFallbackReason: latest?.fallbackReason,
+            lastDeterministicVerification: lastTutorVerification,
+            historyByteCount: statistics?.captureByteCount ?? 0,
+            captureCount: statistics?.captureCount ?? 0,
+            storageFailure: tutorCaptureFailure,
+            protocolVersion: 4
         )
     }
 
@@ -3960,7 +4009,30 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func currentRuntime() -> [RuntimeCourse] {
-        (decodeFile("course-runtime.json", as: RuntimeManifest.self)?.courses ?? []).prefix(200).map { $0 }
+        guard let store else { return [] }
+        let records: [TutorRuntimeManifestRecord] = awaitOnQueue {
+            (try? await store.tutorRuntimeManifestRecords()) ?? []
+        } ?? []
+        return records.compactMap { record in
+            guard let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: Data(record.manifestJSON.utf8)) else { return nil }
+            return runtime.courses.first(where: { $0.courseID == record.courseKey && $0.courseRevision == record.revision })
+        }
+    }
+
+    /// Reads one exact, Store-committed revision. Projections are intentionally
+    /// excluded: a stale file may aid legacy rollback diagnostics but may never
+    /// start, render, verify, or advance a Boring-owned Tutor run.
+    private func storedRuntime(courseID: String, revision: String) -> RuntimeManifest? {
+        guard let store else { return nil }
+        let stored: TutorRuntimeManifestRecord? = awaitOnQueue {
+            do { return try await store.tutorRuntimeManifest(courseKey: courseID, revision: revision) }
+            catch { return nil }
+        } ?? nil
+        guard let record = stored,
+              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: Data(record.manifestJSON.utf8)),
+              runtime.format == "calla-course-runtime", runtime.formatVersion == 1,
+              runtime.courses.contains(where: { $0.courseID == courseID && $0.courseRevision == revision }) else { return nil }
+        return runtime
     }
 
     private func currentLearning() -> [String: LearningRecord] {

@@ -102,13 +102,37 @@ struct TutorEnginePane: View {
                 .pickerStyle(.segmented)
                 SettingFact(title: "Local agy", value: localState(intelligence),
                             tint: intelligence?.localAgyAvailable == true && intelligence?.localAgyAuthenticated == true ? NotchTint.healthy : NotchTint.attention)
+                if let version = intelligence?.localAgyVersion {
+                    SettingFact(title: "Local agy version", value: version)
+                }
                 SettingFact(title: "Gateway feedback", value: intelligence?.gatewayFeedbackAvailable == true ? "Available" : "Unavailable",
                             tint: intelligence?.gatewayFeedbackAvailable == true ? NotchTint.healthy : NotchTint.attention)
+                SettingFact(title: "Gateway authoring", value: intelligence?.gatewayAuthoringAvailable == true ? "Available" : "Unavailable",
+                            tint: intelligence?.gatewayAuthoringAvailable == true ? NotchTint.healthy : NotchTint.attention)
+                SettingFact(title: "Engine ingress", value: intelligence?.engineIngressHealthy == true ? "Listening" : "Unavailable",
+                            tint: intelligence?.engineIngressHealthy == true ? NotchTint.healthy : NotchTint.attention)
                 SettingFact(title: "Target capture", value: intelligence?.captureAvailable == true ? "Ready" : "Screen Recording and frontmost allowed target required",
                             tint: intelligence?.captureAvailable == true ? NotchTint.healthy : NotchTint.attention)
                 if let active = intelligence?.activeProvider {
                     SettingFact(title: "Active route", value: active)
                 }
+                if let provider = intelligence?.lastProvider {
+                    let model = intelligence?.lastModel.map { " · \($0)" } ?? ""
+                    let latency = intelligence?.lastLatencyMilliseconds.map { " · \($0) ms" } ?? ""
+                    SettingFact(title: "Last feedback", value: provider + model + latency)
+                }
+                if let fallback = intelligence?.lastFallbackReason {
+                    SettingFact(title: "Last fallback", value: fallback, tint: NotchTint.attention)
+                }
+                if let verification = intelligence?.lastDeterministicVerification {
+                    SettingFact(title: "Last verification", value: verification)
+                }
+                SettingFact(title: "Retained history", value: "\(intelligence?.captureCount ?? 0) captures · \(intelligence?.historyByteCount ?? 0) bytes")
+                if let failure = intelligence?.storageFailure {
+                    SettingFact(title: "History storage", value: failure, tint: NotchTint.stuck)
+                }
+                Text("Protocol v\(intelligence?.protocolVersion ?? 4). Screenshots and sanitized feedback remain until app data is manually removed.")
+                    .font(NotchType.rowDetail).foregroundStyle(.secondary)
                 Divider().opacity(0.35)
                 HStack {
                     TextField("Search retained feedback", text: $historyQuery)

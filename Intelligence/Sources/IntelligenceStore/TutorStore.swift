@@ -143,6 +143,14 @@ public struct TutorHistoryQuery: Sendable, Equatable, Codable {
     }
 }
 
+/// Bounded aggregate for status surfaces. Screenshot plaintext never enters
+/// this projection; only retention volume and item count are disclosed.
+public struct TutorHistoryStats: Sendable, Equatable, Codable {
+    public let feedbackCount: Int
+    public let captureCount: Int
+    public let captureByteCount: Int
+}
+
 public struct TutorCaptureRecord: Sendable, Equatable, Codable {
     public let id: String
     public let relativePath: String
@@ -237,6 +245,33 @@ public extension CallaStore {
                 """,
                 [.text(record.courseKey), .text(record.revision), .text(record.manifestJSON), .text(record.digest), .text(record.sourceEpoch), .int(record.sourceSequence), .date(Date())])
         }
+    }
+
+    /// Exact runtime lookup for an Engine-pinned run. Compatibility JSON files
+    /// are projections only; lesson execution must read this committed record.
+    func tutorRuntimeManifest(courseKey: String, revision: String) throws -> TutorRuntimeManifestRecord? {
+        try validateID(courseKey, "course_key")
+        try validateID(revision, "revision")
+        return try database.query(
+            "SELECT course_key, revision, manifest_json, digest, source_epoch, source_sequence FROM tutor_runtime_manifest WHERE course_key = ? AND revision = ?",
+            [.text(courseKey), .text(revision)]) { row in
+                TutorRuntimeManifestRecord(courseKey: row.string(0), revision: row.string(1),
+                                           manifestJSON: row.string(2), digest: row.string(3),
+                                           sourceEpoch: row.string(4), sourceSequence: row.int(5))
+            }.first
+    }
+
+    /// Bounded status projection for Boring UI. This never exposes runtime
+    /// bytes and cannot be used to select a revision for execution.
+    func tutorRuntimeManifestRecords(limit: Int = 200) throws -> [TutorRuntimeManifestRecord] {
+        let boundedLimit = min(max(limit, 1), 200)
+        return try database.query(
+            "SELECT course_key, revision, manifest_json, digest, source_epoch, source_sequence FROM tutor_runtime_manifest ORDER BY synced_at DESC, source_sequence DESC, course_key ASC, revision ASC LIMIT ?",
+            [.int(boundedLimit)]) { row in
+                TutorRuntimeManifestRecord(courseKey: row.string(0), revision: row.string(1),
+                                           manifestJSON: row.string(2), digest: row.string(3),
+                                           sourceEpoch: row.string(4), sourceSequence: row.int(5))
+            }
     }
 
     func publishedTutorRevision(courseKey: String) throws -> TutorCourseRevisionRecord? {
@@ -455,6 +490,15 @@ public extension CallaStore {
         let page = Array(rows.prefix(limit))
         let next = rows.count > limit ? page.last.map { "\($0.createdAt.timeIntervalSince1970)|\($0.id)" } : nil
         return TutorHistoryPage(entries: page, nextCursor: next)
+    }
+
+    func tutorHistoryStats() throws -> TutorHistoryStats {
+        let feedbackCount = try database.scalarInt("SELECT COUNT(*) FROM tutor_feedback") ?? 0
+        let capture = try database.query(
+            "SELECT COUNT(*), COALESCE(SUM(byte_count), 0) FROM tutor_capture") {
+                ($0.int(0), $0.int(1))
+            }.first ?? (0, 0)
+        return TutorHistoryStats(feedbackCount: feedbackCount, captureCount: capture.0, captureByteCount: capture.1)
     }
 
     func tutorSchemaVersion() throws -> Int { try database.scalarInt("PRAGMA user_version") ?? 0 }

@@ -112,9 +112,22 @@ struct CallaTutorIntelligenceStatus: Codable, Equatable {
     var activeRevision: String? = nil
     var activeGeneration: Int? = nil
     var localAgyAvailable = false
+    var localAgyVersion: String? = nil
     var localAgyAuthenticated = false
     var gatewayFeedbackAvailable = false
+    var gatewayAuthoringAvailable = false
+    var nodeTransportHealthy = false
+    var engineIngressHealthy = false
     var captureAvailable = false
+    var lastProvider: String? = nil
+    var lastModel: String? = nil
+    var lastLatencyMilliseconds: Int? = nil
+    var lastFallbackReason: String? = nil
+    var lastDeterministicVerification: String? = nil
+    var historyByteCount = 0
+    var captureCount = 0
+    var storageFailure: String? = nil
+    var protocolVersion = 4
 }
 
 struct CallaTutorHistoryQuery: Codable { let cursor: String?; let query: String?; let pageSize: Int }
