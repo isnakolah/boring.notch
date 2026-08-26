@@ -147,6 +147,11 @@ def migrate_calla_config(config: dict[str, Any], *, current: Path, manifest: Rel
     if not isinstance(tutor_config, dict):
         raise ReleaseError("plugins.entries.tutor.config must be an object")
     tutor_config.setdefault("stateDirectory", str(Path.home() / ".openclaw" / "tutor"))
+    # This release is consumed by Boring's Engine control plane.  Leaving the
+    # mode implicit selects the portable standalone default, which would
+    # restore model-visible Tutor operations and omit Engine snapshot identity.
+    # Gateway config is Calla-owned at this boundary, so pin it explicitly.
+    tutor_config["runtimeMode"] = "engine"
     # Release-derived facts live in current/manifest.json, read by the plugin
     # after the atomic pointer flip. Persisting them here breaks OpenClaw builds
     # that validate the cached old schema before loading current/plugin.

@@ -29,6 +29,7 @@ class GatewayReleaseTests(unittest.TestCase):
         migrated = migrate_calla_config({"plugins": {"load": {"paths": ["/other", "/srv/app/open-desktop-tutor/integrations/openclaw"]}}, "unrelated": {"keep": True}}, current=current, manifest=manifest)
         self.assertEqual(migrated["unrelated"], {"keep": True})
         self.assertEqual(migrated["plugins"]["load"]["paths"], ["/other", "/private/calla/current/plugin"])
+        self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["runtimeMode"], "engine")
         self.assertNotIn("agentWorkspace", migrated["plugins"]["entries"]["tutor"]["config"])
         self.assertNotIn("nodeContractHash", migrated["plugins"]["entries"]["tutor"]["config"])
 
@@ -47,6 +48,11 @@ class GatewayReleaseTests(unittest.TestCase):
         manifest = ReleaseManifest("test", "digest", {"min": 2, "max": 3}, "b" * 64, "pack", 1)
         migrated = migrate_calla_config({"plugins": {"entries": {"tutor": {"config": {"nodeId": "legacy-mac"}}}}}, current=Path("/private/calla/current"), manifest=manifest)
         self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["nodeId"], "legacy-mac")
+
+    def test_config_migration_replaces_legacy_standalone_mode(self):
+        manifest = ReleaseManifest("test", "digest", {"min": 2, "max": 3}, "b" * 64, "pack", 1)
+        migrated = migrate_calla_config({"plugins": {"entries": {"tutor": {"config": {"runtimeMode": "standalone"}}}}}, current=Path("/private/calla/current"), manifest=manifest)
+        self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["runtimeMode"], "engine")
 
     def test_digest_ignores_runtime_python_cache(self):
         with tempfile.TemporaryDirectory() as temporary:
