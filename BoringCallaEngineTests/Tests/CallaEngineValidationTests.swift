@@ -25,6 +25,9 @@ final class CallaEngineValidationTests: XCTestCase {
         XCTAssertTrue(CallaCoursePresentation.progress([(true, false), (false, true)]).due)
         XCTAssertTrue(CallaCoursePresentation.isHidden(courseID: "course-hidden", hiddenIDs: ["course-hidden"]))
         XCTAssertEqual(CallaCoursePresentation.lifecyclePhase("publishing"), "publishing")
+        XCTAssertEqual(CallaCoursePresentation.lifecyclePhase("ready_for_review"), "ready_for_review")
         XCTAssertNil(CallaCoursePresentation.lifecyclePhase("model_output"))
+        XCTAssertFalse(CallaCoursePresentation.isLearnerVisible(lifecyclePhase: "ready_for_review"))
+        XCTAssertTrue(CallaCoursePresentation.isLearnerVisible(lifecyclePhase: "published"))
     }
 }

@@ -103,7 +103,8 @@ struct TutorCoursesPane: View {
     }
 
     private func courseDetail(_ course: CallaCourseSnapshot) -> some View {
-        VStack(spacing: 16) {
+        let published = course.isLearnerVisible
+        return VStack(spacing: 16) {
             SettingCard(course.title, detail: course.summary.isEmpty ? nil : course.summary,
                         tint: course.lifecyclePhase == "failed" ? NotchTint.stuck : nil) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -118,14 +119,29 @@ struct TutorCoursesPane: View {
                             .foregroundStyle(NotchTint.attention)
                     }
                     if course.lifecyclePhase == "ready_for_review" {
-                        Label(course.lifecycleNote ?? "Validation and Blender preflight completed. Review lesson order before publishing.",
+                        Label(course.lifecycleNote ?? "Review bounded validation, preflight, and lesson-order facts before publishing.",
                               systemImage: "checkmark.seal.fill")
                             .font(NotchType.rowDetail).foregroundStyle(NotchTint.healthy)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let revision = course.revision { SettingFact(title: "Revision", value: revision) }
+                        if let targetVersion = course.targetVersion { SettingFact(title: "Target version", value: targetVersion) }
+                        if let count = course.authoredLessonCount { SettingFact(title: "Authored lessons", value: "\(count)") }
+                        if let compiler = course.compilerVersion { SettingFact(title: "Compiler", value: compiler) }
+                        if let contract = course.packContractVersion { SettingFact(title: "Pack contract", value: "v\(contract)") }
+                        if let digest = course.artifactDigest { SettingFact(title: "Artifact digest", value: digest) }
+                        if let validation = course.validationReceipt { SettingFact(title: "Validation", value: validation) }
+                        if let preflight = course.preflightReceipt { SettingFact(title: "Preflight", value: preflight) }
+                        ForEach(course.reviewWarnings, id: \.self) { warning in
+                            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                .font(NotchType.rowDetail).foregroundStyle(NotchTint.attention)
+                        }
                     }
                     HStack {
-                        Button("Resume") { engine.resumeCourse() }.buttonStyle(.borderedProminent)
+                        Button("Resume") { engine.resumeCourse() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!published || course.runtimeBlocked)
                         Button("Start again") { engine.startAgain(courseID: course.id) }
+                            .disabled(!published || course.runtimeBlocked)
                         if course.lifecyclePhase == "ready_for_review" {
                             Button("Publish") { publishCandidate = course }
                                 .buttonStyle(.borderedProminent)
@@ -142,6 +158,10 @@ struct TutorCoursesPane: View {
             }
             SettingCard("Lessons") {
                 VStack(spacing: 6) {
+                    if course.lessons.isEmpty, let count = course.authoredLessonCount, count > 0 {
+                        Text("Lesson ordering will appear with the reviewed runtime (\(count) lesson\(count == 1 ? "" : "s")).")
+                            .font(NotchType.rowDetail).foregroundStyle(.secondary)
+                    }
                     ForEach(course.lessons) { lesson in
                         HStack(spacing: 10) {
                             Image(systemName: lesson.completed ? "checkmark.circle.fill" : "circle")
@@ -164,6 +184,7 @@ struct TutorCoursesPane: View {
                                 engine.startLesson(courseID: course.id, lessonID: lesson.id)
                             }
                             .controlSize(.small)
+                            .disabled(!published || course.runtimeBlocked)
                         }
                     }
                 }

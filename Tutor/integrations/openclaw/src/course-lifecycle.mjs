@@ -41,6 +41,12 @@ function publicJob(job) {
     id: job.id, revision: job.revision, phase: job.phase, title: job.title || "Untitled course",
     target_app: job.target_app || null, target_version: job.target_version || null,
     lesson_count: Number.isSafeInteger(job.lesson_count) ? job.lesson_count : 0,
+    review_lessons: sanitizeReviewLessons(job.review_lessons),
+    artifact_digest: typeof job.artifact_digest === "string" && /^[a-f0-9]{64}$/i.test(job.artifact_digest) ? job.artifact_digest.toLowerCase() : null,
+    compiler_version: typeof job.compiler_version === "string" ? sanitizeCourseText(job.compiler_version) : null,
+    pack_contract_version: Number.isSafeInteger(job.pack_contract_version) ? job.pack_contract_version : null,
+    validation_receipt: typeof job.validation_receipt === "string" ? sanitizeCourseText(job.validation_receipt) : null,
+    preflight_receipt: typeof job.preflight_receipt === "string" ? sanitizeCourseText(job.preflight_receipt) : null,
     warnings: Array.isArray(job.warnings) ? job.warnings.map((value) => sanitizeCourseText(value)).slice(0, 8) : [],
     error: job.error ? sanitizeCourseText(job.error) : null,
     created_at: job.created_at, updated_at: job.updated_at, elapsed_ms: elapsed,
@@ -52,6 +58,16 @@ function publicJob(job) {
       : job.phase === "published" ? "Ready to start from Courses."
       : null,
   };
+}
+
+function sanitizeReviewLessons(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 100).flatMap((lesson) => {
+    if (!lesson || typeof lesson !== "object" || typeof lesson.id !== "string" || typeof lesson.title !== "string"
+      || !/^[a-z0-9][a-z0-9._-]{1,159}$/i.test(lesson.id)
+      || !Number.isSafeInteger(lesson.step_count) || lesson.step_count < 1 || lesson.step_count > 500) return [];
+    return [{id: lesson.id, title: sanitizeCourseText(lesson.title, "Untitled lesson"), step_count: lesson.step_count}];
+  });
 }
 
 function runPython(script, args, signal) {
@@ -236,10 +252,20 @@ export class CourseLifecycleService {
       if (Array.isArray(result.warnings) && result.warnings.length) throw new Error("course compiler returned warnings");
       await this.set(job, "waiting_for_blender");
       await this.set(job, "preflighting");
-      await this.preflightRevision(job, result, controller.signal);
+      const preflight = await this.preflightRevision(job, result, controller.signal);
       if (controller.signal.aborted || job.revision !== revision || job.phase === "cancelled") return publicJob(job);
-      await this.set(job, "ready_for_review", {title: sanitizeCourseText(result.title || job.title, "Untitled course"), lesson_count: result.lesson_count,
-        warnings: [], artifact: result.artifact || null, pack_id: typeof result.pack_id === "string" ? result.pack_id : null});
+      await this.set(job, "ready_for_review", {
+        title: sanitizeCourseText(result.title || job.title, "Untitled course"),
+        lesson_count: result.lesson_count,
+        review_lessons: sanitizeReviewLessons(result.lessons),
+        warnings: [], artifact: result.artifact || null,
+        artifact_digest: typeof result.artifact_digest === "string" ? result.artifact_digest : null,
+        compiler_version: typeof result.compiler_version === "string" ? result.compiler_version : null,
+        pack_contract_version: Number.isSafeInteger(result.pack_contract_version) ? result.pack_contract_version : null,
+        validation_receipt: typeof result.validation_receipt === "string" ? result.validation_receipt : null,
+        preflight_receipt: typeof preflight?.receipt === "string" ? preflight.receipt : null,
+        pack_id: typeof result.pack_id === "string" ? result.pack_id : null,
+      });
     } catch (error) {
       if (!controller.signal.aborted && job.revision === revision && job.phase !== "cancelled") await this.set(job, "failed", {error: sanitizeCourseText(error instanceof Error ? error.message : String(error))});
     } finally { this.running.delete(id); }
@@ -261,6 +287,7 @@ export class CourseLifecycleService {
     // Compiler already validates each scene's hash and packs them. Runtime hosts
     // can inject an actual Blender 5.2 probe; absence must fail closed there.
     if (!result?.artifact || signal?.aborted) throw new Error("Blender preflight did not complete");
+    return {receipt: "Gateway staged-artifact validation completed; live target verification is recorded separately."};
   }
   async publish(id) {
     await this.load();

@@ -133,7 +133,11 @@ test("Gateway feedback socket returns after client half-close", async () => {
 test("course lifecycle waits for explicit owner publish after compile and Blender preflight", async () => {
   const stateDirectory = path.join(TEST_STATE_DIRECTORY, "courses-lifecycle");
   const service = new CourseLifecycleService({stateDirectory}, {
-    prepare: async () => ({title: "Blender basics", lesson_count: 2, warnings: [], artifact: "staged"}), preflight: async () => {},
+    prepare: async () => ({title: "Blender basics", lesson_count: 2, lessons: [
+      {id: "blender.lesson.open", title: "Open Modifiers", step_count: 1},
+      {id: "blender.lesson.bevel", title: "Add Bevel", step_count: 2},
+    ], artifact: "staged", artifact_digest: "a".repeat(64), compiler_version: "test-compiler", pack_contract_version: 1,
+      validation_receipt: "Validation passed.", warnings: []}), preflight: async () => ({receipt: "Blender preflight passed."}),
     install: async () => {},
   });
   const created = await service.import({outline: "course outline", asset_bundle: "fixture.zip", target_app: "org.blenderfoundation.blender", target_version: "5.2", target_frontmost: true, target_allowlisted: true});
@@ -143,6 +147,13 @@ test("course lifecycle waits for explicit owner publish after compile and Blende
   const review = await service.status(created.id);
   assert.equal(review.phase, "ready_for_review");
   assert.equal(review.lesson_count, 2);
+  assert.deepEqual(review.review_lessons, [
+    {id: "blender.lesson.open", title: "Open Modifiers", step_count: 1},
+    {id: "blender.lesson.bevel", title: "Add Bevel", step_count: 2},
+  ]);
+  assert.equal(review.artifact_digest, "a".repeat(64));
+  assert.equal(review.validation_receipt, "Validation passed.");
+  assert.equal(review.preflight_receipt, "Blender preflight passed.");
   const published = await service.publish(created.id);
   assert.equal(published.phase, "published");
   await service.archive(created.id);

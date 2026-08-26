@@ -23,7 +23,14 @@ struct CallaTabView: View {
     @State private var selectedCourseID = ""
     @State private var question = ""
 
-    private var courses: [CallaCourseSnapshot] { engine.status.courses.filter { !$0.hidden } }
+    /// Review-ready revisions are owner-only.  Showing one in the learner
+    /// notch would make an unpublished course look startable even though Engine
+    /// correctly refuses the run.
+    private var courses: [CallaCourseSnapshot] {
+        engine.status.courses.filter {
+            !$0.hidden && $0.isLearnerVisible
+        }
+    }
     private var activeLesson: CallaActiveLesson? {
         guard let lesson = engine.status.activeLesson, lesson.active else { return nil }
         return lesson

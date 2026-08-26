@@ -513,6 +513,17 @@ private struct CourseSnapshot: Codable {
     let lifecycleNote: String?
     let runtimeVersion: String?
     let runtimeBlocked: Bool
+    /// Owner-review facts. Never used to execute a run; Engine still reads the
+    /// exact committed runtime and published revision from CallaStore.
+    let revision: String?
+    let targetVersion: String?
+    let authoredLessonCount: Int?
+    let reviewWarnings: [String]
+    let artifactDigest: String?
+    let compilerVersion: String?
+    let packContractVersion: Int?
+    let validationReceipt: String?
+    let preflightReceipt: String?
     let lessons: [LessonSnapshot]
 
     enum CodingKeys: String, CodingKey {
@@ -521,6 +532,9 @@ private struct CourseSnapshot: Codable {
         case checkpointLessonID = "checkpoint_lesson_id", recentThread = "recent_thread"
         case lifecyclePhase = "lifecycle_phase", lifecycleNote = "lifecycle_note"
         case runtimeVersion = "runtime_version", runtimeBlocked = "runtime_blocked"
+        case revision, targetVersion = "target_version", authoredLessonCount = "authored_lesson_count"
+        case reviewWarnings = "review_warnings", artifactDigest = "artifact_digest", compilerVersion = "compiler_version"
+        case packContractVersion = "pack_contract_version", validationReceipt = "validation_receipt", preflightReceipt = "preflight_receipt"
     }
 }
 
@@ -537,9 +551,22 @@ private struct CatalogueCourse: Decodable {
 
 private struct CatalogueLesson: Decodable { let id: String; let title: String }
 
+private struct LifecycleReviewLesson: Decodable {
+    let id: String; let title: String; let stepCount: Int
+    enum CodingKeys: String, CodingKey { case id, title; case stepCount = "step_count" }
+}
 private struct LifecycleCourse: Decodable {
     let id: String; let phase: String; let error: String?; let nextAction: String?
-    enum CodingKeys: String, CodingKey { case id, phase, error; case nextAction = "next_action" }
+    let revision: Int?; let title: String?; let targetApp: String?; let targetVersion: String?; let lessonCount: Int?
+    let warnings: [String]?; let reviewLessons: [LifecycleReviewLesson]?
+    let artifactDigest: String?; let compilerVersion: String?; let packContractVersion: Int?
+    let validationReceipt: String?; let preflightReceipt: String?
+    enum CodingKeys: String, CodingKey {
+        case id, phase, error, revision, title, warnings
+        case nextAction = "next_action", targetApp = "target_app", targetVersion = "target_version", lessonCount = "lesson_count"
+        case reviewLessons = "review_lessons", artifactDigest = "artifact_digest", compilerVersion = "compiler_version"
+        case packContractVersion = "pack_contract_version", validationReceipt = "validation_receipt", preflightReceipt = "preflight_receipt"
+    }
 }
 
 private struct CourseRunFile: Decodable {
@@ -4200,14 +4227,16 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
 
     private func currentCourses() -> [CourseSnapshot] {
         let file = root.appendingPathComponent("catalogue.json")
-        guard let data = try? Data(contentsOf: file),
-              let courses = try? JSONDecoder().decode([CatalogueCourse].self, from: data) else { return [] }
+        // Unpublished revisions intentionally have no learner catalogue entry.
+        // Owner review must still render their bounded lifecycle projection.
+        let courses = (try? Data(contentsOf: file))
+            .flatMap { try? JSONDecoder().decode([CatalogueCourse].self, from: $0) } ?? []
         let hidden = Set(preferences?.hiddenCourseIDs ?? [])
         let lifecycle = currentLifecycle().reduce(into: [String: LifecycleCourse]()) { $0[$1.id] = $1 }
         let runs = currentCourseRuns()
         let runtime = currentRuntime().reduce(into: [String: RuntimeCourse]()) { $0[$1.courseID] = $1 }
         let learning = currentLearning()
-        return courses.prefix(100).map { course in
+        let catalogueCourses = courses.prefix(100).map { course in
             let target = course.bundleIDs?.first
             let run = runs[course.id]
             let runtimeCourse = runtime[course.id]
@@ -4229,8 +4258,39 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 lifecyclePhase: CallaCoursePresentation.lifecyclePhase(life?.phase), lifecycleNote: safeLifecycle(life?.nextAction ?? life?.error),
                 runtimeVersion: runtimeCourse?.appVersion,
                 runtimeBlocked: runtimeCourse != nil && target != runtimeCourse?.appBundleID,
+                revision: life?.revision.map(String.init), targetVersion: life?.targetVersion,
+                authoredLessonCount: life?.lessonCount, reviewWarnings: (life?.warnings ?? []).prefix(8).map(safeThread),
+                artifactDigest: life?.artifactDigest, compilerVersion: life?.compilerVersion,
+                packContractVersion: life?.packContractVersion, validationReceipt: safeLifecycle(life?.validationReceipt),
+                preflightReceipt: safeLifecycle(life?.preflightReceipt),
                 lessons: lessons)
         }
+        let catalogueIDs = Set(catalogueCourses.map(\.id))
+        let reviewOnly = lifecycle.values
+            .sorted { $0.id < $1.id }
+            .filter { !catalogueIDs.contains($0.id) }
+            .prefix(max(0, 100 - catalogueCourses.count))
+            .compactMap { life -> CourseSnapshot? in
+                guard let phase = CallaCoursePresentation.lifecyclePhase(life.phase),
+                      Self.validTutorID(life.id) else { return nil }
+                let reviewLessons = (life.reviewLessons ?? []).prefix(100).compactMap { lesson -> LessonSnapshot? in
+                    guard Self.validTutorID(lesson.id), lesson.stepCount > 0, lesson.stepCount <= 500 else { return nil }
+                    return LessonSnapshot(id: lesson.id, title: String(lesson.title.prefix(160)), stepCount: lesson.stepCount,
+                                          completed: false, dueForReview: false)
+                }
+                return CourseSnapshot(
+                    id: life.id, title: String((life.title ?? "Untitled course").prefix(160)),
+                    summary: "Owner course revision awaiting review or lifecycle action.", icon: "books.vertical.fill",
+                    targetApp: life.targetApp, hidden: false, completedCount: 0, dueForReview: false,
+                    checkpointLessonID: nil, recentThread: [], lifecyclePhase: phase,
+                    lifecycleNote: safeLifecycle(life.nextAction ?? life.error), runtimeVersion: nil, runtimeBlocked: false,
+                    revision: life.revision.map(String.init), targetVersion: life.targetVersion,
+                    authoredLessonCount: life.lessonCount, reviewWarnings: (life.warnings ?? []).prefix(8).map(safeThread),
+                    artifactDigest: life.artifactDigest, compilerVersion: life.compilerVersion,
+                    packContractVersion: life.packContractVersion, validationReceipt: safeLifecycle(life.validationReceipt),
+                    preflightReceipt: safeLifecycle(life.preflightReceipt), lessons: reviewLessons)
+            }
+        return catalogueCourses + reviewOnly
     }
 
     private func currentLifecycle() -> [LifecycleCourse] {

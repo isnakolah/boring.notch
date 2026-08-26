@@ -716,6 +716,15 @@ struct CallaCourseSnapshot: Codable, Equatable, Identifiable {
     let lifecycleNote: String?
     let runtimeVersion: String?
     let runtimeBlocked: Bool
+    let revision: String?
+    let targetVersion: String?
+    let authoredLessonCount: Int?
+    let reviewWarnings: [String]
+    let artifactDigest: String?
+    let compilerVersion: String?
+    let packContractVersion: Int?
+    let validationReceipt: String?
+    let preflightReceipt: String?
     let lessons: [CallaLessonSnapshot]
 
     enum CodingKeys: String, CodingKey {
@@ -724,10 +733,16 @@ struct CallaCourseSnapshot: Codable, Equatable, Identifiable {
         case checkpointLessonID = "checkpoint_lesson_id", recentThread = "recent_thread"
         case lifecyclePhase = "lifecycle_phase", lifecycleNote = "lifecycle_note"
         case runtimeVersion = "runtime_version", runtimeBlocked = "runtime_blocked"
+        case revision, targetVersion = "target_version", authoredLessonCount = "authored_lesson_count"
+        case reviewWarnings = "review_warnings", artifactDigest = "artifact_digest", compilerVersion = "compiler_version"
+        case packContractVersion = "pack_contract_version", validationReceipt = "validation_receipt", preflightReceipt = "preflight_receipt"
     }
 
     var lessonCount: Int { lessons.count }
     var nextLesson: CallaLessonSnapshot? { lessons.first { !$0.completed } ?? lessons.first { $0.id == checkpointLessonID } ?? lessons.first }
+    /// Only published revisions cross from owner Course Settings into learner
+    /// surfaces. Missing lifecycle fails closed.
+    var isLearnerVisible: Bool { lifecyclePhase == "published" }
 }
 
 struct CallaCourseCommand: Codable {

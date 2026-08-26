@@ -16,6 +16,20 @@ Settings must show Host, node, Gateway authoring, Gateway feedback and local
 `agy` separately. Gateway outage may disable sync/feedback but must not mark a
 cached exact deterministic course offline.
 
+## Course review and publication
+
+Only `published` revisions appear in learner surfaces. `ready_for_review`
+revisions appear in Tutor Settings for owner review and keep Start, Resume, and
+lesson actions disabled. Review revision, target version, lesson ordering and
+step counts, artifact digest, compiler and pack-contract versions, validation
+receipt, preflight receipt, and any warnings. Those fields are bounded facts;
+they never contain source prompts, traces, paths, credentials, or model output.
+
+Publish only after independently confirming target-app preflight evidence. The
+preflight receipt names staged-artifact validation when no live target receipt
+was supplied; it is not proof of a real Blender run. Publish confirmation keeps
+current published runtime available until exact reviewed artifact installs.
+
 ## Feedback rules
 
 Screen Recording is required. Ask remains disabled while capture unavailable or

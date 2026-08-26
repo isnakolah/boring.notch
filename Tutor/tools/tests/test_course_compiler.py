@@ -93,6 +93,17 @@ class CourseCompilerTests(unittest.TestCase):
         ))
         self.assertEqual(code, 0, report)
         self.assertEqual(report["lesson_count"], 2)
+        self.assertEqual(
+            report["lessons"],
+            [
+                {"id": report["lessons"][0]["id"], "title": "Open the modifier panel", "step_count": 1},
+                {"id": report["lessons"][1]["id"], "title": "Add a Bevel", "step_count": 1},
+            ],
+        )
+        self.assertRegex(report["artifact_digest"], r"^[0-9a-f]{64}$")
+        self.assertEqual(report["compiler_version"], "calla_course_compiler/1")
+        self.assertEqual(report["pack_contract_version"], 1)
+        self.assertEqual(report["validation_receipt"], "Compiled 2 authored lesson(s) with zero warnings.")
         self.assertEqual(len(report["_bodies"]), 2)
         titles = {body["title"] for body in report["_bodies"]}
         self.assertEqual(titles, {"Open the modifier panel", "Add a Bevel"})

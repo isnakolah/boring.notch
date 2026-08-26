@@ -412,8 +412,21 @@ def main() -> int:
     }
     (stage / "courses" / f"{slug}.yaml").write_text(yaml.safe_dump(course_entity, sort_keys=False), encoding="utf-8")
     compile_pack(stage, args.artifact)
-    print(json.dumps({"title": course_entity["title"], "lesson_count": len(lessons),
-                      "pack_id": manifest["id"], "warnings": []}))
+    # Review status is owner-facing metadata only. It contains ordering and
+    # deterministic compiler facts, never source outline, prompts, paths, or
+    # model output. The Gateway keeps the artifact itself private until explicit
+    # publication.
+    print(json.dumps({
+        "title": course_entity["title"],
+        "lesson_count": len(lessons),
+        "lessons": [{"id": lesson["id"], "title": lesson["title"], "step_count": len(lesson["steps"])} for lesson in lessons],
+        "pack_id": manifest["id"],
+        "artifact_digest": hashlib.sha256(args.artifact.read_bytes()).hexdigest(),
+        "compiler_version": "calla_course_compiler/1",
+        "pack_contract_version": 1,
+        "validation_receipt": f"Compiled {len(lessons)} authored lesson(s) with zero warnings.",
+        "warnings": [],
+    }))
     return 0
 
 
