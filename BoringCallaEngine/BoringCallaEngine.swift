@@ -572,6 +572,20 @@ private struct LearningRecord: Decodable {
     let lessonID: String; let bundleID: String; let successes: Int; let nextDueAt: Double?
     enum CodingKeys: String, CodingKey { case successes; case lessonID = "lesson_id", bundleID = "bundle_id", nextDueAt = "next_due_at" }
 }
+private struct LegacyLearningRecord: Decodable {
+    let format: String
+    let formatVersion: Int
+    let lessonID: String
+    let bundleID: String
+    let successes: Int
+    let intervalDays: Double
+    let nextDueAt: Double?
+    enum CodingKeys: String, CodingKey {
+        case format, successes
+        case formatVersion = "format_version"
+        case lessonID = "lesson_id", bundleID = "bundle_id", intervalDays = "interval_days", nextDueAt = "next_due_at"
+    }
+}
 
 private struct CourseCommand: Decodable {
     let action: String; let courseID: String?; let lessonID: String?; let outline: String?
@@ -2766,7 +2780,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         guard let store else { return }
         let sourceRoot = root
         let importRoot = root.appendingPathComponent("legacy-import/v1", isDirectory: true)
-        let candidates = ["catalogue.json", "course-status.json", "course-runs.json", "course-runtime.json"]
+        // Runtime precedes course-runs: a legacy run can be imported only after
+        // the exact published revision is known to the Store.
+        let candidates = ["catalogue.json", "course-status.json", "course-runtime.json", "course-runs.json"]
         let learningRoot = sourceRoot.appendingPathComponent("learning", isDirectory: true)
         let learning = (try? fileManager.contentsOfDirectory(at: learningRoot, includingPropertiesForKeys: [.isRegularFileKey]))?
             .filter { $0.pathExtension == "json" }.map { "learning/\($0.lastPathComponent)" } ?? []
@@ -2787,9 +2803,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 let outcome = importBoringTutorDomain(relative: relative, data: bytes)
                 _ = awaitOnQueue {
                     try? await store.recordTutorImport(sourceFile: relative, digest: digest,
-                                                        status: outcome ? "imported" : "malformed",
-                                                        importedCount: outcome ? 1 : 0,
-                                                        errorCode: outcome ? nil : "invalid_shape")
+                                                        status: outcome == nil ? "malformed" : "imported",
+                                                        importedCount: outcome ?? 0,
+                                                        errorCode: outcome == nil ? "invalid_shape" : nil)
                     return true
                 }
             } catch {
@@ -2801,27 +2817,46 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
-    private func importBoringTutorDomain(relative: String, data: Data) -> Bool {
+    private func importBoringTutorDomain(relative: String, data: Data) -> Int? {
         let operation: String
         let payload: [String: Any]
         switch relative {
         case "catalogue.json":
-            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
             payload = object as? [String: Any] ?? ["courses": object]
             operation = "catalogue"
         case "course-status.json":
-            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
             payload = object as? [String: Any] ?? ["courses": object]
             operation = "course_status"
         case "course-runtime.json":
-            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
             payload = ["runtime": object]
             operation = "course_runtime"
+        case "course-runs.json":
+            guard let records = try? JSONDecoder().decode([String: CourseRunFile].self, from: data),
+                  records.count <= 200, let store else { return nil }
+            let values = records.compactMap { courseID, run -> TutorLegacyRunImport? in
+                guard Self.validTutorID(courseID), run.entries.count <= 40,
+                      run.checkpointLessonID.map(Self.validTutorID) ?? true else { return nil }
+                let id = "legacy-" + SHA256.hash(data: Data(courseID.utf8)).map { String(format: "%02x", $0) }.joined().prefix(32)
+                return TutorLegacyRunImport(runID: String(id), courseKey: courseID,
+                                            checkpointLessonID: run.checkpointLessonID, eventCount: run.entries.count)
+            }
+            guard values.count == records.count else { return nil }
+            return awaitOnQueue { try? await store.importTutorLegacyRuns(values) } ?? nil
+        case let learningFile where learningFile.hasPrefix("learning/"):
+            guard let legacy = try? JSONDecoder().decode(LegacyLearningRecord.self, from: data),
+                  legacy.format == "calla-learning-record", legacy.formatVersion == 1,
+                  Self.validTutorID(legacy.bundleID), Self.validTutorID(legacy.lessonID),
+                  legacy.successes >= 0, legacy.intervalDays >= 0, legacy.intervalDays <= 36_500,
+                  let store else { return nil }
+            let due = legacy.nextDueAt.map(Date.init(timeIntervalSince1970:))
+            let value = TutorLearningImport(bundleID: legacy.bundleID, lessonID: legacy.lessonID,
+                                            successCount: legacy.successes, intervalDays: legacy.intervalDays, dueAt: due)
+            return awaitOnQueue { try? await store.importTutorLearning([value]) } ?? nil
         default:
-            // Run and learning migration remains intentionally domain-specific;
-            // preserve source now rather than fabricating progress from unknown
-            // old shapes.
-            return true
+            return nil
         }
         let request: [String: Any] = [
             "protocol_version": 4, "request_id": "import-" + UUID().uuidString.lowercased(),
@@ -2829,8 +2864,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             "capability_token": engineIngressToken, "source_epoch": "legacy-import-v1", "source_sequence": 0,
         ]
         guard let body = try? JSONSerialization.data(withJSONObject: request),
-              let response = try? JSONSerialization.jsonObject(with: handleEngineIngress(body)) as? [String: Any] else { return false }
-        return response["ok"] as? Bool == true
+              let response = try? JSONSerialization.jsonObject(with: handleEngineIngress(body)) as? [String: Any] else { return nil }
+        return response["ok"] as? Bool == true ? 1 : nil
     }
 
     /// Node-only ingress for Gateway snapshots. Host has no receive path for

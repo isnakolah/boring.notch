@@ -151,6 +151,32 @@ public struct TutorHistoryStats: Sendable, Equatable, Codable {
     public let captureByteCount: Int
 }
 
+/// One-time Boring projection imports deliberately contain only durable
+/// progression facts. Raw legacy entry text never becomes Tutor history.
+public struct TutorLearningImport: Sendable, Equatable {
+    public let bundleID: String
+    public let lessonID: String
+    public let successCount: Int
+    public let intervalDays: Double
+    public let dueAt: Date?
+
+    public init(bundleID: String, lessonID: String, successCount: Int, intervalDays: Double, dueAt: Date?) {
+        self.bundleID = bundleID; self.lessonID = lessonID; self.successCount = successCount
+        self.intervalDays = intervalDays; self.dueAt = dueAt
+    }
+}
+
+public struct TutorLegacyRunImport: Sendable, Equatable {
+    public let runID: String
+    public let courseKey: String
+    public let checkpointLessonID: String?
+    public let eventCount: Int
+
+    public init(runID: String, courseKey: String, checkpointLessonID: String?, eventCount: Int) {
+        self.runID = runID; self.courseKey = courseKey; self.checkpointLessonID = checkpointLessonID; self.eventCount = eventCount
+    }
+}
+
 public struct TutorCaptureRecord: Sendable, Equatable, Codable {
     public let id: String
     public let relativePath: String
@@ -312,6 +338,58 @@ public extension CallaStore {
         try database.run(
             "INSERT INTO tutor_import(source_file, source_digest, status, imported_count, error_code, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(source_file) DO UPDATE SET source_digest = excluded.source_digest, status = excluded.status, imported_count = excluded.imported_count, error_code = excluded.error_code, updated_at = excluded.updated_at",
             [.text(sourceFile), .text(digest), .text(status), .int(importedCount), .text(errorCode.map { String($0.prefix(128)) }), .date(Date())])
+    }
+
+    /// Inserts Boring-owned learning projections only when no canonical row is
+    /// present. Legacy data has no trustworthy modification time, so replacing
+    /// an existing Store row would violate canonical-state precedence.
+    func importTutorLearning(_ imports: [TutorLearningImport]) throws -> Int {
+        guard imports.count <= 2_000 else { throw TutorStoreError.invalidValue("learning_import_count") }
+        var inserted = 0
+        try database.transaction {
+            for value in imports {
+                try validateID(value.bundleID, "bundle_id")
+                try validateID(value.lessonID, "lesson_id")
+                guard value.successCount >= 0, value.successCount <= 1_000_000,
+                      value.intervalDays >= 0, value.intervalDays <= 36_500 else {
+                    throw TutorStoreError.invalidValue("learning_import")
+                }
+                try database.run(
+                    "INSERT OR IGNORE INTO tutor_learning(bundle_id, lesson_id, success_count, interval_days, due_at, updated_at) VALUES(?, ?, ?, ?, ?, ?)",
+                    [.text(value.bundleID), .text(value.lessonID), .int(value.successCount), .double(value.intervalDays), .date(value.dueAt), .date(Date())])
+                if (try database.scalarInt("SELECT changes()")) == 1 { inserted += 1 }
+            }
+        }
+        return inserted
+    }
+
+    /// Converts a legacy continuity projection into a bounded stopped record
+    /// after an exact published revision is available. Entry text is discarded;
+    /// only checkpoint and count survive. Existing Engine records always win.
+    func importTutorLegacyRuns(_ imports: [TutorLegacyRunImport]) throws -> Int {
+        guard imports.count <= 200 else { throw TutorStoreError.invalidValue("run_import_count") }
+        var inserted = 0
+        try database.transaction {
+            for value in imports {
+                try validateID(value.runID, "run_id")
+                try validateID(value.courseKey, "course_key")
+                if let checkpoint = value.checkpointLessonID { try validateID(checkpoint, "lesson_id") }
+                guard value.eventCount >= 0, value.eventCount <= 40 else { throw TutorStoreError.invalidValue("run_import") }
+                guard let revision = try database.query(
+                    "SELECT revision FROM tutor_course_revision WHERE course_key = ? AND lifecycle = 'published' ORDER BY published_at DESC LIMIT 1",
+                    [.text(value.courseKey)], row: { $0.string(0) }).first else { continue }
+                let now = Date()
+                try database.run(
+                    "INSERT OR IGNORE INTO tutor_run(run_id, course_key, revision, generation, status, lesson_id, started_at, ended_at, updated_at) VALUES(?, ?, ?, 0, 'stopped', ?, ?, ?, ?)",
+                    [.text(value.runID), .text(value.courseKey), .text(revision), .text(value.checkpointLessonID), .date(now), .date(now), .date(now)])
+                guard (try database.scalarInt("SELECT changes()")) == 1 else { continue }
+                try database.run(
+                    "INSERT INTO tutor_run_event(run_id, generation, ord, kind, note, created_at) VALUES(?, 0, 0, 'legacy_import', ?, ?)",
+                    [.text(value.runID), .text("Imported \(value.eventCount) legacy continuity event(s)"), .date(now)])
+                inserted += 1
+            }
+        }
+        return inserted
     }
 
     func tutorProviderPreference() throws -> TutorProviderPreference {

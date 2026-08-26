@@ -134,6 +134,34 @@ final class TutorStoreTests: XCTestCase {
         XCTAssertNil(missing)
         XCTAssertEqual(records.map(\.revision), ["rev-2", "rev-1"])
     }
+
+    func testLegacyLearningAndRunImportPreserveExistingCanonicalRows() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("calla-tutor-import-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("calla.sqlite")
+        let store = try CallaStore(path: path)
+        let database = try SQLiteDatabase(path: path.path)
+        let now = Date().timeIntervalSince1970
+        try database.run(
+            "INSERT INTO tutor_course_revision(course_key, revision, lifecycle, title, target_bundle_id, artifact_digest, published_at, created_at, updated_at) VALUES('blender.lamp', 'rev-1', 'published', 'Lamp basics', 'org.blenderfoundation.blender', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ?, ?, ?)",
+            [.double(now), .double(now), .double(now)])
+        try database.run(
+            "INSERT INTO tutor_learning(bundle_id, lesson_id, success_count, interval_days, updated_at) VALUES('org.blenderfoundation.blender', 'lesson-1', 9, 3, ?)", [.double(now)])
+
+        let learning = TutorLearningImport(bundleID: "org.blenderfoundation.blender", lessonID: "lesson-1", successCount: 1, intervalDays: 1, dueAt: nil)
+        let skippedLearning = try await store.importTutorLearning([learning])
+        XCTAssertEqual(skippedLearning, 0)
+        XCTAssertEqual(try database.scalarInt("SELECT success_count FROM tutor_learning WHERE bundle_id = 'org.blenderfoundation.blender' AND lesson_id = 'lesson-1'"), 9)
+
+        let legacy = TutorLegacyRunImport(runID: "legacy-run-1", courseKey: "blender.lamp", checkpointLessonID: "lesson-1", eventCount: 3)
+        let firstRunImport = try await store.importTutorLegacyRuns([legacy])
+        let secondRunImport = try await store.importTutorLegacyRuns([legacy])
+        XCTAssertEqual(firstRunImport, 1)
+        XCTAssertEqual(secondRunImport, 0)
+        XCTAssertEqual(try database.scalarInt("SELECT COUNT(*) FROM tutor_run WHERE run_id = 'legacy-run-1'"), 1)
+        XCTAssertEqual(try database.scalarInt("SELECT COUNT(*) FROM tutor_run_event WHERE run_id = 'legacy-run-1' AND kind = 'legacy_import'"), 1)
+    }
 }
 
 private extension Array {
