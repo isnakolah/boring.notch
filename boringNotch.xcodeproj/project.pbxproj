@@ -176,6 +176,8 @@
 		CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00502 /* CopilotLiveSession.swift */; };
 		CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00602 /* CallaCopilotLiveView.swift */; };
 		CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000800002 /* CallaCopilotSignInView.swift */; };
+		E06787777CA4F4FD68D9CE86 /* CallaCopilotStartFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F286030B7D94CCEE706FA3B /* CallaCopilotStartFailure.swift */; };
+		1F7D21024A5E67CF77CEB89F /* CallaCopilotEndingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2194645EB9B8E0A37DC92B4C /* CallaCopilotEndingView.swift */; };
 		CA1100010000000000A00001 /* CallaCopilotStartingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000A00002 /* CallaCopilotStartingView.swift */; };
 		CA1100010000000000E00701 /* MeetingDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA1100010000000000E00702 /* MeetingDetector.swift */; };
 		CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA110001000000000000B002 /* CallaCopilotPresentation.swift */; };
@@ -463,6 +465,8 @@
 		CA1100010000000000E00502 /* CopilotLiveSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CopilotLiveSession.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00602 /* CallaCopilotLiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotLiveView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000800002 /* CallaCopilotSignInView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotSignInView.swift"; sourceTree = "<group>"; };
+		0F286030B7D94CCEE706FA3B /* CallaCopilotStartFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotStartFailure.swift"; sourceTree = "<group>"; };
+		2194645EB9B8E0A37DC92B4C /* CallaCopilotEndingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotEndingView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000A00002 /* CallaCopilotStartingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotStartingView.swift"; sourceTree = "<group>"; };
 		CA1100010000000000E00702 /* MeetingDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "managers/MeetingDetector.swift"; sourceTree = "<group>"; };
 		CA110001000000000000B002 /* CallaCopilotPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "components/Calla/CallaCopilotPresentation.swift"; sourceTree = "<group>"; };
@@ -947,6 +951,8 @@
 				CA1100010000000000E00502 /* CopilotLiveSession.swift */,
 				CA1100010000000000E00602 /* CallaCopilotLiveView.swift */,
 				CA1100010000000000800002 /* CallaCopilotSignInView.swift */,
+				0F286030B7D94CCEE706FA3B /* CallaCopilotStartFailure.swift */,
+				2194645EB9B8E0A37DC92B4C /* CallaCopilotEndingView.swift */,
 				CA1100010000000000A00002 /* CallaCopilotStartingView.swift */,
 				CA1100010000000000E00702 /* MeetingDetector.swift */,
 				CA110001000000000000B002 /* CallaCopilotPresentation.swift */,
@@ -1572,6 +1578,8 @@
 				CA1100010000000000E00501 /* CopilotLiveSession.swift in Sources */,
 				CA1100010000000000E00601 /* CallaCopilotLiveView.swift in Sources */,
 				CA1100010000000000800001 /* CallaCopilotSignInView.swift in Sources */,
+				E06787777CA4F4FD68D9CE86 /* CallaCopilotStartFailure.swift in Sources */,
+				1F7D21024A5E67CF77CEB89F /* CallaCopilotEndingView.swift in Sources */,
 				CA1100010000000000A00001 /* CallaCopilotStartingView.swift in Sources */,
 				CA1100010000000000E00701 /* MeetingDetector.swift in Sources */,
 				CA110001000000000000B001 /* CallaCopilotPresentation.swift in Sources */,
