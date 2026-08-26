@@ -2,14 +2,14 @@
 
 Recorded 2026-08-26 after signed Boring installation and Gateway promotion.
 
-- Boring implementation commit: `fd1403239b6372c937dcd9a0b9bc8ccc8017c1d7`
-- Portable `Tutor/` subtree split: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
+- Boring implementation commit: `34990d1f0f3c21b70b0e6dffa8b4595466b2338a`
+- Portable `Tutor/` subtree split: `12a736f140a48d765ac1367334a4c65d60d627b7`
 - Calla branch: `feat/boring-owned-tutor-intelligence`
-- Calla branch commit: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
+- Calla branch commit: `12a736f140a48d765ac1367334a4c65d60d627b7`
 - Protocol: v4, accepted range v2-v4
-- Active Gateway release: `boring-6b8266dafbb41d743ba9`
-- Gateway release digest: `b9c25536afef943f91cd583df0e37c4f91e9b2741face78265a042a4877b350d`
-- Node contract digest: `7828725ba7ef9d931e912308ede2dbf842cfaf0aa10800afeb8791507e6a9be8`
+- Active Gateway release: `boring-62ee8414578d1e525cde`
+- Gateway release digest: `5e0e2fca1744917f2160f7d8eb37734c9886812176ae9fe84d13aa28a489e2bb`
+- Node contract digest: `ced1122ba62c67761e5ac9ca5cf5d1a8c9d92ccf128280dcf801fb861b01608e`
 
 Published branches:
 
@@ -25,6 +25,11 @@ owner-only Host and Engine ingress sockets existed. Installed migration created
 v5 canonical Store rows for exact runtime revision
 `org.calla.tutor.blender@0.3.0` and four Boring learning records; legacy source
 copies remain under `legacy-import/v1`. Gateway plugin loaded from matching
-release; Gateway feedback socket completed a real tool-free image request with
-strict JSON. Real target-window and Blender acceptance remain separate evidence
+release; real `refresh-runtime` advanced the canonical manifest from legacy
+import to Gateway epoch `gateway-f6775429-1ae4-4fac-be9b-d03ef5ae1a03`, sequence
+`18`. Gateway feedback socket completed a real tool-free image request with
+strict JSON. Local `agy` screenshot staging has a synthetic JPEG test proving
+0700/0600 staging, `agy --print` `@filename` attachment reference, no
+`file://`/base64/tool permission argument, and cleanup. Real target-window,
+local visual-model, and Blender course acceptance remain separate evidence
 gates.
