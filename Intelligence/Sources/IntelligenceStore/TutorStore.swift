@@ -277,7 +277,7 @@ public extension CallaStore {
     /// are projections only; lesson execution must read this committed record.
     func tutorRuntimeManifest(courseKey: String, revision: String) throws -> TutorRuntimeManifestRecord? {
         try validateID(courseKey, "course_key")
-        try validateID(revision, "revision")
+        try validateRevision(revision)
         return try database.query(
             "SELECT course_key, revision, manifest_json, digest, source_epoch, source_sequence FROM tutor_runtime_manifest WHERE course_key = ? AND revision = ?",
             [.text(courseKey), .text(revision)]) { row in
@@ -582,14 +582,14 @@ public extension CallaStore {
     func tutorSchemaVersion() throws -> Int { try database.scalarInt("PRAGMA user_version") ?? 0 }
 
     private func validate(_ record: TutorRunRecord) throws {
-        try validateID(record.runID, "run_id"); try validateID(record.courseKey, "course_key"); try validateID(record.revision, "revision")
+        try validateID(record.runID, "run_id"); try validateID(record.courseKey, "course_key"); try validateRevision(record.revision)
         if let lessonID = record.lessonID { try validateID(lessonID, "lesson_id") }
         if let stepID = record.stepID { try validateID(stepID, "step_id") }
         guard record.generation >= 0 else { throw TutorStoreError.invalidValue("generation") }
     }
 
     private func validate(_ record: TutorCourseRevisionRecord, lessons: [TutorLessonRecord]) throws {
-        try validateID(record.courseKey, "course_key"); try validateID(record.revision, "revision")
+        try validateID(record.courseKey, "course_key"); try validateRevision(record.revision)
         try validateID(record.targetBundleID, "target_bundle_id")
         guard !record.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               record.title.count <= 240,
@@ -609,7 +609,7 @@ public extension CallaStore {
     }
 
     private func validate(_ record: TutorRuntimeManifestRecord) throws {
-        try validateID(record.courseKey, "course_key"); try validateID(record.revision, "revision")
+        try validateID(record.courseKey, "course_key"); try validateRevision(record.revision)
         guard record.manifestJSON.utf8.count <= 5 * 1024 * 1024,
               record.digest.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil,
               record.sourceEpoch.range(of: "^[A-Za-z0-9._-]{1,160}$", options: .regularExpression) != nil,
@@ -662,6 +662,15 @@ public extension CallaStore {
 
     private func validateID(_ value: String, _ field: String) throws {
         guard value.range(of: "^[A-Za-z0-9._-]{1,160}$", options: .regularExpression) != nil else { throw TutorStoreError.invalidValue(field) }
+    }
+
+    /// Compiler revisions are opaque release identifiers. Current authored
+    /// packs use `pack@version`; accepting that separator here does not widen
+    /// run IDs, filenames, or SQL identifiers.
+    private func validateRevision(_ value: String) throws {
+        guard value.range(of: "^[A-Za-z0-9._@+-]{1,160}$", options: .regularExpression) != nil else {
+            throw TutorStoreError.invalidValue("revision")
+        }
     }
 
     private static func tutorFeedback(_ row: SQLiteRow) -> TutorFeedbackRecord {
