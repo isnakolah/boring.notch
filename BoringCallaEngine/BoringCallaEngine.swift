@@ -743,6 +743,11 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     /// Rotated for each Engine process. Only its child node receives this in
     /// environment; no token is persisted or surfaced through XPC/status.
     private var engineIngressToken = UUID().uuidString.lowercased()
+    /// OpenClaw starts the node in a fresh process and does not retain the
+    /// Engine's environment for plugin configuration.  This file is a private,
+    /// per-launch config overlay; it is removed with the node and never exposed
+    /// through status, projections, or logs.
+    private var nodeConfigURL: URL?
     private var activeTutorRun: TutorRunRecord?
     private var tutorGeneration = 0
     private var tutorObservationTimer: DispatchSourceTimer?
@@ -814,6 +819,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         if let nodeRuntime { terminateProcessTree(nodeRuntime.processIdentifier) }
         nodeRuntime = nil
         clearOwnedPID(at: nodePIDURL)
+        removeEphemeralNodeConfig()
         if let copilot = copilotProcess, copilot.isRunning {
             // SIGINT first: the host drains the trailing utterance on it.
             kill(copilot.processIdentifier, SIGINT)
@@ -3222,6 +3228,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let process = Process()
         process.executableURL = appResources.appendingPathComponent("scripts/calla-node-host.sh")
         process.currentDirectoryURL = appResources
+        let nodeConfig = try writeEphemeralNodeConfig()
         var environment = ProcessInfo.processInfo.environment
         // Fixed private Tailscale Serve route for nomonhomelab. Short DNS is
         // intentionally not used: it resolves but does not present gateway
@@ -3234,6 +3241,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_RUNTIME_MODE"] = "engine"
         environment["CALLA_ENGINE_INGRESS_SOCKET"] = engineIngressURL.path
         environment["CALLA_ENGINE_CAPABILITY_TOKEN"] = engineIngressToken
+        environment["CALLA_NODE_CONFIG_PATH"] = nodeConfig.path
         process.environment = environment
         if let log = childLogHandle("node-host") {
             process.standardOutput = log
@@ -3243,11 +3251,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         process.terminationHandler = { [weak self] child in
             self?.queue.async {
                 self?.clearOwnedPID(at: pidFile, matching: child.processIdentifier)
+                self?.removeEphemeralNodeConfig()
                 guard self?.isRunning == true else { return }
                 self?.lastResult = "Calla Mac node stopped (status \(child.terminationStatus)); re-pairing will retry"
             }
         }
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            removeEphemeralNodeConfig()
+            throw error
+        }
         nodeRuntime = process
         try writeOwnedPID(process.processIdentifier, to: nodePIDURL)
     }
@@ -3328,6 +3342,49 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             .appendingPathComponent("Resources/Calla", isDirectory: true)
     }
 
+    /// Construct a throwaway complete OpenClaw config instead of mutating the
+    /// user's node config with an Engine capability token.  OpenClaw reads this
+    /// before connecting; the token then exists only in this 0600 file and the
+    /// child process, and a fresh Engine replaces it on every launch.
+    private func writeEphemeralNodeConfig() throws -> URL {
+        removeEphemeralNodeConfig()
+        let source = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".openclaw/openclaw.json")
+        let sourceData = try Data(contentsOf: source)
+        guard var config = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any] else {
+            throw TutorRuntimeError.invalidResponse
+        }
+        var plugins = config["plugins"] as? [String: Any] ?? [:]
+        var entries = plugins["entries"] as? [String: Any] ?? [:]
+        var tutor = entries["tutor"] as? [String: Any] ?? [:]
+        var tutorConfig = tutor["config"] as? [String: Any] ?? [:]
+        tutorConfig["role"] = "node"
+        tutorConfig["runtimeMode"] = "engine"
+        tutorConfig["engineSocketPath"] = engineIngressURL.path
+        tutorConfig["engineCapabilityToken"] = engineIngressToken
+        tutor["enabled"] = true
+        tutor["config"] = tutorConfig
+        entries["tutor"] = tutor
+        plugins["entries"] = entries
+        config["plugins"] = plugins
+
+        let destination = root.appendingPathComponent("node-openclaw-\(UUID().uuidString.lowercased()).json")
+        let data = try JSONSerialization.data(withJSONObject: config, options: [.sortedKeys])
+        try data.write(to: destination, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+        nodeConfigURL = destination
+        return destination
+    }
+
+    private func removeEphemeralNodeConfig() {
+        if let nodeConfigURL { try? fileManager.removeItem(at: nodeConfigURL) }
+        nodeConfigURL = nil
+        guard let names = try? fileManager.contentsOfDirectory(atPath: root.path) else { return }
+        for name in names where name.hasPrefix("node-openclaw-") && name.hasSuffix(".json") {
+            try? fileManager.removeItem(at: root.appendingPathComponent(name))
+        }
+    }
+
     /// launchd can reclaim an XPC instance before its descendants. Reclaim
     /// only Boring-recorded PIDs; never scan or kill generic OpenClaw work.
     private func reclaimStaleOwnedChildren() {
@@ -3341,6 +3398,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         if nodeRuntime?.isRunning != true {
             reclaimOwnedProcess(at: nodePIDURL)
             nodeRuntime = nil
+            removeEphemeralNodeConfig()
         }
         if copilotProcess?.isRunning != true {
             reclaimOwnedProcess(at: copilotPIDURL)

@@ -14,6 +14,15 @@ GATEWAY_PORT="${CALLA_NODE_GATEWAY_PORT:-18790}"
 GATEWAY_TLS="${CALLA_NODE_GATEWAY_TLS:-false}"
 DISPLAY_NAME="${CALLA_NODE_DISPLAY_NAME:-Calla Mac}"
 
+# Boring Engine supplies a per-launch 0600 config containing its rotating
+# ingress token.  Standalone keeps the owner's normal OpenClaw config.
+if [[ -n "${CALLA_NODE_CONFIG_PATH:-}" ]]; then
+  [[ -f "$CALLA_NODE_CONFIG_PATH" && ! -L "$CALLA_NODE_CONFIG_PATH" ]] || {
+    echo "Boring node config is unavailable" >&2; exit 78;
+  }
+  export OPENCLAW_CONFIG_PATH="$CALLA_NODE_CONFIG_PATH"
+fi
+
 arguments=(node run --host "$GATEWAY_HOST" --port "$GATEWAY_PORT" --display-name "$DISPLAY_NAME")
 if [[ "$GATEWAY_TLS" == "true" ]]; then
   arguments+=(--tls)
