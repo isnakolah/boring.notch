@@ -206,9 +206,40 @@ public struct CallQuestionQueue: Sendable, Equatable {
     }
 }
 
+/// When the running account of a call is brought up to date.
+///
+/// It used to need three statements, or twenty seconds of silence, or a full
+/// minute — and in an ordinary conversation none of those arrive quickly. One
+/// person talking in a single long stretch is *one* statement, so the account
+/// sat still until the sixty-second ceiling fired. The panel's summary was
+/// routinely a minute behind what had just been said, which is the same as not
+/// having one.
+///
+/// The unit that matters is a turn: somebody said a thing and stopped. That is
+/// what `settleInterval` detects — a short pause after the last statement, long
+/// enough that a sentence broken into two segments is still one chunk, short
+/// enough that the account is current by the time anyone looks at it.
+///
+/// The other three rules stay as backstops for the cases a pause never comes:
+/// a decision or commitment goes straight through, a talker who never stops for
+/// breath is closed every `burstStatements`, and `maximumInterval` is the
+/// ceiling nothing may exceed.
 public struct CallSummaryTrigger: Sendable, Equatable {
+    /// Nothing waits longer than this, whatever else is happening.
     public static let maximumInterval: TimeInterval = 60
-    public static let quietInterval: TimeInterval = 20
+    /// A turn has ended when nothing more has arrived for this long.
+    ///
+    /// Not zero: the segmenter emits a trailed-off clause and its continuation
+    /// as two statements a beat apart, and summarising between them would spend
+    /// a request on half a sentence and put half a thought in the account.
+    public static let settleInterval: TimeInterval = 2.5
+    /// Somebody who never pauses still gets summarised this often.
+    public static let burstStatements = 3
+    /// Retained under its old name for any caller that read it. The quiet rule
+    /// is now `settleInterval`, which is the same idea at a usable length.
+    @available(*, deprecated, renamed: "settleInterval")
+    public static let quietInterval: TimeInterval = settleInterval
+
     public var statementsSinceSummary = 0
     public var lastSummaryAt: Date
     public var lastStatementAt: Date?
@@ -220,9 +251,14 @@ public struct CallSummaryTrigger: Sendable, Equatable {
 
     public func isDue(now: Date = Date(), commitmentOrDecision: Bool, answerInFlight: Bool) -> Bool {
         guard !answerInFlight, statementsSinceSummary > 0 else { return false }
-        if commitmentOrDecision || statementsSinceSummary >= 3 { return true }
-        if now.timeIntervalSince(lastSummaryAt) >= Self.maximumInterval { return true }
-        return lastStatementAt.map { now.timeIntervalSince($0) >= Self.quietInterval } ?? false
+        if commitmentOrDecision { return true }
+        if statementsSinceSummary >= Self.burstStatements { return true }
+        // The turn has ended: this is the ordinary path, and the one that makes
+        // the account keep pace with the conversation.
+        if let lastStatementAt, now.timeIntervalSince(lastStatementAt) >= Self.settleInterval {
+            return true
+        }
+        return now.timeIntervalSince(lastSummaryAt) >= Self.maximumInterval
     }
 }
 

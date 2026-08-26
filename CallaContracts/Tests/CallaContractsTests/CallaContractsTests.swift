@@ -30,9 +30,31 @@ final class CallaContractsTests: XCTestCase {
         let now = Date(timeIntervalSince1970: 100)
         var trigger = CallSummaryTrigger(now: now)
         trigger.recordStatement(at: now)
+        // Mid-sentence: a statement and its continuation a beat apart are one
+        // turn, and closing between them puts half a thought in the account.
         XCTAssertFalse(trigger.isDue(now: now.addingTimeInterval(1), commitmentOrDecision: false, answerInFlight: false))
         trigger.recordStatement(at: now); trigger.recordStatement(at: now)
         XCTAssertTrue(trigger.isDue(now: now, commitmentOrDecision: false, answerInFlight: false))
         XCTAssertFalse(trigger.isDue(now: now, commitmentOrDecision: true, answerInFlight: true))
+    }
+
+    /// The rule that makes the account keep pace: one turn, a short pause, done.
+    /// It used to take three statements or twenty seconds of silence.
+    func testOneTurnIsSummarisedOnceItHasSettled() {
+        let now = Date(timeIntervalSince1970: 100)
+        var trigger = CallSummaryTrigger(now: now)
+        trigger.recordStatement(at: now)
+        XCTAssertFalse(trigger.isDue(now: now.addingTimeInterval(CallSummaryTrigger.settleInterval - 0.5),
+                                     commitmentOrDecision: false, answerInFlight: false))
+        XCTAssertTrue(trigger.isDue(now: now.addingTimeInterval(CallSummaryTrigger.settleInterval),
+                                    commitmentOrDecision: false, answerInFlight: false))
+    }
+
+    /// Nothing is due when nothing has been said, however long it has been.
+    func testSilenceAloneNeverTriggersASummary() {
+        let now = Date(timeIntervalSince1970: 100)
+        let trigger = CallSummaryTrigger(now: now)
+        XCTAssertFalse(trigger.isDue(now: now.addingTimeInterval(600),
+                                     commitmentOrDecision: false, answerInFlight: false))
     }
 }
