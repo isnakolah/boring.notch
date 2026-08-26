@@ -4,6 +4,29 @@ Everything in the app that needs a language model goes through one layer, so a n
 feature declares what it wants rather than wiring its own path to a model. The Call
 Copilot is its first consumer.
 
+## Tutor feedback
+
+`IntelligenceTask.tutorFeedback` differs from Call Copilot advice. Boring Engine
+owns run identity, deterministic verification, progression, persistence and capture.
+A provider receives bounded authored context, verifier facts, optional learner question
+and Engine-owned target-window attachment. It returns strict JSON: `message`,
+`assessment`, `basis`. Only `message` is learner-visible; provider output cannot select
+targets, issue commands, verify steps or advance lessons.
+
+Default route is local `agy` for at most five seconds. Eligible local failures
+(binary/auth/quota/transport/timeout/dead session/invalid contract/unsupported image)
+fall back once to Gateway using remaining 15-second total deadline. Explicit Gateway
+choice is Gateway-only and never falls back local. Attribution records selected and
+actual provider, model, total latency, transport/provider fallback and bounded reason.
+
+Tutor attachments are never text or base64 prompt material. Engine validates one JPEG
+from exact focused allowlisted target window, AES-GCM encrypts and atomically stores it,
+then commits capture metadata and pending feedback row before provider request. Storage,
+capture, protocol and safety failures send nothing. Current `agy` transport explicitly
+rejects image attachments until Engine-private random-file staging is implemented end to
+end; it must never silently omit an image. Gateway feedback uses a tool-free image request.
+Both routes may send screenshots to remote model services.
+
 Before this, "intelligence" meant one hard-coded websocket to a Gateway on a
 Tailscale host (`wss://nomonhomelab.tailec0dca.ts.net/call-copilot/stream`), with no
 picker and no repair path — so an unreachable host meant no suggestions at all.

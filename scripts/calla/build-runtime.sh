@@ -1,6 +1,22 @@
 #!/usr/bin/env bash
 # Build Boring's hidden Tutor runtime into an XPC resource directory.
 set -euo pipefail
+trap 'echo "Calla runtime build failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+
+# Xcode exposes its selected Metal toolchain to Run Script phases. Nested SPM
+# builds need Swift compiler tools, not Metal's partial toolchain; otherwise
+# CallaCallHost fails only when invoked from xcodebuild.
+export TOOLCHAINS=com.apple.dt.toolchain.XcodeDefault
+unset TOOLCHAIN_DIR
+
+swift_build() {
+  if ! xcrun swift build "$@" >/dev/null; then
+    # First pass stays quiet in ordinary Xcode builds. Repeat only on failure
+    # so nested SPM diagnostics reach Xcode's build log.
+    xcrun swift build "$@"
+    return 1
+  fi
+}
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DESTINATION="${1:?usage: build-runtime.sh <resource-directory>}"
@@ -23,7 +39,7 @@ if [[ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" || "${EXPANDED_CODE_SIGN_IDENTITY}" 
   fi
 fi
 
-xcrun swift build --package-path "$PACKAGE" -c "$SWIFT_CONFIGURATION" >/dev/null
+swift_build --package-path "$PACKAGE" -c "$SWIFT_CONFIGURATION"
 BINARIES="$(xcrun swift build --package-path "$PACKAGE" -c "$SWIFT_CONFIGURATION" --show-bin-path)"
 for executable in CallaTutorHost CallaOverlayHelper; do
   [[ -x "$BINARIES/$executable" ]] || { echo "missing Tutor runtime executable: $executable" >&2; exit 78; }
@@ -37,6 +53,9 @@ HOST_APP="$DESTINATION/CallaTutorHost.app"
 # tooltip while still reporting itself as started.
 HELPER_APP="$HOST_APP/Contents/Helpers/CallaOverlayHelper.app"
 /bin/rm -f "$DESTINATION/CallaTutorHost" "$DESTINATION/CallaOverlayHelper"
+# Engine mode cannot carry standalone shell teaching relay forward from a
+# previous incremental build. Standalone TutorHost bundles it separately.
+/bin/rm -f "$DESTINATION/scripts/calla-ask.sh"
 mkdir -p "$DESTINATION/assets/blender" "$DESTINATION/scripts" "$HOST_APP/Contents/MacOS" \
   "$HOST_APP/Contents/Resources/assets/blender" "$HELPER_APP/Contents/MacOS"
 ditto "$BINARIES/CallaTutorHost" "$HOST_APP/Contents/MacOS/CallaTutorHost"
@@ -64,7 +83,7 @@ fi
 # cannot hold either.
 CALLHOST_PACKAGE="$ROOT/CallaCallHost"
 if [[ -d "$CALLHOST_PACKAGE" ]]; then
-  xcrun swift build --package-path "$CALLHOST_PACKAGE" -c "$SWIFT_CONFIGURATION" >/dev/null
+  swift_build --package-path "$CALLHOST_PACKAGE" -c "$SWIFT_CONFIGURATION"
   CALLHOST_BIN="$(xcrun swift build --package-path "$CALLHOST_PACKAGE" -c "$SWIFT_CONFIGURATION" --show-bin-path)"
   if [[ -x "$CALLHOST_BIN/CallaCallHost" ]]; then
     CALLHOST_APP="$DESTINATION/CallaCallHost.app"
@@ -107,7 +126,7 @@ fi
 
 # Old Tutor bootstrap/install/signing scripts create a second visible app and
 # old launch agents. The embedded runtime needs only these private relays.
-for script in calla-ask.sh calla-course.sh calla-gateway-check.sh; do
+for script in calla-course.sh calla-feedback.sh calla-gateway-check.sh; do
   ditto "$ROOT/Tutor/scripts/$script" "$DESTINATION/scripts/$script"
   chmod 700 "$DESTINATION/scripts/$script"
 done

@@ -52,3 +52,13 @@ end-to-end latency asynchronously to `audit/pedagogy.jsonl`.
 learner, success, interval, and due-review metadata on the Mac. The offline
 dashboard reads JSONL locally and reports first independent success plus median
 completion-to-feedback latency. Neither write may delay learner feedback.
+
+## Boring Engine authority
+
+When `runtimeMode=engine`, this legacy Gateway pedagogy loop is not authority.
+BoringCallaEngine owns course/run state, exact revision pinning, durable history,
+provider selection, feedback cancellation and deterministic advancement. Host is
+limited to authored instruction/overlay, bounded observation, deterministic
+detectors and exact target-window capture. Gateway feedback and local `agy` are
+tool-free supplemental text providers only. A clean deterministic pass never
+waits for a model; fail/unknown feedback never advances a step.

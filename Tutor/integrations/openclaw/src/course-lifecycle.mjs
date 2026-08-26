@@ -9,7 +9,7 @@ const REGISTRY_FORMAT = "calla-course-registry";
 const REGISTRY_VERSION = 1;
 const PHASES = new Set([
   "queued", "compiling", "validating", "waiting_for_blender", "preflighting", "publishing",
-  "published", "failed", "cancelled", "archived",
+  "ready_for_review", "published", "failed", "cancelled", "archived",
 ]);
 const ACTIVE_PHASES = new Set(["queued", "compiling", "validating", "waiting_for_blender", "preflighting", "publishing"]);
 const TERMINAL_PHASES = new Set(["published", "failed", "cancelled", "archived"]);
@@ -48,6 +48,7 @@ function publicJob(job) {
     source_revision: job.source_revision || null,
     next_action: job.phase === "waiting_for_blender" ? "Install and open Blender 5.2, then retry."
       : job.phase === "failed" ? "Fix reported course or asset bundle and retry."
+      : job.phase === "ready_for_review" ? "Review validation and preflight facts, then publish."
       : job.phase === "published" ? "Ready to start from Courses."
       : null,
   };
@@ -237,12 +238,8 @@ export class CourseLifecycleService {
       await this.set(job, "preflighting");
       await this.preflightRevision(job, result, controller.signal);
       if (controller.signal.aborted || job.revision !== revision || job.phase === "cancelled") return publicJob(job);
-      await this.set(job, "publishing", {title: sanitizeCourseText(result.title || job.title, "Untitled course"), lesson_count: result.lesson_count,
+      await this.set(job, "ready_for_review", {title: sanitizeCourseText(result.title || job.title, "Untitled course"), lesson_count: result.lesson_count,
         warnings: [], artifact: result.artifact || null, pack_id: typeof result.pack_id === "string" ? result.pack_id : null});
-      if (!job.artifact) throw new Error("validated course has no publishable artifact");
-      if (this.install) await this.install(job);
-      else await runPython(path.join(TUTOR_TOOLING_ROOT, "calla_pack_store.py"), [job.artifact, "--state-directory", path.dirname(this.directory)]);
-      await this.set(job, "published", {error: null});
     } catch (error) {
       if (!controller.signal.aborted && job.revision === revision && job.phase !== "cancelled") await this.set(job, "failed", {error: sanitizeCourseText(error instanceof Error ? error.message : String(error))});
     } finally { this.running.delete(id); }
@@ -265,7 +262,24 @@ export class CourseLifecycleService {
     // can inject an actual Blender 5.2 probe; absence must fail closed there.
     if (!result?.artifact || signal?.aborted) throw new Error("Blender preflight did not complete");
   }
-  async publish() { throw new TypeError("courses publish automatically after strict preflight"); }
+  async publish(id) {
+    await this.load();
+    const job = this.find(id);
+    if (job.phase !== "ready_for_review") throw new TypeError("only a reviewed-ready course can publish");
+    if (!job.artifact) throw new TypeError("review-ready course has no exact artifact");
+    const revision = job.revision;
+    await this.set(job, "publishing");
+    try {
+      if (this.install) await this.install(job);
+      else await runPython(path.join(TUTOR_TOOLING_ROOT, "calla_pack_store.py"), [job.artifact, "--state-directory", path.dirname(this.directory)]);
+      if (job.revision !== revision || job.phase !== "publishing") throw new Error("course changed while publishing");
+      return await this.set(job, "published", {error: null});
+    } catch (error) {
+      // Artifact stays reviewable. A failed install never replaces a prior
+      // published pointer and never makes an unreviewed revision learner-live.
+      return await this.set(job, "ready_for_review", {error: sanitizeCourseText(error instanceof Error ? error.message : String(error))});
+    }
+  }
   async changed() { await this.onChange(await this.list()); }
   async resumePending() {
     await this.load();

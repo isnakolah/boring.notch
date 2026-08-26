@@ -19,12 +19,30 @@ public enum IntelligenceFailure: Error, Sendable, Hashable {
     /// A `sessionKey` was required by the conversation policy and not supplied.
     case missingSessionKey(String)
     case transport(String)
+    case unsupportedAttachment(String)
+    case invalidRequest(String)
+
+    public var code: String {
+        switch self {
+        case .providerMissing: "provider_missing"
+        case .unauthenticated: "unauthenticated"
+        case .quotaExceeded: "quota_exhausted"
+        case .timedOut: "timed_out"
+        case .unparseable: "invalid_response_contract"
+        case .sessionDied: "dead_session"
+        case .unsupportedTask: "unsupported_task"
+        case .missingSessionKey: "missing_session_key"
+        case .transport: "unreachable_transport"
+        case .unsupportedAttachment: "unsupported_image_attachment"
+        case .invalidRequest: "invalid_request"
+        }
+    }
 
     /// Whether retrying the *same* provider could plausibly help.
     public var isRetryableInPlace: Bool {
         switch self {
         case .timedOut, .unparseable, .transport, .sessionDied: true
-        case .providerMissing, .unauthenticated, .quotaExceeded, .unsupportedTask, .missingSessionKey: false
+        case .providerMissing, .unauthenticated, .quotaExceeded, .unsupportedTask, .missingSessionKey, .unsupportedAttachment, .invalidRequest: false
         }
     }
 
@@ -34,6 +52,18 @@ public enum IntelligenceFailure: Error, Sendable, Hashable {
         switch self {
         case .providerMissing, .unauthenticated, .quotaExceeded: true
         default: false
+        }
+    }
+
+    /// Only failures caused after local route selection may cross from local
+    /// Tutor feedback to Gateway. Storage, capture and request validation live
+    /// above Router and must never call this path.
+    public var isEligibleTutorProviderFallback: Bool {
+        switch self {
+        case .providerMissing, .unauthenticated, .quotaExceeded, .timedOut, .unparseable, .sessionDied, .transport, .unsupportedAttachment:
+            true
+        case .unsupportedTask, .missingSessionKey, .invalidRequest:
+            false
         }
     }
 }

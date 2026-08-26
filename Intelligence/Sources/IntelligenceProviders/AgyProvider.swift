@@ -41,6 +41,10 @@ public actor AgyProvider: IntelligenceProvider {
     }
 
     public nonisolated let kind: ProviderKind = .localAgy
+    /// Existing `agy` transports accept text only. Do not advertise image
+    /// support until Engine-private file staging is wired end to end; silently
+    /// omitting a Tutor screenshot would make visual feedback unsafe and false.
+    public nonisolated let attachmentCapability: AttachmentCapability = .none
 
     private let configuration: Configuration
     private let catalog: ModelCatalog
@@ -135,6 +139,9 @@ public actor AgyProvider: IntelligenceProvider {
     // MARK: - Requests
 
     public func respond(to request: IntelligenceRequest) async throws -> IntelligenceResponse {
+        guard request.attachments.isEmpty else {
+            throw IntelligenceFailure.unsupportedAttachment("agy image staging is unavailable")
+        }
         guard let fastTransport, let slowTransport else {
             throw IntelligenceFailure.providerMissing("agy is not installed")
         }

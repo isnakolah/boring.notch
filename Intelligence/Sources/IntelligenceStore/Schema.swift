@@ -9,10 +9,11 @@ import Foundation
 enum Schema {
     /// Bump this and append to `migrations` — never edit a migration that has
     /// shipped, because someone's file has already run it.
-    static let current = 4
+    static let current = 5
 
     static func migrate(_ database: SQLiteDatabase) throws {
         let version = try database.scalarInt("PRAGMA user_version") ?? 0
+        guard version <= current else { throw SchemaError.unsupportedFutureVersion(version) }
         guard version < current else { return }
         for step in (version + 1) ... current {
             guard let sql = migrations[step] else { continue }
@@ -24,7 +25,171 @@ enum Schema {
         }
     }
 
-    private static let migrations: [Int: String] = [1: v1, 2: v2, 3: v3, 4: v4]
+    enum SchemaError: Error, Equatable, Sendable, LocalizedError {
+        case unsupportedFutureVersion(Int)
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupportedFutureVersion(let version): "Tutor store schema \(version) is newer than this Boring build"
+            }
+        }
+    }
+
+    private static let migrations: [Int: String] = [1: v1, 2: v2, 3: v3, 4: v4, 5: v5]
+
+    /// Engine-owned Tutor durable state. Host never receives this database and
+    /// Gateway never writes it. Capture files live outside SQLite; rows retain
+    /// metadata plus encrypted relative path only.
+    private static let v5 = """
+    CREATE TABLE IF NOT EXISTS tutor_setting (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at REAL NOT NULL
+    );
+    INSERT OR IGNORE INTO tutor_setting(key, value, updated_at) VALUES('provider_preference', 'local', strftime('%s','now'));
+
+    CREATE TABLE IF NOT EXISTS tutor_course_revision (
+      course_key TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      lifecycle TEXT NOT NULL,
+      title TEXT NOT NULL,
+      target_bundle_id TEXT NOT NULL,
+      target_version TEXT,
+      artifact_digest TEXT NOT NULL,
+      compiler_version TEXT,
+      pack_contract_version INTEGER,
+      validation_receipt TEXT,
+      preflight_receipt TEXT,
+      published_at REAL,
+      created_at REAL NOT NULL,
+      updated_at REAL NOT NULL,
+      PRIMARY KEY(course_key, revision)
+    );
+    CREATE INDEX IF NOT EXISTS tutor_course_revision_lifecycle ON tutor_course_revision(lifecycle, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS tutor_lesson (
+      course_key TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      ord INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      step_count INTEGER NOT NULL,
+      metadata TEXT,
+      PRIMARY KEY(course_key, revision, lesson_id),
+      FOREIGN KEY(course_key, revision) REFERENCES tutor_course_revision(course_key, revision) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS tutor_lesson_order ON tutor_lesson(course_key, revision, ord);
+
+    CREATE TABLE IF NOT EXISTS tutor_runtime_manifest (
+      course_key TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      manifest_json TEXT NOT NULL,
+      digest TEXT NOT NULL,
+      source_epoch TEXT NOT NULL,
+      source_sequence INTEGER NOT NULL,
+      synced_at REAL NOT NULL,
+      PRIMARY KEY(course_key, revision)
+    );
+
+    CREATE TABLE IF NOT EXISTS tutor_run (
+      run_id TEXT PRIMARY KEY,
+      course_key TEXT NOT NULL,
+      revision TEXT NOT NULL,
+      generation INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      lesson_id TEXT,
+      step_id TEXT,
+      started_at REAL NOT NULL,
+      ended_at REAL,
+      updated_at REAL NOT NULL,
+      FOREIGN KEY(course_key, revision) REFERENCES tutor_course_revision(course_key, revision)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS tutor_run_active ON tutor_run(course_key) WHERE status IN ('starting','active','feedback_pending','completing');
+
+    CREATE TABLE IF NOT EXISTS tutor_run_event (
+      id INTEGER PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tutor_run(run_id) ON DELETE CASCADE,
+      generation INTEGER NOT NULL,
+      ord INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      verifier_outcome TEXT,
+      note TEXT,
+      created_at REAL NOT NULL,
+      UNIQUE(run_id, generation, ord)
+    );
+    CREATE INDEX IF NOT EXISTS tutor_run_event_run ON tutor_run_event(run_id, generation, ord);
+
+    CREATE TABLE IF NOT EXISTS tutor_learning (
+      bundle_id TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      success_count INTEGER NOT NULL DEFAULT 0,
+      interval_days REAL NOT NULL DEFAULT 0,
+      due_at REAL,
+      offered_at REAL,
+      updated_at REAL NOT NULL,
+      PRIMARY KEY(bundle_id, lesson_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS tutor_capture (
+      id TEXT PRIMARY KEY,
+      relative_path TEXT NOT NULL UNIQUE,
+      ciphertext_digest TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      byte_count INTEGER NOT NULL,
+      key_version INTEGER NOT NULL,
+      created_at REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tutor_feedback (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL REFERENCES tutor_run(run_id) ON DELETE CASCADE,
+      generation INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      question TEXT,
+      context TEXT NOT NULL,
+      state TEXT NOT NULL,
+      answer TEXT,
+      selected_provider TEXT,
+      actual_provider TEXT,
+      model TEXT,
+      latency_ms INTEGER,
+      fallback_reason TEXT,
+      error_code TEXT,
+      capture_id TEXT REFERENCES tutor_capture(id) ON DELETE RESTRICT,
+      created_at REAL NOT NULL,
+      completed_at REAL
+    );
+    CREATE INDEX IF NOT EXISTS tutor_feedback_run ON tutor_feedback(run_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS tutor_feedback_state ON tutor_feedback(state, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS tutor_gateway_snapshot (
+      source_epoch TEXT PRIMARY KEY,
+      sequence INTEGER NOT NULL,
+      payload_digest TEXT NOT NULL,
+      payload BLOB NOT NULL,
+      received_at REAL NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tutor_import (
+      source_file TEXT PRIMARY KEY,
+      source_digest TEXT NOT NULL,
+      status TEXT NOT NULL,
+      imported_count INTEGER NOT NULL DEFAULT 0,
+      error_code TEXT,
+      updated_at REAL NOT NULL
+    );
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS tutor_fts USING fts5(
+      feedback_id UNINDEXED,
+      course_title,
+      lesson_title,
+      question,
+      answer,
+      tokenize='porter unicode61'
+    );
+    """
 
     /// Attached documents.
     ///

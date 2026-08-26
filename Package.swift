@@ -8,8 +8,8 @@ let package = Package(
         .target(
             name: "CallaEngineValidation",
             path: "BoringCallaEngine",
-            exclude: ["BoringCallaEngine.swift", "BoringCallaEngineProtocol.swift", "BoringCallaEngine.entitlements", "Info.plist", "main.swift"],
-            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift", "CallaCopilotCommandValidation.swift", "CallaAgyLoginParsing.swift"]
+            exclude: ["BoringCallaEngine.swift", "BoringCallaEngineProtocol.swift", "BoringCallaEngine.entitlements", "Info.plist", "main.swift", "TutorHistoryKey.swift", "TutorEngineIngress.swift"],
+            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift", "CallaCopilotCommandValidation.swift", "CallaAgyLoginParsing.swift", "TutorEngineGate.swift"]
         ),
         .target(
             name: "CallaNotchPresentation",

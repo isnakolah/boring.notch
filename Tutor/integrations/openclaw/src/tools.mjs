@@ -341,7 +341,7 @@ export async function pushSessionStart(api, config) {
   try {
     const envelope = buildSessionStartEnvelope({
       min: 2,
-      max: 3,
+      max: 4,
       engineBuild: config.engineBuild,
       nodeContractHash: config.nodeContractHash,
     });

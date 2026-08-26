@@ -19,6 +19,12 @@ import Foundation
     func resumeCourse(with reply: @escaping (Data) -> Void)
     func stopLesson(with reply: @escaping (Data) -> Void)
     func ask(_ text: String, with reply: @escaping (Data) -> Void)
+    /// Bounded Tutor control-plane calls. History is text/metadata only; one
+    /// selected encrypted capture is returned separately on demand.
+    func setTutorProvider(_ provider: String, with reply: @escaping (Data) -> Void)
+    func tutorHistory(_ query: Data, with reply: @escaping (Data) -> Void)
+    func tutorCapture(_ captureID: String, with reply: @escaping (Data) -> Void)
+    func cancelTutorFeedback(_ feedbackID: String, generation: Int, with reply: @escaping (Data) -> Void)
     /// Owner UI sends a typed, bounded course-control command. The engine
     /// validates it before it can reach Boring's bundled private script.
     func courseControl(_ command: Data, with reply: @escaping (Data) -> Void)

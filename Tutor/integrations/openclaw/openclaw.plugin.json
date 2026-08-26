@@ -52,6 +52,22 @@
         "type": "string",
         "minLength": 1
       },
+      "runtimeMode": {
+        "enum": [
+          "standalone",
+          "engine"
+        ],
+        "default": "standalone"
+      },
+      "engineSocketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "engineCapabilityToken": {
+        "type": "string",
+        "minLength": 36,
+        "maxLength": 64
+      },
       "timeoutMs": {
         "type": "integer",
         "minimum": 1000,
@@ -69,6 +85,15 @@
       "courseSocketPath": {
         "type": "string",
         "minLength": 1
+      },
+      "feedbackSocketPath": {
+        "type": "string",
+        "minLength": 1
+      },
+      "feedbackAgentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
       },
       "requireOwnerIdentity": {
         "type": "boolean",

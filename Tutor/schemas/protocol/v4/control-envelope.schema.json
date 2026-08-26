@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calla.local/schemas/protocol/v4/control-envelope.schema.json",
+  "title": "Tutor Engine control envelope v4",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "request_id", "identity", "operation", "payload", "issued_at"],
+  "properties": {
+    "protocol_version": {"const": 4},
+    "request_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "generation", "course_key", "revision", "lesson_id", "step_id"],
+      "properties": {
+        "run_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+        "generation": {"type": "integer", "minimum": 0},
+        "course_key": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+        "revision": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+        "lesson_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+        "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"}
+      }
+    },
+    "operation": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,256}$"},
+    "payload": {"type": "object"},
+    "issued_at": {"type": "string", "format": "date-time"}
+  }
+}

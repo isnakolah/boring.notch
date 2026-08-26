@@ -193,6 +193,35 @@ final class IntelligenceRouterTests: XCTestCase {
         XCTAssertEqualAsync(await local.callCount, 1)
     }
 
+    func testTutorLocalFailureFallsBackOnceWithoutLocalRetry() async throws {
+        let local = FakeProvider(kind: .localAgy, failures: [.transport("down")])
+        let gateway = FakeProvider(kind: .callaGateway, reply: "gateway")
+        let router = IntelligenceRouter(providers: [local, gateway])
+        let request = IntelligenceRequest(task: .tutorFeedback, sessionKey: "run-1", input: "help")
+
+        let response = try await router.respond(to: request)
+        XCTAssertEqual(response.attribution.provider, .callaGateway)
+        XCTAssertEqual(response.attribution.selectedProvider, .localAgy)
+        XCTAssertTrue(response.attribution.providerFallback)
+        XCTAssertEqual(response.attribution.fallbackReason, "unreachable_transport")
+        XCTAssertEqualAsync(await local.callCount, 1)
+        XCTAssertEqualAsync(await gateway.callCount, 1)
+    }
+
+    func testTutorGatewaySelectionNeverFallsBackToLocal() async throws {
+        let local = FakeProvider(kind: .localAgy, reply: "local")
+        let gateway = FakeProvider(kind: .callaGateway, reply: "gateway")
+        let router = IntelligenceRouter(
+            providers: [local, gateway],
+            policy: .init(preferred: ["tutor.feedback": .callaGateway]))
+        let request = IntelligenceRequest(task: .tutorFeedback, sessionKey: "run-1", input: "help")
+
+        let response = try await router.respond(to: request)
+        XCTAssertEqual(response.text, "gateway")
+        XCTAssertEqualAsync(await local.callCount, 0)
+        XCTAssertEqualAsync(await gateway.callCount, 1)
+    }
+
     /// A live call outruns any model. Inputs that arrive mid-request must become
     /// one follow-up request, not a backlog of stale ones.
     func testEnqueueCoalescesInputsArrivingDuringARequest() async throws {

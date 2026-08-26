@@ -96,3 +96,39 @@ Not cut over:
   runtime because local signing cannot satisfy library validation for Boring's
   embedded OpenSSL framework. Restore Developer ID signing and hardened runtime
   together before external distribution.
+
+## Tutor Engine cutover, protocol v4
+
+Boring mode is now `runtimeMode=engine`. `BoringCallaEngine` owns canonical
+Tutor rows in CallaStore, encrypted target-window history, deterministic run
+state, provider routing and publication control. TutorHost is capture,
+observation, verifier and overlay executor only. It has no model process,
+shell relay or durable Tutor writer in engine mode. Standalone remains an
+explicit Tutor-only rollback mode; Boring cannot select or fall back into it.
+
+Gateway node still exposes `tutor.host` for pairing compatibility, but only
+for capability, catalogue, lifecycle, runtime and health snapshots. It forwards
+those bounded, sequenced snapshots to Engine ingress. Model-visible operations
+(`observe`, `guide`, `plan`, `narrate`, `point`, `verify`, learning writes and
+actions) fail with `OPERATION_NOT_AVAILABLE_IN_ENGINE_MODE`.
+
+An exact published runtime revision is required for a new run and continuation.
+Missing, stale, invalid or incompatible runtime blocks progression and requests
+resync; no cached older revision and no provider answer can replace it. Active
+runs stay pinned while a reviewed revision is explicitly published.
+
+Tutor history captures are AES-GCM ciphertext files outside SQLite. Engine
+creates a this-device-only Keychain key, writes and fsyncs a random temporary
+ciphertext, renames it, then atomically commits capture metadata plus a pending
+feedback row. Any capture/key/DB/disk error sends nothing. History is retained
+until app data is manually removed after quitting; UI intentionally has no
+delete or pruning control.
+
+At first Engine launch, only Boring-owned JSON compatibility inputs are copied
+byte-for-byte to `legacy-import/v1/` and imported domain-by-domain. Standalone
+`~/Library/Application Support/CallaTutor` is never read or changed. Engine then
+writes compatibility projections for TutorHost/rollback; TutorHost does not
+write Boring Tutor JSON.
+
+See [Tutor control-plane plan](plans/tutor-intelligence-control-plane.md) and
+[operator runbook](tutor-operator-runbook.md).

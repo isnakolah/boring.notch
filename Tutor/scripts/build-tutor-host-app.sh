@@ -70,6 +70,8 @@ cp "$SCRIPT_DIRECTORY/calla-ask.sh" "$STAGED_APP/Contents/Resources/calla-ask.sh
 chmod +x "$STAGED_APP/Contents/Resources/calla-ask.sh"
 cp "$SCRIPT_DIRECTORY/calla-course.sh" "$STAGED_APP/Contents/Resources/calla-course.sh"
 chmod +x "$STAGED_APP/Contents/Resources/calla-course.sh"
+cp "$SCRIPT_DIRECTORY/calla-feedback.sh" "$STAGED_APP/Contents/Resources/calla-feedback.sh"
+chmod +x "$STAGED_APP/Contents/Resources/calla-feedback.sh"
 cp "$SCRIPT_DIRECTORY/calla-gateway-check.sh" "$STAGED_APP/Contents/Resources/calla-gateway-check.sh"
 chmod +x "$STAGED_APP/Contents/Resources/calla-gateway-check.sh"
 # Courses can be authored from the installed Settings window too. Ship its

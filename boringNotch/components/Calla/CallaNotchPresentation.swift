@@ -88,4 +88,8 @@ enum CallaNotchPresentation {
     static func canAsk(question: String, running: Bool) -> Bool {
         running && !question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    static func canAsk(question: String, running: Bool, feedbackAvailable: Bool, feedbackPending: Bool) -> Bool {
+        canAsk(question: question, running: running) && feedbackAvailable && !feedbackPending
+    }
 }

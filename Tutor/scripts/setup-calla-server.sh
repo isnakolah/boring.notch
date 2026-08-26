@@ -116,6 +116,7 @@ case "$MODE" in
     python3 "$REPOSITORY_ROOT/tools/calla_openclaw_setup.py" "${install_arguments[@]}"
     mkdir -p "$HOME/.local/bin"
     install -m 700 "$REPOSITORY_ROOT/scripts/calla-course-gateway.sh" "$HOME/.local/bin/calla-course"
+    install -m 700 "$REPOSITORY_ROOT/scripts/calla-feedback-gateway.sh" "$HOME/.local/bin/calla-feedback"
     install_tailscale_proxy
     install_node_enroller
     printf '\nCalla private defaults are installed. The bundled Mac bootstrap can now connect over Tailscale without a Gateway login token.\n'

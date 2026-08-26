@@ -292,3 +292,23 @@ reinstall, and a node reconnect. Adding an operation means adding it to
 `TUTOR_TOOL_NAMES`, `TOOL_TO_OPERATION`, the tool definitions in `tools.mjs`,
 the `contracts.tools` list in `openclaw.plugin.json`, and the Swift dispatch —
 all five, or the tool exists and does nothing.
+
+## Boring Engine mode (protocol v4)
+
+`runtimeMode=engine` is one-way authority reduction for embedded Boring. The
+Engine creates a run/generation only after persisting it, sends typed Host
+commands, validates Host receipts against current identity, and advances only
+on deterministic `satisfied`. `unsatisfied`/`unknown` hold step and may request
+supplementary feedback. Model output is never parsed as a target, command,
+coordinate, verifier result or progression decision.
+
+Host captures only exact currently-frontmost allowlisted target window for
+feedback. It returns JPEG bytes over owner-local IPC and never writes image
+files. Engine validates, encrypts, persists capture plus pending request, then
+routes. Gateway feedback is a separate owner-only socket using
+`runEmbeddedAgent(images:, disableTools:true)` with no Tutor tools/node calls.
+
+Gateway/node snapshot transport remains `tutor.host`, but permitted Engine
+operations are capability, catalogue, lifecycle, runtime and health snapshots.
+Any legacy teaching/model operation is unavailable in Engine mode. Standalone
+mode retains legacy behavior for rollback and is never entered by Boring.

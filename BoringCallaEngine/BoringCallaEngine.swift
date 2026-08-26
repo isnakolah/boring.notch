@@ -1,7 +1,10 @@
 import ApplicationServices
 import CoreGraphics
+import CryptoKit
 import Darwin
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import CallaContracts
 import IntelligenceStore
 
@@ -37,7 +40,21 @@ private struct Status: Codable {
     var diagnostics: [String] = []
     var activeLesson: ActiveLesson? = nil
     var courses: [CourseSnapshot] = []
+    var tutorIntelligence: TutorIntelligenceStatus? = nil
     var copilot: CopilotStatus = CopilotStatus()
+}
+
+private struct TutorIntelligenceStatus: Codable {
+    var selectedProvider = "local"
+    var activeProvider: String? = nil
+    var pendingFeedbackID: String? = nil
+    var activeRunID: String? = nil
+    var activeRevision: String? = nil
+    var activeGeneration: Int? = nil
+    var localAgyAvailable = false
+    var localAgyAuthenticated = false
+    var gatewayFeedbackAvailable = false
+    var captureAvailable = false
 }
 
 /// Live-call state, folded into the same `Status` the notch already polls every
@@ -519,10 +536,15 @@ private struct CourseRunFile: Decodable {
 }
 private struct CourseRunEntry: Decodable { let text: String }
 
-private struct RuntimeManifest: Decodable { let courses: [RuntimeCourse] }
+private struct RuntimeManifest: Decodable {
+    let format: String
+    let formatVersion: Int
+    let courses: [RuntimeCourse]
+    enum CodingKeys: String, CodingKey { case format, courses; case formatVersion = "format_version" }
+}
 private struct RuntimeCourse: Decodable {
-    let courseID: String; let appBundleID: String; let appVersion: String; let lessons: [RuntimeLesson]
-    enum CodingKeys: String, CodingKey { case lessons; case courseID = "course_id", appBundleID = "app_bundle_id", appVersion = "app_version" }
+    let courseID: String; let courseRevision: String; let appBundleID: String; let appVersion: String; let lessons: [RuntimeLesson]
+    enum CodingKeys: String, CodingKey { case lessons; case courseID = "course_id", courseRevision = "course_revision", appBundleID = "app_bundle_id", appVersion = "app_version" }
 }
 private struct RuntimeLesson: Decodable {
     let id: String; let steps: [RuntimeStep]
@@ -543,7 +565,7 @@ private struct CourseCommand: Decodable {
     }
 }
 
-private struct CapabilityHandshake: Decodable {
+private struct CapabilityHandshake: Codable {
     let engineBuild: String
     let nodeContractHash: String
     let receivedAt: Date
@@ -673,11 +695,27 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }()
     private var gatewayUpdate: Process?
     private var courseControlProcess: Process?
+    private var tutorFeedbackProcess: Process?
+    private var activeTutorFeedbackID: String?
+    private var activeTutorFeedback: TutorFeedbackRecord?
+    /// Deterministic observation runs twice per second. Remember one automatic
+    /// help trigger per exact held step so an unsatisfied detector cannot start
+    /// a new remote request immediately after every completed reply.
+    private var automaticTutorFeedbackTrigger: (runID: String, generation: Int, stepID: String, outcome: String)?
     private var gatewayReachable = false
     private var gatewayMonitor: DispatchSourceTimer?
     private var diagnostics: [String] = []
     private let statusObservers = NSHashTable<AnyObject>.weakObjects()
     private var statusMonitor: DispatchSourceTimer?
+    private var engineIngress: TutorEngineIngress?
+    /// Rotated for each Engine process. Only its child node receives this in
+    /// environment; no token is persisted or surfaced through XPC/status.
+    private var engineIngressToken = UUID().uuidString.lowercased()
+    private var activeTutorRun: TutorRunRecord?
+    private var tutorGeneration = 0
+    private var tutorObservationTimer: DispatchSourceTimer?
+    private var tutorCaptureVault: TutorCaptureVault?
+    private var tutorCaptureFailure: String?
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -685,6 +723,8 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private var socketURL: URL { root.appendingPathComponent("tutor-host.sock") }
+    private var engineIngressURL: URL { root.appendingPathComponent("engine-ingress.sock") }
+    private var tutorCaptureURL: URL { root.appendingPathComponent("TutorAttachments", isDirectory: true) }
     private var runtimePIDURL: URL { root.appendingPathComponent("runtime.pid") }
     private var nodePIDURL: URL { root.appendingPathComponent("node.pid") }
 
@@ -694,9 +734,11 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             do {
                 try self.prepareRuntimeDirectories()
                 self.restorePreferences()
+                self.importBoringTutorState()
                 self.importArchivesOnce()
                 self.reclaimStaleOwnedChildren()
                 self.detectConflicts()
+                try self.startEngineIngress()
                 // Teaching depends on the host, so a failure here is fatal.
                 try self.startRuntime()
                 self.isRunning = true
@@ -729,6 +771,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     /// resident `agy` language server holding ~190MB, with nothing driving either.
     func shutdownEverything() {
         stopGatewayMonitor()
+        stopTutorObservation()
+        engineIngress?.stop()
+        engineIngress = nil
         if let runtime { terminateProcessTree(runtime.processIdentifier) }
         runtime = nil
         clearOwnedPID(at: runtimePIDURL)
@@ -748,6 +793,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
         agyLoginProcess = nil
         agyLoginInput = nil
+        cancelActiveTutorFeedback(reason: "engine_stopped")
         terminateStrayAgyHosts()
         gatewayReachable = false
         isRunning = false
@@ -884,34 +930,97 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 reply(self.encodedStatus())
                 return
             }
-            self.invokeRuntime(operation: "course_start", payload: ["course_id": courseID])
+            self.startEngineCourse(courseID: courseID, lessonID: nil)
             reply(self.encodedStatus())
         }
     }
 
     func resumeCourse(with reply: @escaping (Data) -> Void) {
         queue.async {
-            self.invokeRuntime(operation: "course_resume", payload: [:])
+            guard let run = self.activeTutorRun else {
+                self.lastResult = "No Engine-owned course run is ready to resume"
+                reply(self.encodedStatus())
+                return
+            }
+            self.renderEngineStep(run: run)
             reply(self.encodedStatus())
         }
     }
 
     func stopLesson(with reply: @escaping (Data) -> Void) {
         queue.async {
-            self.invokeRuntime(operation: "course_stop", payload: [:])
+            self.stopEngineCourse()
             reply(self.encodedStatus())
         }
     }
 
     func ask(_ text: String, with reply: @escaping (Data) -> Void) {
         queue.async {
-            let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty, clean.count <= 800 else {
+            guard let clean = Self.sanitizeTutorQuestion(text) else {
                 self.lastResult = "Ask needs one short question"
                 reply(self.encodedStatus())
                 return
             }
-            self.invokeRuntime(operation: "course_ask", payload: ["text": clean])
+            self.requestTutorFeedback(question: clean, kind: "question")
+            reply(self.encodedStatus())
+        }
+    }
+
+    func setTutorProvider(_ provider: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard let preference = TutorProviderPreference(rawValue: provider), let store = self.store else {
+                self.lastResult = "Rejected Tutor provider preference"; reply(self.encodedStatus()); return
+            }
+            let saved = self.awaitOnQueue {
+                do { try await store.setTutorProviderPreference(preference); return true } catch { return false }
+            } ?? false
+            self.lastResult = saved ? "Tutor provider preference saved" : "Tutor provider preference could not be saved"
+            reply(self.encodedStatus())
+        }
+    }
+
+    func tutorHistory(_ query: Data, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard query.count <= 16 * 1024,
+                  let request = try? JSONDecoder().decode(TutorHistoryQuery.self, from: query),
+                  request.pageSize > 0, request.pageSize <= 50,
+                  (request.query?.utf8.count ?? 0) <= 800,
+                  let store = self.store else { reply(Data()); return }
+            let page = self.awaitOnQueue {
+                try? await store.tutorFeedbackHistory(cursor: request.cursor, query: request.query, pageSize: request.pageSize)
+            } ?? nil
+            reply((try? JSONEncoder().encode(page)) ?? Data())
+        }
+    }
+
+    func tutorCapture(_ captureID: String, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard Self.validTutorID(captureID), let store = self.store, let vault = self.resolveTutorCaptureVault() else {
+                reply(Data()); return
+            }
+            let record = self.awaitOnQueue { try? await store.tutorCapture(id: captureID) } ?? nil
+            guard let capture = record, let image = try? vault.readJPEG(relativePath: capture.relativePath) else {
+                reply(Data()); return
+            }
+            reply(image)
+        }
+    }
+
+    func cancelTutorFeedback(_ feedbackID: String, generation: Int, with reply: @escaping (Data) -> Void) {
+        queue.async {
+            guard Self.validTutorID(feedbackID), generation >= 0, let store = self.store else {
+                self.lastResult = "Rejected Tutor feedback cancellation"; reply(self.encodedStatus()); return
+            }
+            let changed = self.awaitOnQueue {
+                do { try await store.transitionTutorFeedback(id: feedbackID, generation: generation, state: .cancelled, errorCode: "owner_cancelled"); return true }
+                catch { return false }
+            } ?? false
+            if changed, self.activeTutorFeedbackID == feedbackID {
+                if let process = self.tutorFeedbackProcess, process.isRunning { self.terminateProcessTree(process.processIdentifier) }
+                self.tutorFeedbackProcess = nil
+                self.activeTutorFeedbackID = nil
+            }
+            self.lastResult = changed ? "Tutor feedback cancelled" : "Tutor feedback was no longer pending"
             reply(self.encodedStatus())
         }
     }
@@ -927,7 +1036,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func performCourseCommand(_ command: CourseCommand) {
-        let allowedActions: Set<String> = ["start_lesson", "start_again", "import", "cancel", "retry", "archive", "restore", "revise", "refresh_runtime"]
+        let allowedActions: Set<String> = ["start_lesson", "start_again", "import", "cancel", "retry", "publish", "archive", "restore", "revise", "refresh_runtime"]
         guard allowedActions.contains(command.action) else { lastResult = "Rejected unknown course command"; return }
         let courseID = CallaCourseCommandValidation.identifier(command.courseID)
         if command.action != "import" && command.action != "refresh_runtime" {
@@ -942,10 +1051,11 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                   currentCourses().first(where: { $0.id == courseID })?.lessons.contains(where: { $0.id == lessonID }) == true else {
                 lastResult = "Lesson is not in selected course"; return
             }
-            invokeRuntime(operation: "course_start", payload: ["course_id": courseID, "lesson_id": lessonID])
+            startEngineCourse(courseID: courseID, lessonID: lessonID)
         case "start_again":
             guard let courseID else { lastResult = "Rejected invalid course identifier"; return }
-            invokeRuntime(operation: "course_start_again", payload: ["course_id": courseID])
+            stopEngineCourse()
+            startEngineCourse(courseID: courseID, lessonID: nil)
         case "import", "revise":
             guard let outline = CallaCourseCommandValidation.outline(command.outline),
                   let target = CallaCourseCommandValidation.bundleID(command.targetApp),
@@ -958,7 +1068,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                                           "target_frontmost": true, "target_allowlisted": true, "asset_bundle_local": zip.path]
             if let courseID { payload["course_id"] = courseID }
             runCourseScript(command.action == "revise" ? "edit-as-new-revision" : "import", payload: payload)
-        case "cancel", "retry", "archive", "restore":
+        case "cancel", "retry", "publish", "archive", "restore":
             guard let courseID else { lastResult = "Rejected invalid course identifier"; return }
             runCourseScript(command.action, payload: ["course_id": courseID])
         case "refresh_runtime":
@@ -2630,6 +2740,291 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    /// One-way, Boring-owned compatibility import. Never touches standalone
+    /// Calla paths. Inputs are copied before decoding so malformed JSON remains
+    /// available for repair and retries on a later Engine launch.
+    private func importBoringTutorState() {
+        guard let store else { return }
+        let sourceRoot = root
+        let importRoot = root.appendingPathComponent("legacy-import/v1", isDirectory: true)
+        let candidates = ["catalogue.json", "course-status.json", "course-runs.json", "course-runtime.json"]
+        let learningRoot = sourceRoot.appendingPathComponent("learning", isDirectory: true)
+        let learning = (try? fileManager.contentsOfDirectory(at: learningRoot, includingPropertiesForKeys: [.isRegularFileKey]))?
+            .filter { $0.pathExtension == "json" }.map { "learning/\($0.lastPathComponent)" } ?? []
+        for relative in candidates + learning {
+            let source = sourceRoot.appendingPathComponent(relative)
+            guard let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true, let size = values.fileSize, size >= 0, size <= 5 * 1024 * 1024,
+                  let bytes = try? Data(contentsOf: source) else { continue }
+            let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+            let destination = importRoot.appendingPathComponent(relative)
+            do {
+                try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+                if !fileManager.fileExists(atPath: destination.path) {
+                    try bytes.write(to: destination, options: .atomic)
+                    try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+                }
+                let outcome = importBoringTutorDomain(relative: relative, data: bytes)
+                _ = awaitOnQueue {
+                    try? await store.recordTutorImport(sourceFile: relative, digest: digest,
+                                                        status: outcome ? "imported" : "malformed",
+                                                        importedCount: outcome ? 1 : 0,
+                                                        errorCode: outcome ? nil : "invalid_shape")
+                    return true
+                }
+            } catch {
+                _ = awaitOnQueue {
+                    try? await store.recordTutorImport(sourceFile: relative, digest: digest, status: "failed", importedCount: 0, errorCode: "copy_failed")
+                    return true
+                }
+            }
+        }
+    }
+
+    private func importBoringTutorDomain(relative: String, data: Data) -> Bool {
+        let operation: String
+        let payload: [String: Any]
+        switch relative {
+        case "catalogue.json":
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            payload = object as? [String: Any] ?? ["courses": object]
+            operation = "catalogue"
+        case "course-status.json":
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            payload = object as? [String: Any] ?? ["courses": object]
+            operation = "course_status"
+        case "course-runtime.json":
+            guard let object = try? JSONSerialization.jsonObject(with: data) else { return false }
+            payload = ["runtime": object]
+            operation = "course_runtime"
+        default:
+            // Run and learning migration remains intentionally domain-specific;
+            // preserve source now rather than fabricating progress from unknown
+            // old shapes.
+            return true
+        }
+        let request: [String: Any] = [
+            "protocol_version": 4, "request_id": "import-" + UUID().uuidString.lowercased(),
+            "operation": operation, "session_id": "calla-import-v1", "payload": payload,
+            "capability_token": engineIngressToken, "source_epoch": "legacy-import-v1", "source_sequence": 0,
+        ]
+        guard let body = try? JSONSerialization.data(withJSONObject: request),
+              let response = try? JSONSerialization.jsonObject(with: handleEngineIngress(body)) as? [String: Any] else { return false }
+        return response["ok"] as? Bool == true
+    }
+
+    /// Node-only ingress for Gateway snapshots. Host has no receive path for
+    /// these writes in Engine mode: Engine commits durable normalized state,
+    /// then emits the compatibility projection Host may read.
+    private func startEngineIngress() throws {
+        guard engineIngress == nil else { return }
+        engineIngressToken = UUID().uuidString.lowercased()
+        let ingress = TutorEngineIngress(path: engineIngressURL.path) { [weak self] data in
+            guard let self else {
+                return Self.ingressReply(ok: false, code: "engine_unavailable", message: "Boring Engine is unavailable")
+            }
+            return self.queue.sync { self.handleEngineIngress(data) }
+        }
+        try ingress.start()
+        engineIngress = ingress
+    }
+
+    private func handleEngineIngress(_ data: Data) -> Data {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return Self.ingressReply(ok: false, code: "invalid_frame", message: "Engine ingress requires JSON object")
+        }
+        let allowed = Set(["protocol_version", "request_id", "operation", "session_id", "payload", "capability_token", "source_epoch", "source_sequence"])
+        guard Set(object.keys).isSubset(of: allowed),
+              let version = object["protocol_version"] as? Int, (2...4).contains(version),
+              let requestID = object["request_id"] as? String, Self.validTutorID(requestID),
+              let operation = object["operation"] as? String,
+              let sessionID = object["session_id"] as? String, sessionID.count >= 8,
+              let token = object["capability_token"] as? String, token == engineIngressToken,
+              let payload = object["payload"] as? [String: Any] else {
+            return Self.ingressReply(ok: false, code: "invalid_envelope", message: "Engine ingress rejected envelope")
+        }
+        let permitted = Set(["session_start", "catalogue", "course_status", "course_runtime", "gateway_health"])
+        guard permitted.contains(operation) else {
+            return Self.ingressReply(ok: false, code: "OPERATION_NOT_AVAILABLE_IN_ENGINE_MODE", message: "Operation unavailable in Boring Engine mode")
+        }
+        // v2/v3 transition snapshots had no source ordering. They may seed an
+        // empty local cache once; current senders must carry epoch/sequence.
+        let epoch = object["source_epoch"] as? String ?? "transition"
+        let sequence = object["source_sequence"] as? Int ?? 0
+        guard Self.validTutorID(epoch), sequence >= 0 else {
+            return Self.ingressReply(ok: false, code: "invalid_snapshot_identity", message: "Gateway snapshot identity is invalid")
+        }
+        do {
+            switch operation {
+            case "session_start":
+                guard let range = payload["supported_protocol_range"] as? [String: Any],
+                      range["min"] as? Int != nil, range["max"] as? Int != nil,
+                      let build = payload["engine_build"] as? String, !build.isEmpty,
+                      let contract = payload["node_contract_hash"] as? String,
+                      contract.range(of: "^[A-Fa-f0-9]{16,128}$", options: .regularExpression) != nil else {
+                    return Self.ingressReply(ok: false, code: "invalid_session_start", message: "Capability handshake is invalid")
+                }
+                try writeCapabilityHandshake(CapabilityHandshake(engineBuild: build, nodeContractHash: contract, receivedAt: Date()))
+            case "catalogue":
+                guard payload["courses"] is [Any] else { return Self.ingressReply(ok: false, code: "invalid_catalogue", message: "Catalogue requires courses") }
+                try writeEngineProjection("catalogue.json", payload["courses"]!)
+            case "course_status":
+                guard payload["courses"] is [Any] else { return Self.ingressReply(ok: false, code: "invalid_course_status", message: "Course status requires courses") }
+                try writeEngineProjection("course-status.json", payload["courses"]!)
+                if let courses = try? JSONDecoder().decode([LifecycleCourse].self,
+                                                           from: JSONSerialization.data(withJSONObject: payload["courses"]!)),
+                   let store {
+                    _ = awaitOnQueue {
+                        for course in courses {
+                            if let lifecycle = TutorRevisionLifecycle(rawValue: course.phase) {
+                                try? await store.setTutorRevisionLifecycle(courseKey: course.id, lifecycle: lifecycle)
+                            }
+                        }
+                        return true
+                    }
+                }
+            case "course_runtime":
+                guard let runtime = payload["runtime"], JSONSerialization.isValidJSONObject(runtime) else {
+                    return Self.ingressReply(ok: false, code: "invalid_course_runtime", message: "Runtime manifest is invalid")
+                }
+                let runtimeData = try JSONSerialization.data(withJSONObject: runtime, options: [.sortedKeys])
+                guard runtimeData.count <= 5 * 1024 * 1024,
+                      let manifest = try? JSONDecoder().decode(RuntimeManifest.self, from: runtimeData),
+                      manifest.format == "calla-course-runtime", manifest.formatVersion == 1,
+                      !manifest.courses.isEmpty else {
+                    return Self.ingressReply(ok: false, code: "invalid_course_runtime", message: "Runtime manifest is unsupported")
+                }
+                try persistRuntimeManifest(manifest, rawData: runtimeData, epoch: epoch, sequence: sequence)
+                try writeEngineProjection("course-runtime.json", runtime)
+            case "gateway_health":
+                try writeEngineProjection("gateway-health.json", payload)
+            default: break
+            }
+            return Self.ingressReply(ok: true, code: nil, message: nil)
+        } catch {
+            appendDiagnostic("Engine ingress \(operation) refused: \(error.localizedDescription)")
+            return Self.ingressReply(ok: false, code: "snapshot_refused", message: "Engine could not commit Gateway snapshot")
+        }
+    }
+
+    private func persistRuntimeManifest(_ manifest: RuntimeManifest, rawData: Data, epoch: String, sequence: Int) throws {
+        let catalogue = Dictionary(uniqueKeysWithValues: (try? JSONDecoder().decode([CatalogueCourse].self, from: Data(contentsOf: root.appendingPathComponent("catalogue.json"))))?.map { ($0.id, $0) } ?? [])
+        let lifecycle = Dictionary(uniqueKeysWithValues: currentLifecycle().map { ($0.id, $0.phase) })
+        let digest = SHA256.hash(data: rawData).map { String(format: "%02x", $0) }.joined()
+        guard let store else { throw TutorRuntimeError.socketUnavailable }
+        let committed = awaitOnQueue {
+            do {
+                for course in manifest.courses {
+                    let title = catalogue[course.courseID]?.title ?? course.courseID
+                    let phase = TutorRevisionLifecycle(rawValue: lifecycle[course.courseID] ?? "ready_for_review") ?? .readyForReview
+                    let lessons = course.lessons.enumerated().map { index, lesson in
+                        TutorLessonRecord(lessonID: lesson.id, ordinal: index,
+                                          title: catalogue[course.courseID]?.lessons.first(where: { $0.id == lesson.id })?.title ?? lesson.id,
+                                          stepCount: lesson.steps.count)
+                    }
+                    try await store.upsertTutorCourseRevision(TutorCourseRevisionRecord(
+                        courseKey: course.courseID, revision: course.courseRevision, lifecycle: phase,
+                        title: title, targetBundleID: course.appBundleID, targetVersion: course.appVersion,
+                        artifactDigest: digest, packContractVersion: 1), lessons: lessons)
+                    try await store.upsertTutorRuntimeManifest(TutorRuntimeManifestRecord(
+                        courseKey: course.courseID, revision: course.courseRevision,
+                        manifestJSON: String(decoding: rawData, as: UTF8.self), digest: digest,
+                        sourceEpoch: epoch, sourceSequence: sequence))
+                }
+                return true
+            } catch { return false }
+        }
+        guard committed == true else { throw TutorRuntimeError.socketUnavailable }
+    }
+
+    private func writeEngineProjection(_ name: String, _ object: Any) throws {
+        let allowed = Set(["catalogue.json", "course-status.json", "course-runtime.json", "gateway-health.json"])
+        guard allowed.contains(name), JSONSerialization.isValidJSONObject(object) else { throw TutorRuntimeError.invalidResponse }
+        let destination = root.appendingPathComponent(name)
+        let temporary = root.appendingPathComponent(".\(name).\(UUID().uuidString)")
+        try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]).write(to: temporary, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+        if fileManager.fileExists(atPath: destination.path) {
+            _ = try fileManager.replaceItemAt(destination, withItemAt: temporary, backupItemName: nil, options: [])
+        } else { try fileManager.moveItem(at: temporary, to: destination) }
+    }
+
+    private func writeCapabilityHandshake(_ value: CapabilityHandshake) throws {
+        let destination = root.appendingPathComponent("capability-handshake.json")
+        let data = try JSONEncoder().encode(value)
+        try data.write(to: destination, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+    }
+
+    private static func validTutorID(_ value: String) -> Bool {
+        value.range(of: "^[A-Za-z0-9._-]{1,160}$", options: .regularExpression) != nil
+    }
+
+    /// Normalize user whitespace before applying Tutor's 800-character limit.
+    /// Directional controls survive normal trimming and can make provider text
+    /// render differently from what was reviewed, so reject them outright.
+    private static func sanitizeTutorQuestion(_ raw: String) -> String? {
+        let forbiddenBidi: Set<UInt32> = [0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069]
+        for scalar in raw.unicodeScalars {
+            if forbiddenBidi.contains(scalar.value) { return nil }
+            if scalar.properties.generalCategory == .control && !CharacterSet.whitespacesAndNewlines.contains(scalar) { return nil }
+        }
+        let normalized = raw.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        guard !normalized.isEmpty, normalized.count <= 800,
+              !normalized.unicodeScalars.contains(where: { $0.value == 0 }) else { return nil }
+        return normalized
+    }
+
+    private func tutorFeedbackContext(run: TutorRunRecord, lessonID: String, stepID: String,
+                                      verifierOutcome: String?, store: CallaStore) -> String {
+        let outcome = verifierOutcome.map { ", deterministic outcome \($0)" } ?? ""
+        let historyPage: TutorHistoryPage? = awaitOnQueue {
+            try? await store.tutorFeedbackHistory(pageSize: 6)
+        } ?? nil
+        let previous = historyPage?.entries ?? []
+        let history = previous.reversed().compactMap { record -> String? in
+            let question = record.question.map { "Q: \($0)" }
+            let answer = record.answer.map { "A: \($0)" }
+            let pair = [question, answer].compactMap { $0 }.joined(separator: " ")
+            return pair.isEmpty ? nil : pair
+        }.joined(separator: " | ")
+        let recent = history.isEmpty ? "" : " Recent feedback: \(String(history.prefix(8 * 1024)))"
+        return String("Course \(run.courseKey), revision \(run.revision), lesson \(lessonID), step \(stepID)\(outcome)\(recent)".prefix(16 * 1024))
+    }
+
+    /// Re-decode Host bytes before encryption. Marker bytes do not establish
+    /// JPEG MIME, dimensions, or meaningful visual variance.
+    private static func validTutorJPEG(_ data: Data, expectedWidth: Int, expectedHeight: Int) -> Bool {
+        guard expectedWidth > 0, expectedHeight > 0,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) == 1,
+              let sourceType = CGImageSourceGetType(source),
+              sourceType as String == UTType.jpeg.identifier,
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              image.width == expectedWidth, image.height == expectedHeight,
+              max(image.width, image.height) <= 2048 else { return false }
+        let sampleWidth = min(32, image.width), sampleHeight = min(32, image.height)
+        guard sampleWidth > 0, sampleHeight > 0 else { return false }
+        var pixels = [UInt8](repeating: 0, count: sampleWidth * sampleHeight * 4)
+        guard let context = CGContext(data: &pixels, width: sampleWidth, height: sampleHeight,
+                                      bitsPerComponent: 8, bytesPerRow: sampleWidth * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+        context.interpolationQuality = .low
+        context.draw(image, in: CGRect(x: 0, y: 0, width: sampleWidth, height: sampleHeight))
+        var minimum: UInt8 = .max, maximum: UInt8 = .min
+        for value in pixels where value != 255 { minimum = min(minimum, value); maximum = max(maximum, value) }
+        return maximum > minimum && maximum - minimum >= 4
+    }
+
+    private static func ingressReply(ok: Bool, code: String?, message: String?) -> Data {
+        var body: [String: Any] = ["ok": ok]
+        if let code { body["code"] = code }
+        if let message { body["message"] = message }
+        return (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data("{\"ok\":false}".utf8)
+    }
+
     /// Both children inherit the XPC service's stdio, which goes nowhere. Until
     /// this existed the only node log on disk was the one the retired
     /// `com.calla.openclaw-node-host` LaunchAgent wrote via `StandardOutPath`,
@@ -2682,7 +3077,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         process.currentDirectoryURL = executable.deletingLastPathComponent()
         var environment = ProcessInfo.processInfo.environment
         environment["CALLA_RUNTIME_ROOT"] = root.path
-        environment["CALLA_RUNTIME_MODE"] = "boring"
+        // Engine mode is a security boundary, not presentation detail. Host may
+        // execute bounded capture/verifier/overlay work only; it must never
+        // revive standalone Gateway teaching relays for Boring.
+        environment["CALLA_RUNTIME_MODE"] = "engine"
         process.environment = environment
         if let log = childLogHandle("tutor-host") {
             process.standardOutput = log
@@ -2743,6 +3141,9 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         environment["CALLA_NODE_GATEWAY_TLS"] = "true"
         environment["CALLA_NODE_DISPLAY_NAME"] = "Calla Mac"
         environment["CALLA_RUNTIME_ROOT"] = root.path
+        environment["CALLA_RUNTIME_MODE"] = "engine"
+        environment["CALLA_ENGINE_INGRESS_SOCKET"] = engineIngressURL.path
+        environment["CALLA_ENGINE_CAPABILITY_TOKEN"] = engineIngressToken
         process.environment = environment
         if let log = childLogHandle("node-host") {
             process.standardOutput = log
@@ -2999,7 +3400,369 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         }
     }
 
+    private func startEngineCourse(courseID: String, lessonID: String?) {
+        guard activeTutorRun == nil else { lastResult = "Stop current Tutor run before starting another"; return }
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
+              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
+              let course = runtime.courses.first(where: { $0.courseID == courseID }),
+              let lesson = lessonID.flatMap({ wanted in course.lessons.first(where: { $0.id == wanted }) }) ?? course.lessons.first,
+              let step = lesson.steps.first else {
+            lastResult = "Exact course runtime is unavailable; requesting resync"
+            return
+        }
+        guard let store, let published = awaitOnQueue({ try? await store.publishedTutorRevision(courseKey: courseID) }) ?? nil,
+              published.revision == course.courseRevision,
+              published.artifactDigest.range(of: "^[A-Fa-f0-9]{64}$", options: .regularExpression) != nil else {
+            lastResult = "Course revision is not published locally; requesting resync"
+            return
+        }
+        let run = TutorRunRecord(runID: "run-" + UUID().uuidString.lowercased(), courseKey: courseID,
+                                 revision: course.courseRevision, generation: tutorGeneration, status: .starting,
+                                 lessonID: lesson.id, stepID: step.id)
+        guard awaitOnQueue({
+            do { try await store.createTutorRun(run); return true } catch { return false }
+        }) == true else {
+            lastResult = "Could not persist Tutor run before start"
+            return
+        }
+        let response = invokeRuntimeResponse(operation: "engine_start_run", payload: [
+            "run_id": run.runID, "generation": run.generation, "course_id": courseID,
+            "revision": run.revision, "lesson_id": lesson.id, "step_id": step.id,
+        ])
+        guard response.ok else {
+            _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .failed, event: "host_start_refused", note: response.message); return true }
+            lastResult = response.message
+            return
+        }
+        _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .active, event: "host_started"); return true }
+        activeTutorRun = TutorRunRecord(runID: run.runID, courseKey: run.courseKey, revision: run.revision,
+                                        generation: run.generation, status: .active, lessonID: lesson.id, stepID: step.id,
+                                        startedAt: run.startedAt)
+        automaticTutorFeedbackTrigger = nil
+        startTutorObservation()
+        lastResult = "Tutor course started"
+    }
+
+    private func renderEngineStep(run: TutorRunRecord) {
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
+              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
+              let course = runtime.courses.first(where: { $0.courseID == run.courseKey && $0.courseRevision == run.revision }),
+              let lesson = course.lessons.first(where: { $0.id == run.lessonID }),
+              let stepID = run.stepID,
+              let index = lesson.steps.firstIndex(where: { $0.id == stepID }) else {
+            lastResult = "Exact runtime changed; Tutor run blocked pending resync"; return
+        }
+        let response = invokeRuntimeResponse(operation: "engine_render_step", payload: [
+            "run_id": run.runID, "generation": run.generation, "revision": run.revision,
+            "lesson_id": lesson.id, "step_id": stepID, "step_index": index,
+        ])
+        lastResult = response.ok ? "Tutor step rendered" : response.message
+    }
+
+    /// Deterministic checks poll Host. A satisfied receipt is the only input
+    /// that advances Engine's persisted run; Host never selects the next step.
+    private func startTutorObservation() {
+        guard tutorObservationTimer == nil else { return }
+        let timer = DispatchSource.makeTimerSource(queue: queue)
+        timer.schedule(deadline: .now() + .milliseconds(500), repeating: .milliseconds(500))
+        timer.setEventHandler { [weak self] in self?.observeEngineRun() }
+        timer.resume()
+        tutorObservationTimer = timer
+    }
+
+    private func stopTutorObservation() {
+        tutorObservationTimer?.cancel(); tutorObservationTimer = nil
+    }
+
+    private func observeEngineRun() {
+        guard let run = activeTutorRun, let lessonID = run.lessonID, let stepID = run.stepID else { return }
+        let receipt = invokeRuntimeResponse(operation: "engine_verify_step", payload: [
+            "run_id": run.runID, "generation": run.generation, "revision": run.revision,
+            "lesson_id": lessonID, "step_id": stepID,
+        ])
+        guard receipt.ok else {
+            // A Host restart cannot leave a stored run silently advancing.
+            if receipt.message.contains("stale_engine_run") {
+                lastResult = "Tutor Host restarted; resume this run to render its exact step"
+            }
+            return
+        }
+        let outcome = receipt.payload?["outcome"] as? String ?? "unknown"
+        guard outcome == "satisfied" else {
+            guard outcome == "unsatisfied" || outcome == "unknown" else { return }
+            if let store {
+                _ = awaitOnQueue {
+                    try? await store.updateTutorRun(runID: run.runID, generation: run.generation,
+                                                     status: .active, event: "deterministic_hold",
+                                                     verifierOutcome: outcome)
+                    return true
+                }
+            }
+            let trigger = (runID: run.runID, generation: run.generation, stepID: stepID, outcome: outcome)
+            if activeTutorFeedbackID == nil,
+               automaticTutorFeedbackTrigger?.runID != trigger.runID ||
+               automaticTutorFeedbackTrigger?.generation != trigger.generation ||
+               automaticTutorFeedbackTrigger?.stepID != trigger.stepID ||
+               automaticTutorFeedbackTrigger?.outcome != trigger.outcome {
+                automaticTutorFeedbackTrigger = trigger
+                requestTutorFeedback(question: nil, kind: "verification_\(outcome)", verifierOutcome: outcome)
+            }
+            return
+        }
+        guard let data = try? Data(contentsOf: root.appendingPathComponent("course-runtime.json")),
+              let runtime = try? JSONDecoder().decode(RuntimeManifest.self, from: data),
+              let course = runtime.courses.first(where: { $0.courseID == run.courseKey && $0.courseRevision == run.revision }),
+              let lesson = course.lessons.first(where: { $0.id == lessonID }),
+              let index = lesson.steps.firstIndex(where: { $0.id == stepID }) else {
+            blockEngineRun(run, reason: "Exact runtime disappeared during verification")
+            return
+        }
+        if index == lesson.steps.count - 1 {
+            if let store { _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .completed, event: "deterministic_completion", verifierOutcome: "satisfied"); return true } }
+            _ = invokeRuntimeResponse(operation: "engine_stop_run", payload: [
+                "run_id": run.runID, "generation": run.generation, "revision": run.revision, "lesson_id": lessonID,
+            ])
+            activeTutorRun = nil; automaticTutorFeedbackTrigger = nil; tutorGeneration += 1; stopTutorObservation(); lastResult = "Tutor course completed"
+            return
+        }
+        let next = lesson.steps[index + 1]
+        if let store { _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .active, lessonID: lessonID, stepID: next.id, event: "deterministic_advance", verifierOutcome: "satisfied"); return true } }
+        let advanced = TutorRunRecord(runID: run.runID, courseKey: run.courseKey, revision: run.revision,
+                                      generation: run.generation, status: .active, lessonID: lessonID, stepID: next.id,
+                                      startedAt: run.startedAt)
+        activeTutorRun = advanced
+        automaticTutorFeedbackTrigger = nil
+        renderEngineStep(run: advanced)
+    }
+
+    private func blockEngineRun(_ run: TutorRunRecord, reason: String) {
+        if let store { _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .blockedRuntime, event: "runtime_blocked", note: reason); return true } }
+        activeTutorRun = nil; automaticTutorFeedbackTrigger = nil; stopTutorObservation(); lastResult = reason
+    }
+
+    /// Captures exactly current target window, encrypts and commits history,
+    /// then (and only then) makes a provider route eligible. Host never writes
+    /// a screenshot; Gateway never sees one on storage/key failure.
+    private func requestTutorFeedback(question: String?, kind: String, verifierOutcome: String? = nil) {
+        guard let run = activeTutorRun, let lessonID = run.lessonID, let stepID = run.stepID else {
+            lastResult = "No active Tutor run to ask about"; return
+        }
+        guard let store else { lastResult = "Tutor history storage is unavailable"; return }
+        let feedbackID = "feedback-" + UUID().uuidString.lowercased()
+        let context = tutorFeedbackContext(run: run, lessonID: lessonID, stepID: stepID,
+                                           verifierOutcome: verifierOutcome, store: store)
+        guard let vault = resolveTutorCaptureVault() else {
+            recordTutorFeedbackFailure(id: feedbackID, run: run, kind: kind, question: question, context: context,
+                                       code: "history_encryption_unavailable", store: store)
+            lastResult = tutorCaptureFailure ?? "Tutor history encryption is unavailable"; return
+        }
+        let response = invokeRuntimeResponse(operation: "engine_capture_feedback", payload: [
+            "run_id": run.runID, "generation": run.generation, "revision": run.revision,
+            "lesson_id": lessonID, "step_id": stepID,
+        ])
+        guard response.ok,
+              let payload = response.payload,
+              payload["mime_type"] as? String == "image/jpeg",
+              let encoded = payload["bytes_base64"] as? String,
+              let image = Data(base64Encoded: encoded),
+              image.count <= 3 * 1024 * 1024,
+              image.starts(with: [0xFF, 0xD8, 0xFF]), image.suffix(2) == Data([0xFF, 0xD9]),
+              let width = payload["pixel_width"] as? Int, let height = payload["pixel_height"] as? Int,
+              Self.validTutorJPEG(image, expectedWidth: width, expectedHeight: height) else {
+            recordTutorFeedbackFailure(id: feedbackID, run: run, kind: kind, question: question, context: context,
+                                       code: response.ok ? "capture_invalid" : "capture_unavailable", store: store)
+            lastResult = response.ok ? "Target window capture was invalid" : response.message
+            return
+        }
+        let captureID = "capture-" + UUID().uuidString.lowercased()
+        do {
+            let stored = try vault.storeJPEG(image, id: captureID)
+            let capture = TutorCaptureRecord(id: captureID, relativePath: stored.relativePath,
+                                             ciphertextDigest: stored.ciphertextDigest, width: width, height: height,
+                                             byteCount: image.count)
+            let preference = awaitOnQueue { (try? await store.tutorProviderPreference()) ?? .local } ?? .local
+            let feedback = TutorFeedbackRecord(id: feedbackID, runID: run.runID, generation: run.generation,
+                                                kind: kind, question: question,
+                                                context: context,
+                                                state: .pending, selectedProvider: preference, captureID: captureID)
+            let committed = awaitOnQueue {
+                do { try await store.commitTutorCaptureAndPendingFeedback(capture: capture, feedback: feedback); return true }
+                catch { return false }
+            } ?? false
+            guard committed else {
+                vault.removeUncommitted(relativePath: stored.relativePath)
+                lastResult = "Tutor feedback was not stored; screenshot was not sent"
+                return
+            }
+            // Provider integration is intentionally a separate method. Keeping
+            // this call after the commit is a hard ordering boundary reviewers
+            // can verify without reading model transport code.
+            routeCommittedTutorFeedback(feedback, image: image, width: width, height: height, run: run)
+        } catch {
+            recordTutorFeedbackFailure(id: feedbackID, run: run, kind: kind, question: question, context: context,
+                                       code: "capture_encryption_failed", store: store)
+            lastResult = "Tutor feedback capture could not be secured"
+        }
+    }
+
+    private func recordTutorFeedbackFailure(id: String, run: TutorRunRecord, kind: String, question: String?, context: String,
+                                            code: String, store: CallaStore) {
+        _ = awaitOnQueue {
+            try? await store.recordTerminalTutorFeedback(TutorFeedbackRecord(
+                id: id, runID: run.runID, generation: run.generation, kind: kind,
+                question: question, context: context, state: .failed,
+                selectedProvider: (try? await store.tutorProviderPreference()) ?? .local,
+                errorCode: code))
+            return true
+        }
+    }
+
+    private func resolveTutorCaptureVault() -> TutorCaptureVault? {
+        if let tutorCaptureVault { return tutorCaptureVault }
+        do {
+            let vault = try TutorCaptureVault(root: tutorCaptureURL, key: TutorHistoryKey.loadOrCreate())
+            vault.removeTemporaryFiles()
+            tutorCaptureVault = vault
+            tutorCaptureFailure = nil
+            return vault
+        } catch {
+            tutorCaptureFailure = "Tutor history encryption is unavailable"
+            return nil
+        }
+    }
+
+    /// The fallback boundary starts only after encrypted capture metadata and
+    /// pending feedback committed. Local `agy` image attachment support is
+    /// capability-gated; unsupported local binaries fall through once to this
+    /// dedicated tool-free Gateway lane. Gateway preference never reverses.
+    private func routeCommittedTutorFeedback(_ feedback: TutorFeedbackRecord, image: Data, width: Int, height: Int, run: TutorRunRecord) {
+        guard tutorFeedbackProcess == nil else { lastResult = "Tutor feedback already pending"; return }
+        let fallback = feedback.selectedProvider == .local ? "local_attachment_unsupported" : nil
+        startGatewayTutorFeedback(feedback, image: image, width: width, height: height, run: run, fallbackReason: fallback)
+    }
+
+    private func startGatewayTutorFeedback(_ feedback: TutorFeedbackRecord, image: Data, width: Int, height: Int, run: TutorRunRecord, fallbackReason: String?) {
+        guard let script = Bundle.main.resourceURL?.appendingPathComponent("CallaRuntime/scripts/calla-feedback.sh"),
+              fileManager.isExecutableFile(atPath: script.path) else {
+            finishTutorFeedback(feedback, state: .failed, actualProvider: nil, fallbackReason: fallbackReason, errorCode: "gateway_feedback_script_missing")
+            return
+        }
+        let request: [String: Any] = [
+            "protocol_version": 4, "request_id": feedback.id, "run_id": run.runID, "generation": run.generation,
+            "course_key": run.courseKey, "revision": run.revision, "lesson_id": run.lessonID ?? "", "step_id": run.stepID ?? "",
+            "question": feedback.question ?? NSNull(), "context": feedback.context,
+            "image": ["mime_type": "image/jpeg", "pixel_width": width, "pixel_height": height, "bytes_base64": image.base64EncodedString()],
+        ]
+        guard JSONSerialization.isValidJSONObject(request),
+              let input = try? JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]), input.count <= 5 * 1024 * 1024 else {
+            finishTutorFeedback(feedback, state: .failed, actualProvider: nil, fallbackReason: fallbackReason, errorCode: "gateway_feedback_request_invalid")
+            return
+        }
+        let process = Process(); process.executableURL = script; process.arguments = []
+        let stdin = Pipe(), stdout = Pipe()
+        process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
+        let started = Date()
+        let timeout = DispatchWorkItem { [weak self, weak process] in
+            guard let self, let process, self.activeTutorFeedbackID == feedback.id, process.isRunning else { return }
+            self.terminateProcessTree(process.processIdentifier)
+        }
+        process.terminationHandler = { [weak self] completed in
+            timeout.cancel()
+            let output = stdout.fileHandleForReading.readDataToEndOfFile()
+            self?.queue.async {
+                guard let self else { return }
+                if self.tutorFeedbackProcess === completed { self.tutorFeedbackProcess = nil }
+                if self.activeTutorFeedbackID == feedback.id { self.activeTutorFeedbackID = nil }
+                if self.activeTutorFeedback?.id == feedback.id { self.activeTutorFeedback = nil }
+                let elapsed = Int(Date().timeIntervalSince(started) * 1000)
+                guard completed.terminationStatus == 0,
+                      let reply = Self.parseTutorGatewayReply(output) else {
+                    self.finishTutorFeedback(feedback, state: .failed, actualProvider: .gateway, fallbackReason: fallbackReason, errorCode: "gateway_feedback_unavailable", latencyMilliseconds: elapsed)
+                    return
+                }
+                guard self.activeTutorRun?.runID == feedback.runID,
+                      self.activeTutorRun?.generation == feedback.generation else {
+                    self.finishTutorFeedback(feedback, state: .stale, actualProvider: .gateway, fallbackReason: fallbackReason, errorCode: "run_generation_changed", latencyMilliseconds: elapsed)
+                    return
+                }
+                self.finishTutorFeedback(feedback, state: .completed, answer: reply.message, actualProvider: .gateway,
+                                         model: reply.model, fallbackReason: fallbackReason, latencyMilliseconds: elapsed)
+            }
+        }
+        do {
+            try process.run()
+            stdin.fileHandleForWriting.write(input); stdin.fileHandleForWriting.closeFile()
+            tutorFeedbackProcess = process; activeTutorFeedbackID = feedback.id; activeTutorFeedback = feedback
+            queue.asyncAfter(deadline: .now() + .seconds(15), execute: timeout)
+            lastResult = fallbackReason == nil ? "Tutor feedback requested from Gateway" : "Local feedback unavailable; requesting Gateway feedback"
+        } catch {
+            finishTutorFeedback(feedback, state: .failed, actualProvider: .gateway, fallbackReason: fallbackReason, errorCode: "gateway_feedback_start_failed")
+        }
+    }
+
+    private struct TutorGatewayReply { let message: String; let model: String? }
+
+    private static func parseTutorGatewayReply(_ data: Data) -> TutorGatewayReply? {
+        guard data.count <= 16 * 1024,
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              value["ok"] as? Bool == true,
+              let reply = value["reply"] as? [String: Any], Set(reply.keys) == ["message", "assessment", "basis"],
+              let message = reply["message"] as? String, message.count > 0, message.count <= 800,
+              let assessment = reply["assessment"] as? String, ["on_track", "needs_help", "uncertain"].contains(assessment),
+              let basis = reply["basis"] as? String, ["screenshot", "verifier", "authored"].contains(basis) else { return nil }
+        let model = (value["model"] as? String).map { String($0.prefix(256)) }
+        return TutorGatewayReply(message: message, model: model)
+    }
+
+    private func finishTutorFeedback(_ feedback: TutorFeedbackRecord, state: TutorFeedbackState, answer: String? = nil,
+                                     actualProvider: TutorProviderPreference?, model: String? = nil, fallbackReason: String? = nil,
+                                     errorCode: String? = nil, latencyMilliseconds: Int? = nil) {
+        guard let store else { return }
+        let committed = awaitOnQueue {
+            try? await store.finishTutorFeedback(TutorFeedbackRecord(
+                id: feedback.id, runID: feedback.runID, generation: feedback.generation, kind: feedback.kind,
+                question: feedback.question, context: feedback.context, state: state, answer: answer,
+                selectedProvider: feedback.selectedProvider, actualProvider: actualProvider, model: model,
+                latencyMilliseconds: latencyMilliseconds, fallbackReason: fallbackReason, errorCode: errorCode,
+                captureID: feedback.captureID)); return true
+        } ?? false
+        guard committed else { return }
+        if activeTutorFeedback?.id == feedback.id { activeTutorFeedback = nil }
+        if state == .completed { lastResult = "Tutor feedback ready" }
+        else if state == .stale { lastResult = "Tutor feedback became stale" }
+        else { lastResult = "Tutor feedback unavailable; authored guidance remains" }
+    }
+
+    private func stopEngineCourse() {
+        guard let run = activeTutorRun else { lastResult = "No Tutor run is active"; return }
+        _ = invokeRuntimeResponse(operation: "engine_stop_run", payload: [
+            "run_id": run.runID, "generation": run.generation, "revision": run.revision, "lesson_id": run.lessonID ?? "",
+        ])
+        if let store { _ = awaitOnQueue { try? await store.updateTutorRun(runID: run.runID, generation: run.generation, status: .stopped, event: "owner_stopped"); return true } }
+        cancelActiveTutorFeedback(reason: "run_stopped")
+        activeTutorRun = nil
+        automaticTutorFeedbackTrigger = nil
+        tutorGeneration += 1
+        stopTutorObservation()
+        lastResult = "Tutor run stopped"
+    }
+
+    private func cancelActiveTutorFeedback(reason: String) {
+        if let process = tutorFeedbackProcess, process.isRunning { terminateProcessTree(process.processIdentifier) }
+        tutorFeedbackProcess = nil
+        activeTutorFeedbackID = nil
+        guard let feedback = activeTutorFeedback else { return }
+        activeTutorFeedback = nil
+        if let store {
+            _ = awaitOnQueue { try? await store.transitionTutorFeedback(id: feedback.id, generation: feedback.generation, state: .cancelled, errorCode: reason); return true }
+        }
+    }
+
     private func invokeRuntime(operation: String, payload: [String: Any]) {
+        _ = invokeRuntimeResponse(operation: operation, payload: payload)
+    }
+
+    private func invokeRuntimeResponse(operation: String, payload: [String: Any]) -> (ok: Bool, message: String, payload: [String: Any]?) {
         // Probe rather than stat. `stop()` used to leave the socket file behind,
         // so `fileExists` passed against a host that was gone and every command
         // then failed at connect with a generic transport error.
@@ -3007,10 +3770,10 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             lastResult = fileManager.fileExists(atPath: socketURL.path)
                 ? "Tutor runtime is not listening"
                 : "Tutor runtime is still starting"
-            return
+            return (false, lastResult, nil)
         }
         let request: [String: Any] = [
-            "protocol_version": 2,
+            "protocol_version": 4,
             "request_id": UUID().uuidString.lowercased(),
             "operation": operation,
             "session_id": "calla-boring-ui",
@@ -3024,13 +3787,17 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                 throw TutorRuntimeError.invalidResponse
             }
             if ok {
-                lastResult = (object["payload"] as? [String: Any])?["status"] as? String ?? "Tutor command complete"
+                let responsePayload = object["payload"] as? [String: Any]
+                lastResult = responsePayload?["status"] as? String ?? "Tutor command complete"
+                return (true, lastResult, responsePayload)
             } else {
                 let message = ((object["error"] as? [String: Any])?["message"] as? String) ?? "Tutor command refused"
                 lastResult = message
+                return (false, message, nil)
             }
         } catch {
             lastResult = "Tutor command failed: \(error.localizedDescription)"
+            return (false, lastResult, nil)
         }
     }
 
@@ -3107,6 +3874,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             diagnostics: diagnostics,
             activeLesson: currentActiveLesson(),
             courses: currentCourses(),
+            tutorIntelligence: currentTutorIntelligenceStatus(hostStatus: hostStatus),
             copilot: currentCopilotStatus()
         )
         do {
@@ -3122,6 +3890,28 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             NSLog("[CallaEngine] could not encode status: %@", String(describing: error))
             return Data()
         }
+    }
+
+    private func currentTutorIntelligenceStatus(hostStatus: HostStatus?) -> TutorIntelligenceStatus {
+        let preference: TutorProviderPreference
+        if let store {
+            preference = awaitOnQueue { (try? await store.tutorProviderPreference()) ?? .local } ?? .local
+        } else {
+            preference = .local
+        }
+        let auth = agyAuthStatus()
+        return TutorIntelligenceStatus(
+            selectedProvider: preference.rawValue,
+            activeProvider: activeTutorFeedbackID == nil ? nil : "gateway",
+            pendingFeedbackID: activeTutorFeedbackID,
+            activeRunID: activeTutorRun?.runID,
+            activeRevision: activeTutorRun?.revision,
+            activeGeneration: activeTutorRun?.generation,
+            localAgyAvailable: agyBinaryPath() != nil,
+            localAgyAuthenticated: auth.loggedIn,
+            gatewayFeedbackAvailable: gatewayReachable,
+            captureAvailable: preferences?.captureEnabled == true && hostStatus?.screenRecordingGranted == true
+        )
     }
 
     private func currentCourses() -> [CourseSnapshot] {
@@ -3245,7 +4035,10 @@ private enum TutorRuntimeError: LocalizedError {
 /// Engine-to-runtime half of the owner-only local socket. The node has a
 /// JavaScript client; Boring UI must cross XPC through this bounded native one.
 private enum RuntimeSocketClient {
-    private static let maximumResponseBytes = 1_500_000
+    /// Engine capture replies may carry a 3 MiB JPEG plus base64 framing. They
+    /// never leave this owner-local socket and ordinary control requests remain
+    /// bounded by Host's 64 KiB input limit.
+    private static let maximumResponseBytes = 5 * 1024 * 1024
 
     static func invoke(path: String, request: Data) throws -> Data {
         let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)

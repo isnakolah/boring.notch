@@ -11,6 +11,7 @@ import {createTutorTools, pushCourseCatalogue, pushCourseRuntime, pushSessionSta
 import {pushCourseStatus} from "./src/tools.mjs";
 import {PedagogyStore} from "./src/pedagogy.mjs";
 import {CourseControlServer, CourseLifecycleService, CourseTaskFlowBridge} from "./src/course-lifecycle.mjs";
+import {TutorFeedbackServer} from "./src/feedback-service.mjs";
 
 const plugin = {
   id: "tutor",
@@ -21,6 +22,10 @@ const plugin = {
     const config = parsePluginConfig(api.pluginConfig);
 
     if (config.role === "gateway" || config.role === "both") {
+      // Dedicated owner-local feedback lane. It is not a model tool and it
+      // registers no node command; bounded request handling is in its socket.
+      const feedbackServer = new TutorFeedbackServer(api.runtime, config);
+      void feedbackServer.start().catch(() => {});
       // Which authored lesson each teaching session is running, so the card
       // survives the turns after the opening message.
       const selectedLessons = new Map();
@@ -48,10 +53,18 @@ const plugin = {
         const courseControl = new CourseControlServer(courseService, config.courseSocketPath);
         void courseControl.start().then(async () => {
           await courseService.resumePending();
+          if (config.runtimeMode === "engine") {
+            await pushSessionStart(api, config);
+            await pushCourseCatalogue(api, config);
+          }
           await pushCourseStatus(api, config, await courseService.list());
           await pushCourseRuntime(api, config);
         }).catch(() => {});
       }
+      // Boring Engine mode may author, compile, preflight and publish courses,
+      // but its Gateway process never receives live Tutor tools or lesson
+      // prompts. Snapshot pushes below are owner/control-plane traffic only.
+      if (config.runtimeMode !== "engine") {
       for (const tool of createTutorTools(api, config, {lessonState, memoryGraph, pedagogy})) {
         api.registerTool(tool, {name: tool.name});
       }
@@ -131,6 +144,7 @@ const plugin = {
         const sessionID = tutorSessionFor(context?.sessionId ?? context?.sessionKey);
         if (sessionID) await lessonState.compact(sessionID, {input: event?.tokenCount, force: true});
       });
+      }
 
       api.registerNodeInvokePolicy({
         commands: [NODE_COMMAND],
@@ -158,6 +172,11 @@ const plugin = {
           await handleTutorNodeHostCommand(params, {
             socketPath: config.socketPath || undefined,
             timeoutMs: config.timeoutMs,
+            runtimeMode: config.runtimeMode,
+            ...(config.runtimeMode === "engine" ? {
+              socketPath: config.engineSocketPath,
+              capabilityToken: config.engineCapabilityToken,
+            } : {}),
           }),
       });
     }

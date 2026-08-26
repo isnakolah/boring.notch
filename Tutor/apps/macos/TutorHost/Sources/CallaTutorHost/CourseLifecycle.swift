@@ -7,7 +7,7 @@ import UserNotifications
 @MainActor
 enum CourseNotifications {
     private static var isEmbeddedBoringRuntime: Bool {
-        ProcessInfo.processInfo.environment["CALLA_RUNTIME_MODE"] == "boring"
+        ProcessInfo.processInfo.environment["CALLA_RUNTIME_MODE"] == "engine"
     }
 
     static func requestPermission() {

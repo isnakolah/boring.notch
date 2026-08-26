@@ -13,7 +13,9 @@ import Foundation
 /// `CallHostPaths`, the tests want a temporary directory, and neither belongs
 /// here.
 public actor CallaStore {
-    private let database: SQLiteDatabase
+    // Internal to IntelligenceStore extensions only. Public callers still cross
+    // actor APIs; no second process obtains a SQLite handle.
+    let database: SQLiteDatabase
     private let embedder: Embedder
 
     /// Set once `prepare()` has run. Until then searches are lexical only, which

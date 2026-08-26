@@ -144,8 +144,8 @@ done
 for required_file in \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/MacOS/CallaTutorHost \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/CallaTutorHost.app/Contents/Helpers/CallaOverlayHelper.app/Contents/MacOS/CallaOverlayHelper \
-  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-ask.sh \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-course.sh \
+  Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-feedback.sh \
   Contents/XPCServices/BoringCallaEngine.xpc/Contents/Resources/CallaRuntime/scripts/calla-gateway-check.sh \
   Contents/Resources/Calla/openclaw/openclaw.plugin.json \
   Contents/Resources/Calla/scripts/calla-node-host.sh \

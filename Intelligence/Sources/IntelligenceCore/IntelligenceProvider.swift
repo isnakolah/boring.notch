@@ -11,6 +11,10 @@ public protocol IntelligenceProvider: Actor {
     /// The Gateway, for instance, speaks only the copilot's wire protocol.
     nonisolated func supports(_ task: IntelligenceTask) -> Bool
 
+    /// Declared independently from task support: a provider can answer a Tutor
+    /// request but still be ineligible when it cannot safely accept its image.
+    nonisolated var attachmentCapability: AttachmentCapability { get }
+
     /// Cheap and cached. Called before every routing decision, so it must not
     /// spawn a process on each call.
     func availability() async -> Availability
@@ -26,6 +30,7 @@ public protocol IntelligenceProvider: Actor {
 }
 
 public extension IntelligenceProvider {
+    nonisolated var attachmentCapability: AttachmentCapability { .none }
     /// Default streaming shim for providers with no incremental transport.
     func stream(_ request: IntelligenceRequest) -> AsyncThrowingStream<IntelligenceDelta, Error> {
         AsyncThrowingStream { continuation in

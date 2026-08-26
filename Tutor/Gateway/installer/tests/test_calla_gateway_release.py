@@ -19,7 +19,7 @@ class GatewayReleaseTests(unittest.TestCase):
         with zipfile.ZipFile(root / "packs" / "test.otpack", "w") as archive:
             archive.writestr("manifest.json", "{}")
             archive.writestr("entities.json", "[]")
-        manifest = {"releaseVersion": version, "gatewayDigest": tree_digest(root), "protocolRange": {"min": 2, "max": 3}, "nodeContractHash": tree_digest(root / "plugin"), "packDigest": tree_digest(root / "packs"), "configMigrationVersion": 1}
+        manifest = {"releaseVersion": version, "gatewayDigest": tree_digest(root), "protocolRange": {"min": 2, "max": 4}, "nodeContractHash": tree_digest(root / "plugin"), "packDigest": tree_digest(root / "packs"), "configMigrationVersion": 1}
         (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return root
 
@@ -29,18 +29,19 @@ class GatewayReleaseTests(unittest.TestCase):
         migrated = migrate_calla_config({"plugins": {"load": {"paths": ["/other", "/srv/app/open-desktop-tutor/integrations/openclaw"]}}, "unrelated": {"keep": True}}, current=current, manifest=manifest)
         self.assertEqual(migrated["unrelated"], {"keep": True})
         self.assertEqual(migrated["plugins"]["load"]["paths"], ["/other", "/private/calla/current/plugin"])
-        self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["agentWorkspace"], "/private/calla/current/agent-workspace")
-        self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["nodeContractHash"], "a" * 64)
+        self.assertNotIn("agentWorkspace", migrated["plugins"]["entries"]["tutor"]["config"])
+        self.assertNotIn("nodeContractHash", migrated["plugins"]["entries"]["tutor"]["config"])
 
     def test_cli_expands_tilde_config_path(self):
         # Main delegates to the installer with an expanded path; direct unit
         # tests exercise installer mechanics without needing a real Gateway.
         self.assertEqual(Path("~/openclaw.json").expanduser().name, "openclaw.json")
 
-    def test_contract_change_releases_stale_node_for_repair(self):
+    def test_contract_metadata_is_removed_from_persisted_config(self):
         manifest = ReleaseManifest("test", "digest", {"min": 2, "max": 3}, "b" * 64, "pack", 1)
         migrated = migrate_calla_config({"plugins": {"entries": {"tutor": {"config": {"nodeId": "old-mac", "nodeContractHash": "a" * 64}}}}}, current=Path("/private/calla/current"), manifest=manifest)
-        self.assertNotIn("nodeId", migrated["plugins"]["entries"]["tutor"]["config"])
+        self.assertEqual(migrated["plugins"]["entries"]["tutor"]["config"]["nodeId"], "old-mac")
+        self.assertNotIn("nodeContractHash", migrated["plugins"]["entries"]["tutor"]["config"])
 
     def test_legacy_missing_contract_keeps_v2_node_for_first_migration(self):
         manifest = ReleaseManifest("test", "digest", {"min": 2, "max": 3}, "b" * 64, "pack", 1)
@@ -86,7 +87,7 @@ class GatewayReleaseTests(unittest.TestCase):
             with zipfile.ZipFile(tutor / "build" / "packs" / "blender.otpack", "w") as archive:
                 archive.writestr("manifest.json", "{}")
                 archive.writestr("entities.json", "[]")
-            for name in ("calla-course-gateway.sh", "calla-course.sh"):
+            for name in ("calla-course-gateway.sh", "calla-course.sh", "calla-feedback-gateway.sh", "calla-feedback.sh"):
                 (tutor / "scripts" / name).write_text("#!/bin/sh\n", encoding="utf-8")
             for name in ("calla_migration.py", "calla_openclaw_setup.py", "calla_pack_store.py", "calla_node_enroller.py"):
                 (tutor / "tools" / name).write_text("", encoding="utf-8")
@@ -170,9 +171,12 @@ class GatewayReleaseTests(unittest.TestCase):
             config.write_text(json.dumps({"plugins": {"load": {"paths": ["/other"]}, "entries": {"tutor": {"config": {"stateDirectory": str(base / "state")}}}}}), encoding="utf-8")
             GatewayReleaseInstaller(root, runner=lambda _: None, home=home).apply(staged, config_path=config, restart=False)
             course = home / ".local" / "bin" / "calla-course"
+            feedback = home / ".local" / "bin" / "calla-feedback"
             unit = home / ".config" / "systemd" / "user" / "calla-node-enroller.service"
             self.assertTrue(course.is_symlink())
             self.assertEqual(course.readlink(), root / "current" / "bin" / "calla-course-gateway.sh")
+            self.assertTrue(feedback.is_symlink())
+            self.assertEqual(feedback.readlink(), root / "current" / "bin" / "calla-feedback-gateway.sh")
             self.assertIn(str(root / "current" / "migrations" / "calla_node_enroller.py"), unit.read_text(encoding="utf-8"))
             self.assertIn(f"--openclaw-bin {home}/.npm-global/bin/openclaw", unit.read_text(encoding="utf-8"))
             self.assertIn('--display-name "Calla Mac"', unit.read_text(encoding="utf-8"))

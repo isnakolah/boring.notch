@@ -23,8 +23,8 @@ private func allowlist(from payload: [String: JSONValue]) -> Set<String> {
     return TutorSettings.shared.effectiveAllowlist(requested: requested)
 }
 private let maxRequestFrameBytes = 64 * 1024
-private let maxResponseFrameBytes = Int(1.5 * 1024 * 1024)
-private let maxCaptureJPEGBytes = 1024 * 1024
+private let maxResponseFrameBytes = 5 * 1024 * 1024
+private let maxCaptureJPEGBytes = 3 * 1024 * 1024
 private let forbiddenCoordinateKeys: Set<String> = [
     "x", "y", "left", "top", "width", "height", "coordinate", "coordinates", "screen_x", "screen_y", "bounds", "frame",
 ]
@@ -197,6 +197,9 @@ final class TutorHostController: ObservableObject {
     private var feedbackStartedAt: UInt64?
     /// Non-model course route. Nil preserves ordinary Ask teaching behavior.
     private var fastRun: FastLessonRun?
+    /// Ephemeral Engine identity. Never persisted; every Engine command must
+    /// match it before Host can render or verify anything.
+    private var engineRunIdentity: (runID: String, generation: Int, revision: String, lessonID: String)?
     private var fastAdvanceInFlight = false
     /// Watches the application while a course step is on screen.
     private var liveWatch: Task<Void, Never>?
@@ -231,7 +234,7 @@ final class TutorHostController: ObservableObject {
             }
             try server.start()
             socketServer = server
-            status = "Local TutorHost ready (protocol v2)"
+            status = "Local TutorHost ready (protocol v4)"
         } catch {
             status = "TutorHost failed: \(error.localizedDescription)"
         }
@@ -266,7 +269,15 @@ final class TutorHostController: ObservableObject {
 
     private func route(_ request: TutorRequest) async -> TutorResponse {
         guard TutorProtocolVersion.accepts(request.protocolVersion) else {
-            return failure(request, "unsupported_version", "Tutor protocol version must be in supported range 2...3")
+            return failure(request, "unsupported_version", "Tutor protocol version must be in supported range 2...4")
+        }
+        // Boring's Engine owns run state, progression and feedback routing. A
+        // Gateway/model operation must never regain those powers by reaching
+        // the same embedded Host socket that standalone mode uses.
+        if Self.isEngineRuntime,
+           Self.engineUnavailableOperations.contains(request.operation) {
+            return failure(request, "OPERATION_NOT_AVAILABLE_IN_ENGINE_MODE",
+                           "This operation is unavailable in Boring Engine mode")
         }
         // Recorded before any validation: the menu needs to show that Calla is
         // reaching this Mac even when what it sent was refused.
@@ -274,7 +285,7 @@ final class TutorHostController: ObservableObject {
         guard request.sessionID.count >= 8 else { return failure(request, "invalid_session", "A valid teaching session is required") }
         // Bookkeeping and the course list are not looking at anything, so a
         // paused capture has no reason to refuse them.
-        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_start_again", "course_resume", "course_stop", "course_ask", "request_screen_recording", "request_accessibility"].contains(request.operation) else {
+        guard captureActive || ["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "course_start", "course_start_again", "course_resume", "course_stop", "course_ask", "engine_start_run", "engine_render_step", "engine_verify_step", "engine_capture_feedback", "engine_stop_run", "request_screen_recording", "request_accessibility"].contains(request.operation) else {
             return failure(request, "capture_paused", "Capture is paused locally")
         }
         do {
@@ -397,6 +408,99 @@ final class TutorHostController: ObservableObject {
                 }
                 try CourseRuntimeStore.shared.replace(runtime)
                 payload = ["status": .string("stored"), "courses": .number(Double(runtime.courses.count))]
+            case "engine_start_run":
+                guard Self.isEngineRuntime,
+                      let runID = request.payload["run_id"]?.stringValue,
+                      let generation = request.payload["generation"]?.numberValue,
+                      generation.rounded() == generation,
+                      let courseID = request.payload["course_id"]?.stringValue,
+                      let revision = request.payload["revision"]?.stringValue,
+                      let lessonID = request.payload["lesson_id"]?.stringValue,
+                      let stepID = request.payload["step_id"]?.stringValue else {
+                    return failure(request, "invalid_engine_run", "A complete Engine run identity is required")
+                }
+                if let reason = await startEngineRun(runID: runID, generation: Int(generation), courseID: courseID,
+                                                     revision: revision, lessonID: lessonID, stepID: stepID) {
+                    return failure(request, "engine_start_refused", reason)
+                }
+                payload = ["status": .string("started"), "run_id": .string(runID), "generation": .number(generation)]
+            case "engine_render_step":
+                guard Self.isEngineRuntime,
+                      let runID = request.payload["run_id"]?.stringValue,
+                      let generation = request.payload["generation"]?.numberValue,
+                      generation.rounded() == generation,
+                      let revision = request.payload["revision"]?.stringValue,
+                      let lessonID = request.payload["lesson_id"]?.stringValue,
+                      let stepID = request.payload["step_id"]?.stringValue,
+                      let index = request.payload["step_index"]?.numberValue,
+                      index.rounded() == index,
+                      engineIdentityMatches(runID: runID, generation: Int(generation), revision: revision, lessonID: lessonID),
+                      let run = fastRun, run.select(index: Int(index)), run.current?.id == stepID else {
+                    return failure(request, "stale_engine_run", "Engine step does not match current Host run")
+                }
+                do {
+                    try await showFastStep()
+                    payload = ["status": .string("rendered"), "step_id": .string(stepID)]
+                } catch let error as TutorHostFailure {
+                    return failure(request, error.code, error.message)
+                }
+            case "engine_verify_step":
+                guard Self.isEngineRuntime,
+                      let runID = request.payload["run_id"]?.stringValue,
+                      let generation = request.payload["generation"]?.numberValue,
+                      generation.rounded() == generation,
+                      let revision = request.payload["revision"]?.stringValue,
+                      let lessonID = request.payload["lesson_id"]?.stringValue,
+                      let stepID = request.payload["step_id"]?.stringValue,
+                      engineIdentityMatches(runID: runID, generation: Int(generation), revision: revision, lessonID: lessonID),
+                      let run = fastRun, let step = run.current, step.id == stepID,
+                      let detector = step.detectorDescriptor else {
+                    return failure(request, "stale_engine_run", "Engine verifier does not match current Host step")
+                }
+                let verified = try await engine.fastVerify(target: step.targetDescriptor, detector: detector, bundleID: run.bundleID)
+                let outcome = verified["outcome"]?.stringValue ?? "unknown"
+                if outcome != "satisfied" {
+                    run.noteAttempt()
+                    let held = heldStepMessage(run, step)
+                    PointerOverlay.shared.narrate(step: held.step, text: held.text, status: "Calla — step held", thinking: false)
+                }
+                payload = ["outcome": .string(outcome), "step_id": .string(stepID)]
+            case "engine_capture_feedback":
+                guard Self.isEngineRuntime,
+                      let runID = request.payload["run_id"]?.stringValue,
+                      let generation = request.payload["generation"]?.numberValue,
+                      generation.rounded() == generation,
+                      let revision = request.payload["revision"]?.stringValue,
+                      let lessonID = request.payload["lesson_id"]?.stringValue,
+                      let stepID = request.payload["step_id"]?.stringValue,
+                      engineIdentityMatches(runID: runID, generation: Int(generation), revision: revision, lessonID: lessonID),
+                      let run = fastRun, run.current?.id == stepID else {
+                    return failure(request, "stale_engine_run", "Engine capture does not match current Host step")
+                }
+                let capture = try await engine.captureFeedbackWindow(bundleID: run.bundleID,
+                                                                      longEdge: TutorSettings.shared.captureLongEdge)
+                guard capture.data.count <= maxCaptureJPEGBytes else {
+                    return failure(request, "capture_too_large", "Target window capture exceeds 3 MiB")
+                }
+                payload = [
+                    "mime_type": .string("image/jpeg"),
+                    "bytes_base64": .string(capture.data.base64EncodedString()),
+                    "pixel_width": .number(Double(capture.pixelWidth)),
+                    "pixel_height": .number(Double(capture.pixelHeight)),
+                    "step_id": .string(stepID),
+                ]
+            case "engine_stop_run":
+                guard Self.isEngineRuntime,
+                      let runID = request.payload["run_id"]?.stringValue,
+                      let generation = request.payload["generation"]?.numberValue,
+                      generation.rounded() == generation,
+                      let revision = request.payload["revision"]?.stringValue,
+                      let lessonID = request.payload["lesson_id"]?.stringValue,
+                      engineIdentityMatches(runID: runID, generation: Int(generation), revision: revision, lessonID: lessonID) else {
+                    return failure(request, "stale_engine_run", "Engine stop does not match current Host run")
+                }
+                stopLesson()
+                payload = ["status": .string("stopped")]
             // Boring XPC owns these local-only operations. They are never
             // registered as OpenClaw/model tools; owner-only socket permission
             // and the engine process are their capability boundary.
@@ -481,6 +585,16 @@ final class TutorHostController: ObservableObject {
             return failure(request, "host_error", error.localizedDescription)
         }
     }
+
+    private static var isEngineRuntime: Bool {
+        ProcessInfo.processInfo.environment["CALLA_RUNTIME_MODE"] == "engine"
+    }
+
+    private static let engineUnavailableOperations: Set<String> = [
+        "observe", "guide", "plan", "narrate", "point", "propose_action", "verify",
+        "record_learning", "await_change", "course_ask", "course_start", "course_start_again", "course_resume",
+        "catalogue", "course_status", "course_runtime"
+    ]
 
     private func proposeAction(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {
         guard payload["target_hint"] == nil else {
@@ -740,11 +854,65 @@ final class TutorHostController: ObservableObject {
             endLesson()
             return "This course is pinned to a different version of its declared application."
         }
-        // Cache miss remains a private control-plane refresh boundary. Existing
-        // model path is retained only for that miss, never normal course steps.
+        // Engine mode never crosses into standalone model teaching on a cache
+        // miss. Exact runtime must arrive through Engine resync first.
+        if Self.isEngineRuntime {
+            endLesson()
+            return "Exact course runtime is unavailable. Boring will resync before this course can start."
+        }
+        // Standalone cache miss remains its legacy private refresh boundary.
         CourseControlRelay.shared.send("refresh-runtime", payload: [:], accepted: "Refreshing course cache…")
         LessonRelay.shared.startLesson("Teach \(courseTitle) — \(lessonTitle). [lesson:\(lessonID)]")
         return nil
+    }
+
+    /// Engine-only start path. It deliberately duplicates the small focused-app
+    /// preflight rather than invoking CourseResume: that legacy helper writes
+    /// Host-owned run state and may re-enter standalone lesson routing.
+    private func startEngineRun(runID: String, generation: Int, courseID: String, revision: String,
+                                lessonID: String, stepID: String) async -> String? {
+        CourseRuntimeStore.shared.reloadProjection()
+        guard runID.range(of: "^[A-Za-z0-9._-]{1,160}$", options: .regularExpression) != nil,
+              generation >= 0,
+              let course = CourseRuntimeStore.shared.course(id: courseID),
+              course.courseRevision == revision,
+              let lesson = course.lessons.first(where: { $0.id == lessonID }),
+              lesson.steps.first?.id == stepID else {
+            return "Exact Engine runtime is unavailable for this course step."
+        }
+        let allowed = TutorSettings.shared.effectiveAllowlist(requested: nil)
+        guard allowed.contains(course.appBundleID),
+              let subject = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == course.appBundleID && !$0.isTerminated }) else {
+            return "Open the declared target application, then start this course again."
+        }
+        let version = subject.bundleURL.flatMap { Bundle(url: $0)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String } ?? "unknown"
+        guard let run = CourseRuntimeStore.shared.run(courseID: courseID, lessonID: lessonID,
+                                                      bundleID: course.appBundleID, version: version),
+              run.revision == revision, run.current?.id == stepID else {
+            return "The target application version does not match this exact runtime."
+        }
+        subject.activate()
+        if lessonActive { stopLesson() }
+        beginLesson()
+        lessonTitle = lesson.title
+        CallaRuntime.recordActiveLesson(courseID: courseID, lessonID: lessonID, lessonTitle: lesson.title)
+        if let unmet = unmetPrerequisite(of: run) { endLesson(); return unmet }
+        fastRun = run
+        engineRunIdentity = (runID, generation, revision, lessonID)
+        do {
+            try await showFastStep()
+            return nil
+        } catch let error as TutorHostFailure {
+            endLesson(); return "\(error.message) (\(error.code))"
+        } catch {
+            endLesson(); return "Could not render this authored step locally."
+        }
+    }
+
+    private func engineIdentityMatches(runID: String, generation: Int, revision: String, lessonID: String) -> Bool {
+        guard let identity = engineRunIdentity else { return false }
+        return identity.runID == runID && identity.generation == generation &&
+            identity.revision == revision && identity.lessonID == lessonID
     }
 
     /// The first authored prerequisite this lesson does not have, said plainly.
@@ -832,7 +1000,10 @@ final class TutorHostController: ObservableObject {
         currentStep = "\(run.index + 1) of \(run.lesson.steps.count)"
         currentStepText = step.text
         lastCorrection = nil
-        startLiveStepWatch()
+        // Engine owns durable transition and progression. Host may observe only
+        // when standalone explicitly selected; automatic local advancement is
+        // forbidden in Boring Engine mode.
+        if !Self.isEngineRuntime { startLiveStepWatch() }
     }
 
     /// The lesson reached the end of its route.
@@ -882,6 +1053,7 @@ final class TutorHostController: ObservableObject {
         pendingCompletion = nil
         feedbackStartedAt = nil
         fastRun = nil
+        engineRunIdentity = nil
         fastAdvanceInFlight = false
         stopLiveStepWatch()
     }
@@ -1773,6 +1945,41 @@ private final class AccessibilityTutorEngine {
             throw TutorHostFailure(code: "unresolved", message: "Local descriptor evidence is below authored confidence")
         }
         return try evaluate(detector: detector, target: target)
+    }
+
+    /// Exact target window capture for Engine-owned feedback. This has no
+    /// overlay/model path and returns bytes only to Engine over owner-local IPC.
+    func captureFeedbackWindow(bundleID: String, longEdge: Int) async throws -> WindowCapture.Capture {
+        guard [1024, 1600, 2048].contains(longEdge) else {
+            throw TutorHostFailure(code: "invalid_capture_size", message: "Capture size is unsupported")
+        }
+        // Feedback is a disclosure boundary, unlike a normal authored overlay.
+        // A recently-focused subject is useful for resuming a lesson after the
+        // Boring UI takes focus, but it is never enough to authorize pixels.
+        // Capture only when exact allowlisted target is frontmost *now*.
+        guard let application = NSWorkspace.shared.frontmostApplication,
+              application.bundleIdentifier == bundleID,
+              TutorSettings.shared.allowedBundleIDs.contains(bundleID) else {
+            throw TutorHostFailure(code: "target_not_frontmost", message: "Refocus the course application before requesting feedback")
+        }
+        let focused = FocusedApplication(application: application,
+                                         element: AXUIElementCreateApplication(application.processIdentifier))
+        let snapshot = try await makeSnapshot(for: focused)
+        guard snapshot.appBundleID == bundleID else {
+            throw TutorHostFailure(code: "course_app_changed", message: "Target application changed before capture")
+        }
+        do {
+            let capture = try await WindowCapture.capture(bundleID: bundleID, processID: snapshot.processID,
+                                                          windowID: snapshot.windowID, longEdge: CGFloat(longEdge))
+            guard capture.data.count <= 3 * 1024 * 1024,
+                  capture.pixelWidth > 0, capture.pixelHeight > 0 else {
+                throw TutorHostFailure(code: "capture_too_large", message: "Target window capture is invalid")
+            }
+            return capture
+        } catch WindowCapture.Failure.notPermitted {
+            throw TutorHostFailure(code: "screen_recording_not_permitted", message: "Screen Recording permission is required to capture the target window")
+        } catch let error as TutorHostFailure { throw error }
+        catch { throw TutorHostFailure(code: "capture_failed", message: "The target window could not be captured") }
     }
 
     func verify(_ payload: [String: JSONValue]) async throws -> [String: JSONValue] {

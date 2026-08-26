@@ -159,6 +159,14 @@ final class CourseRuntimeStore: ObservableObject {
         manifest?.courses.first(where: { $0.courseID == courseID && allowed.contains($0.appBundleID) })?.appBundleID
     }
 
+    /// Engine writes compatibility projections atomically. Host only reloads
+    /// one before an Engine run starts; it never writes the projection or any
+    /// durable Tutor state in Boring mode.
+    func reloadProjection() {
+        guard let candidate = Self.read(file) else { return }
+        manifest = candidate
+    }
+
     private static func read(_ file: URL) -> Manifest? {
         guard let data = try? Data(contentsOf: file), let manifest = try? JSONDecoder().decode(Manifest.self, from: data),
               manifest.format == "calla-course-runtime", manifest.formatVersion == 1 else { return nil }
@@ -190,6 +198,14 @@ final class FastLessonRun {
     var current: CourseRuntimeStore.Step? { lesson.steps.indices.contains(index) ? lesson.steps[index] : nil }
     var isFinalTransfer: Bool { current?.phase == "transfer" && index == lesson.steps.count - 1 }
     func advance() { index += 1; attempts = 0; stateAtStep = nil; generation = UUID() }
+    /// Engine owns durable progression. Host only selects Engine's already
+    /// committed step while rendering/verifying it, and refuses any index
+    /// outside this exact revision-pinned lesson.
+    func select(index: Int) -> Bool {
+        guard lesson.steps.indices.contains(index) else { return false }
+        self.index = index; attempts = 0; stateAtStep = nil; generation = UUID()
+        return true
+    }
     func noteAttempt() { attempts += 1 }
 
     /// How much help this attempt earns.

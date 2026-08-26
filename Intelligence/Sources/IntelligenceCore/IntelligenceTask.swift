@@ -8,6 +8,50 @@ public enum ProviderKind: String, Codable, Sendable, CaseIterable {
     case callaGateway = "gateway"
 }
 
+/// What an attachment means, rather than an arbitrary filename or prompt hint.
+/// Providers may render the bytes but never treat them as commands.
+public struct IntelligenceAttachment: Sendable, Hashable {
+    public let identifier: String
+    public let mimeType: String
+    public let bytes: Data
+    public let pixelWidth: Int
+    public let pixelHeight: Int
+    public let purpose: String
+
+    public init(identifier: String, mimeType: String, bytes: Data, pixelWidth: Int, pixelHeight: Int, purpose: String) {
+        self.identifier = identifier
+        self.mimeType = mimeType
+        self.bytes = bytes
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.purpose = purpose
+    }
+
+    public var isJPEG: Bool {
+        mimeType == "image/jpeg" && bytes.count >= 4 && bytes.starts(with: [0xFF, 0xD8, 0xFF]) && bytes.suffix(2) == Data([0xFF, 0xD9])
+    }
+}
+
+public enum AttachmentCapability: Sendable, Hashable {
+    case none
+    /// Provider receives only an Engine-staged private relative file reference.
+    case fileReference
+    /// Provider's API accepts image bytes as a first-class attachment.
+    case inlineImage
+}
+
+/// Ordered task route. Attempt time is bounded independently, while Router
+/// also enforces one total task deadline across every route.
+public struct ProviderRoute: Sendable, Hashable {
+    public let provider: ProviderKind
+    public let maximumAttemptDuration: TimeInterval
+
+    public init(provider: ProviderKind, maximumAttemptDuration: TimeInterval) {
+        self.provider = provider
+        self.maximumAttemptDuration = maximumAttemptDuration
+    }
+}
+
 /// Providers advertise tiers, not model names. `agy agentapi` only accepts
 /// `flash_lite | flash | pro`, so a tier is the widest thing every transport can
 /// honour; exact model ids are a print-transport-only luxury.
@@ -77,6 +121,9 @@ public struct IntelligenceTask: Sendable, Hashable {
     /// Ordered preference. The router takes the first that is available and
     /// supports the task.
     public let allowedProviders: [ProviderKind]
+    /// Empty for legacy tasks, which use `allowedProviders` and full task budget.
+    /// Tutor feedback supplies an explicit ordered route.
+    public let providerRoutes: [ProviderRoute]
 
     public init(
         id: String,
@@ -85,7 +132,8 @@ public struct IntelligenceTask: Sendable, Hashable {
         latencyBudget: TimeInterval,
         conversation: ConversationPolicy,
         batching: BatchingPolicy,
-        allowedProviders: [ProviderKind]
+        allowedProviders: [ProviderKind],
+        providerRoutes: [ProviderRoute] = []
     ) {
         self.id = id
         self.defaultTier = defaultTier
@@ -94,8 +142,31 @@ public struct IntelligenceTask: Sendable, Hashable {
         self.conversation = conversation
         self.batching = batching
         self.allowedProviders = allowedProviders
+        self.providerRoutes = providerRoutes
     }
 
     public static func == (lhs: IntelligenceTask, rhs: IntelligenceTask) -> Bool { lhs.id == rhs.id }
     public func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
+    public var isTutorFeedback: Bool { id == "tutor.feedback" }
+
+    public var effectiveRoutes: [ProviderRoute] {
+        if !providerRoutes.isEmpty { return providerRoutes }
+        return allowedProviders.map { ProviderRoute(provider: $0, maximumAttemptDuration: latencyBudget) }
+    }
+
+    /// Tool-free, bounded screenshot feedback. Engine owns capture, storage,
+    /// verifier result and lesson advancement; providers only return this JSON.
+    public static let tutorFeedback = IntelligenceTask(
+        id: "tutor.feedback",
+        defaultTier: .fast,
+        contract: .json(keys: ["message", "assessment", "basis"]),
+        latencyBudget: 15,
+        conversation: .perSession,
+        batching: .manual,
+        allowedProviders: [.localAgy, .callaGateway],
+        providerRoutes: [
+            ProviderRoute(provider: .localAgy, maximumAttemptDuration: 5),
+            ProviderRoute(provider: .callaGateway, maximumAttemptDuration: 15),
+        ])
 }

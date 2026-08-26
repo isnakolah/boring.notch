@@ -1,15 +1,27 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {fileURLToPath} from "node:url";
 
 import {validateDetectorDescriptor, validateTargetDescriptor} from "./descriptors.mjs";
 
-export const PROTOCOL_VERSION = 2;
-/// New Gateway and Boring engine understand v2 and v3. Gateway keeps sending
-/// v2 until a paired node's internal handshake proves v3 compatibility.
-export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([2, 3]);
+/// v4 carries Engine-owned run identity. v2/v3 remain standalone rollback
+/// compatibility only; Boring engine mode rejects their model-visible actions.
+export const PROTOCOL_VERSION = 4;
+export const SUPPORTED_PROTOCOL_VERSIONS = Object.freeze([2, 3, 4]);
 export const NODE_COMMAND = "tutor.host";
 export const CALLA_ROLES = Object.freeze(["gateway", "node", "both"]);
+
+function installedReleaseMetadata() {
+  try {
+    const releaseRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+    const manifest = JSON.parse(fs.readFileSync(path.join(releaseRoot, "manifest.json"), "utf8"));
+    return typeof manifest?.nodeContractHash === "string" && typeof manifest?.releaseVersion === "string"
+      ? {root: releaseRoot, nodeContractHash: manifest.nodeContractHash, releaseVersion: manifest.releaseVersion}
+      : null;
+  } catch { return null; }
+}
 /// The tools a model can actually call.
 ///
 /// Deliberately smaller than TOOL_TO_OPERATION below. `retrieve` and
@@ -52,7 +64,7 @@ const TOOL_TO_OPERATION = Object.freeze({
 /// Both are pushes rather than answers to a turn, and neither is a tool: adding
 /// one here does not expose it to the model, and it must not be added to
 /// TUTOR_TOOL_NAMES.
-const INTERNAL_OPERATIONS = new Set(["session_start", "record_learning", "catalogue", "course_status", "course_runtime"]);
+const INTERNAL_OPERATIONS = new Set(["session_start", "record_learning", "catalogue", "course_status", "course_runtime", "gateway_health"]);
 
 const FORBIDDEN_COORDINATE_KEYS = new Set([
   "x",
@@ -301,7 +313,7 @@ export function validateNodeEnvelope(value) {
     throw new TypeError("node request must be an object");
   }
   if (!SUPPORTED_PROTOCOL_VERSIONS.includes(value.protocol_version)) {
-    throw new TypeError("protocol_version must be in supported range 2...3");
+    throw new TypeError("protocol_version must be in supported range 2...4");
   }
   requireString(value.request_id, "request_id", 8);
   requireString(value.session_id, "session_id", 8);
@@ -313,7 +325,7 @@ export function validateNodeEnvelope(value) {
   if (value.operation === "session_start") {
     const range = value.payload?.supported_protocol_range;
     if (!range || !Number.isInteger(range.min) || !Number.isInteger(range.max) || range.min > range.max ||
-        range.min < 2 || range.max > 3 || typeof value.payload?.engine_build !== "string" ||
+        range.min < 2 || range.max > 4 || typeof value.payload?.engine_build !== "string" ||
         typeof value.payload?.node_contract_hash !== "string") {
       throw new TypeError("session_start requires bounded protocol range, engine build, and node contract hash");
     }
@@ -419,7 +431,7 @@ export function validateNodeEnvelope(value) {
 
 /// Internal-only capability negotiation. Never register this as a model tool.
 /// `protocol_version` stays at v2 for old Gateway/new Mac migration safety.
-export function buildSessionStartEnvelope({min = 2, max = 3, engineBuild, nodeContractHash}) {
+export function buildSessionStartEnvelope({min = 2, max = 4, engineBuild, nodeContractHash}) {
   const envelope = {
     protocol_version: PROTOCOL_VERSION,
     request_id: randomUUID(),
@@ -480,6 +492,7 @@ export function buildInternalLearningEnvelope(sessionID, {lesson_id, bundle_id, 
 
 export function parsePluginConfig(raw) {
   const config = raw && typeof raw === "object" ? raw : {};
+  const release = installedReleaseMetadata();
   const role = typeof config.role === "string" ? config.role.trim().toLowerCase() : "gateway";
   if (!CALLA_ROLES.includes(role)) {
     throw new TypeError("tutor role must be gateway, node, or both");
@@ -491,10 +504,11 @@ export function parsePluginConfig(raw) {
     typeof config.nodeId === "string" && config.nodeId.trim() ? config.nodeId.trim() : null;
   const nodeContractHash =
     typeof config.nodeContractHash === "string" && /^[a-f0-9]{16,128}$/i.test(config.nodeContractHash)
-      ? config.nodeContractHash.toLowerCase() : null;
+      ? config.nodeContractHash.toLowerCase()
+      : (release?.nodeContractHash || null);
   const engineBuild =
     typeof config.engineBuild === "string" && config.engineBuild.trim() && config.engineBuild.length <= 120
-      ? config.engineBuild.trim() : "unknown";
+    ? config.engineBuild.trim() : (release?.releaseVersion || "unknown");
   const timeoutMs = Number.isSafeInteger(config.timeoutMs) ? config.timeoutMs : 10_000;
   if (timeoutMs < 1_000 || timeoutMs > 30_000) {
     throw new TypeError("tutor timeoutMs must be between 1000 and 30000");
@@ -506,7 +520,24 @@ export function parsePluginConfig(raw) {
   const stateDirectory = expandHomeDirectory(configuredStateDirectory);
   const agentWorkspace =
     typeof config.agentWorkspace === "string" && config.agentWorkspace.trim()
-      ? expandHomeDirectory(config.agentWorkspace.trim()) : null;
+      ? expandHomeDirectory(config.agentWorkspace.trim()) : (release ? path.join(release.root, "agent-workspace") : null);
+  const runtimeMode = typeof config.runtimeMode === "string"
+    ? config.runtimeMode.trim().toLowerCase()
+    : (process.env.CALLA_RUNTIME_MODE || "standalone").trim().toLowerCase();
+  if (!["standalone", "engine"].includes(runtimeMode)) {
+    throw new TypeError("tutor runtimeMode must be standalone or engine");
+  }
+  const engineSocketPath = typeof config.engineSocketPath === "string" && config.engineSocketPath.trim()
+    ? config.engineSocketPath.trim() : (process.env.CALLA_ENGINE_INGRESS_SOCKET || null);
+  const engineCapabilityToken = typeof config.engineCapabilityToken === "string" && config.engineCapabilityToken.trim()
+    ? config.engineCapabilityToken.trim() : (process.env.CALLA_ENGINE_CAPABILITY_TOKEN || null);
+  const feedbackSocketPath = typeof config.feedbackSocketPath === "string" && config.feedbackSocketPath.trim()
+    ? config.feedbackSocketPath.trim() : path.join(stateDirectory, "feedback-control.sock");
+  const feedbackAgentId = typeof config.feedbackAgentId === "string" && config.feedbackAgentId.trim()
+    ? config.feedbackAgentId.trim() : "calla";
+  if (role === "node" && runtimeMode === "engine" && (!engineSocketPath || !/^[a-z0-9-]{36}$/i.test(engineCapabilityToken || ""))) {
+    throw new TypeError("engine-mode Tutor node requires private Engine socket and capability token");
+  }
   return {
     role,
     nodeId,
@@ -523,6 +554,11 @@ export function parsePluginConfig(raw) {
     courseSocketPath: typeof config.courseSocketPath === "string" && config.courseSocketPath.trim()
       ? config.courseSocketPath.trim() : path.join(stateDirectory, "course-control.sock"),
     developmentMode: config.developmentMode === true,
+    runtimeMode,
+    engineSocketPath,
+    engineCapabilityToken,
+    feedbackSocketPath,
+    feedbackAgentId,
   };
 }
 

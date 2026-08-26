@@ -18,6 +18,10 @@ import Defaults
     func resumeCourse(with reply: @escaping (Data) -> Void)
     func stopLesson(with reply: @escaping (Data) -> Void)
     func ask(_ text: String, with reply: @escaping (Data) -> Void)
+    func setTutorProvider(_ provider: String, with reply: @escaping (Data) -> Void)
+    func tutorHistory(_ query: Data, with reply: @escaping (Data) -> Void)
+    func tutorCapture(_ captureID: String, with reply: @escaping (Data) -> Void)
+    func cancelTutorFeedback(_ feedbackID: String, generation: Int, with reply: @escaping (Data) -> Void)
     func courseControl(_ command: Data, with reply: @escaping (Data) -> Void)
     func copilotControl(_ command: Data, with reply: @escaping (Data) -> Void)
     /// Turns newer than `seq`. Pass -1 for the whole tail.
@@ -96,8 +100,37 @@ struct CallaEngineStatus: Codable, Equatable {
     var diagnostics: [String] = []
     var activeLesson: CallaActiveLesson? = nil
     var courses: [CallaCourseSnapshot] = []
+    var tutorIntelligence: CallaTutorIntelligenceStatus? = nil
     var copilot = CallaCopilotStatus()
 }
+
+struct CallaTutorIntelligenceStatus: Codable, Equatable {
+    var selectedProvider = "local"
+    var activeProvider: String? = nil
+    var pendingFeedbackID: String? = nil
+    var activeRunID: String? = nil
+    var activeRevision: String? = nil
+    var activeGeneration: Int? = nil
+    var localAgyAvailable = false
+    var localAgyAuthenticated = false
+    var gatewayFeedbackAvailable = false
+    var captureAvailable = false
+}
+
+struct CallaTutorHistoryQuery: Codable { let cursor: String?; let query: String?; let pageSize: Int }
+struct CallaTutorFeedback: Codable, Identifiable, Equatable {
+    let id: String; let runID: String; let generation: Int; let question: String?; let context: String
+    let state: String; let answer: String?; let selectedProvider: String?; let actualProvider: String?
+    let model: String?; let latencyMilliseconds: Int?; let fallbackReason: String?; let errorCode: String?
+    let captureID: String?; let createdAt: Date
+    enum CodingKeys: String, CodingKey {
+        case id, question, context, state, answer, model
+        case runID = "runID", generation, selectedProvider = "selectedProvider", actualProvider = "actualProvider"
+        case latencyMilliseconds = "latencyMilliseconds", fallbackReason = "fallbackReason", errorCode = "errorCode"
+        case captureID = "captureID", createdAt = "createdAt"
+    }
+}
+struct CallaTutorHistoryPage: Codable, Equatable { let entries: [CallaTutorFeedback]; let nextCursor: String? }
 
 /// Live-call state, carried on the engine's existing status poll.
 struct CallaCopilotStatus: Codable, Equatable {
@@ -838,6 +871,27 @@ final class CallaEngineClient: ObservableObject {
 
     func ask(_ text: String) {
         invoke { $0.ask(text, with: $1) }
+    }
+
+    func setTutorProvider(_ provider: String) {
+        guard ["local", "gateway"].contains(provider) else { return }
+        invoke { $0.setTutorProvider(provider, with: $1) }
+    }
+
+    func tutorHistory(query: String? = nil, cursor: String? = nil, completion: @escaping (CallaTutorHistoryPage?) -> Void) {
+        let request = CallaTutorHistoryQuery(cursor: cursor, query: query, pageSize: 50)
+        guard let data = try? JSONEncoder().encode(request) else { completion(nil); return }
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in completion(nil) }) as? BoringCallaEngineProtocol else { completion(nil); return }
+        proxy.tutorHistory(data) { response in
+            completion(try? Self.decoder.decode(CallaTutorHistoryPage.self, from: response))
+        }
+    }
+
+    func tutorCapture(_ captureID: String, completion: @escaping (Data?) -> Void) {
+        let connection = connection ?? makeConnection()
+        guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in completion(nil) }) as? BoringCallaEngineProtocol else { completion(nil); return }
+        proxy.tutorCapture(captureID) { data in completion(data.isEmpty ? nil : data) }
     }
 
     func reportLocalFailure(_ message: String) {

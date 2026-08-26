@@ -10,16 +10,17 @@ import plugin from "../index.mjs";
 import {
   appendNotes, MAX_NOTES_PER_FILE, MemoryRejection, readNotes, recallContext, takeToolCallSession,
 } from "../src/memory.mjs";
-import {handleTutorNodeHostCommand, invokeTutorHost} from "../src/node-host.mjs";
+import {handleTutorNodeHostCommand, invokeTutorEngine, invokeTutorHost} from "../src/node-host.mjs";
 import {createBeforeToolCallPolicy} from "../src/policy.mjs";
 import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, findForbiddenCoordinatePath, parsePluginConfig, TUTOR_TOOL_NAMES, validateNodeEnvelope, unwrapNodePayload} from "../src/protocol.mjs";
 
 test("internal session_start accepts v2 fallback and compatible v3 range", () => {
   const handshake = buildSessionStartEnvelope({engineBuild: "boring-1", nodeContractHash: "contract-1"});
-  assert.equal(handshake.protocol_version, 2);
+  assert.equal(handshake.protocol_version, 4);
   assert.equal(handshake.operation, "session_start");
   assert.doesNotThrow(() => validateNodeEnvelope({...handshake, protocol_version: 3}));
-  assert.throws(() => validateNodeEnvelope({...handshake, protocol_version: 4}), /supported range/);
+  assert.doesNotThrow(() => validateNodeEnvelope({...handshake, protocol_version: 4}));
+  assert.throws(() => validateNodeEnvelope({...handshake, protocol_version: 5}), /supported range/);
 });
 
 test("stable Gateway agent workspace is accepted as Calla-owned configuration", () => {
@@ -36,6 +37,7 @@ import {CallaMemoryGraph, FACT_RETENTION_DAYS} from "../src/calla-memory-graph.m
 import {LessonStateStore} from "../src/lesson-state.mjs";
 import {PedagogyStore, PEDAGOGY_SESSION_LIMIT} from "../src/pedagogy.mjs";
 import {TEACHING_PHRASE_REGISTRY} from "../src/teaching.mjs";
+import {TutorFeedbackServer} from "../src/feedback-service.mjs";
 
 const TEST_STATE_DIRECTORY = path.join(os.tmpdir(), `calla-plugin-test-${process.pid}`);
 test.after(async () => { await fs.rm(TEST_STATE_DIRECTORY, {recursive: true, force: true}); });
@@ -44,7 +46,36 @@ const courseAssets = Object.freeze([
   {asset_id: "fixture-proof", role: "proof", sha256: "b".repeat(64), bytes: 1},
 ]);
 
-test("course lifecycle auto-publishes only after compile and Blender preflight", async () => {
+test("Gateway feedback is one tool-free image turn with strict JSON only", async () => {
+  let call;
+  const server = new TutorFeedbackServer({agent: {runEmbeddedAgent: async (params) => {
+    call = params;
+    return {model: "gateway-test", payloads: [{text: JSON.stringify({message: "Check current visible control.", assessment: "needs_help", basis: "screenshot"})}]};
+  }}}, {feedbackAgentId: "calla", agentWorkspace: "/private/work"});
+  const result = await server.respond({
+    protocol_version: 4, request_id: "feedback-00000000", run_id: "run-00000000", generation: 2,
+    course_key: "course-00000000", revision: "revision-00000000", lesson_id: "lesson-00000000", step_id: "step-00000000",
+    question: "What now?", context: "Current authored step only.",
+    image: {mime_type: "image/jpeg", bytes_base64: Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9]).toString("base64")},
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.reply.message, "Check current visible control.");
+  assert.equal(call.disableTools, true);
+  assert.equal(call.images[0].mimeType, "image/jpeg");
+  assert.doesNotMatch(call.prompt, /\/+9j/);
+});
+
+test("Gateway feedback rejects response fields outside Tutor contract", async () => {
+  const server = new TutorFeedbackServer({agent: {runEmbeddedAgent: async () => ({payloads: [{text: '{"message":"x","assessment":"uncertain","basis":"screenshot","command":"bad"}'}]})}}, {});
+  const result = await server.respond({
+    protocol_version: 4, request_id: "feedback-00000001", run_id: "run-00000001", generation: 0,
+    course_key: "course-00000001", revision: "revision-00000001", lesson_id: "lesson-00000001", step_id: "step-00000001",
+    context: "Current authored step only.", image: {mime_type: "image/jpeg", bytes_base64: Buffer.from([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9]).toString("base64")},
+  });
+  assert.deepEqual(result, {ok: false, code: "PROVIDER_UNAVAILABLE", message: "Gateway feedback is unavailable."});
+});
+
+test("course lifecycle waits for explicit owner publish after compile and Blender preflight", async () => {
   const stateDirectory = path.join(TEST_STATE_DIRECTORY, "courses-lifecycle");
   const service = new CourseLifecycleService({stateDirectory}, {
     prepare: async () => ({title: "Blender basics", lesson_count: 2, warnings: [], artifact: "staged"}), preflight: async () => {},
@@ -54,23 +85,26 @@ test("course lifecycle auto-publishes only after compile and Blender preflight",
   assert.equal(created.phase, "queued");
   // Import intentionally starts asynchronously: no menu install happens here.
   await new Promise((resolve) => setTimeout(resolve, 15));
-  const published = await service.status(created.id);
+  const review = await service.status(created.id);
+  assert.equal(review.phase, "ready_for_review");
+  assert.equal(review.lesson_count, 2);
+  const published = await service.publish(created.id);
   assert.equal(published.phase, "published");
-  assert.equal(published.lesson_count, 2);
   await service.archive(created.id);
   assert.equal((await service.status(created.id)).phase, "archived");
   await service.restore(created.id);
   assert.equal((await service.status(created.id)).phase, "published");
 });
 
-test("course publish command is refused because strict lifecycle owns publication", async () => {
+test("course publish rejects stale phase and installs only review-ready revision", async () => {
   const stateDirectory = path.join(TEST_STATE_DIRECTORY, "courses-stale-revision");
   const service = new CourseLifecycleService({stateDirectory}, {
     prepare: async () => ({title: "Blender basics", lesson_count: 1, warnings: [], artifact: "staged"}), preflight: async () => {}, install: async () => {},
   });
   const first = await service.import({outline: "first", asset_bundle: "fixture.zip", target_app: "org.blenderfoundation.blender", target_version: "5.2", target_frontmost: true, target_allowlisted: true});
+  await assert.rejects(() => service.publish(first.id), /reviewed-ready/);
   await new Promise((resolve) => setTimeout(resolve, 10));
-  await assert.rejects(() => service.publish(first.id), /publish automatically/);
+  assert.equal((await service.publish(first.id)).phase, "published");
 });
 
 test("course control is owner-mode versioned JSON and rejects un-attested targets", async () => {
@@ -430,6 +464,20 @@ test("node role exposes only the paired TutorHost command", () => {
   assert.deepEqual(registrations.nodePolicies, []);
   assert.equal(registrations.nodeCommands[0].command, "tutor.host");
   assert.equal(registrations.nodeCommands[0].dangerous, true);
+});
+
+test("Engine mode registers no Gateway teaching tools", () => {
+  const {api, registrations} = fakeApi({pluginConfig: {runtimeMode: "engine"}});
+  plugin.register(api);
+  assert.deepEqual(registrations.tools, []);
+  assert.equal(registrations.hooks.has("before_prompt_build"), false);
+  assert.equal(registrations.nodePolicies.length, 1, "snapshot transport remains paired-node only");
+});
+
+test("Engine node rejects model-visible operations before local transport", async () => {
+  const envelope = buildTutorEnvelope("tutor_observe", {session_id: "session-1234"});
+  const response = await invokeTutorEngine(envelope, {capabilityToken: "00000000-0000-0000-0000-000000000000"});
+  assert.equal(response.code, "OPERATION_NOT_AVAILABLE_IN_ENGINE_MODE");
 });
 
 test("both role requires explicit development mode", () => {

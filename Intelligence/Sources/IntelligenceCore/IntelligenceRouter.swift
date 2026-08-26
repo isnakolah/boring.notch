@@ -102,7 +102,8 @@ public actor IntelligenceRouter {
             system: queued[0].system,
             input: queued.map(\.input).joined(separator: "\n"),
             tier: queued[0].tier,
-            exactModel: queued[0].exactModel
+            exactModel: queued[0].exactModel,
+            attachments: queued[0].attachments
         )
         enqueue(merged)
     }
@@ -119,7 +120,7 @@ public actor IntelligenceRouter {
     /// from the last provider tried.
     public func respond(to request: IntelligenceRequest) async throws -> IntelligenceResponse {
         let effective = applyPolicy(to: request)
-        let candidates = await resolveCandidates(for: effective.task)
+        let candidates = await resolveCandidates(for: effective.task, attachments: effective.attachments)
         guard !candidates.isEmpty else {
             throw IntelligenceFailure.providerMissing(
                 "no available provider for \(effective.task.id)"
@@ -127,15 +128,22 @@ public actor IntelligenceRouter {
         }
 
         var lastFailure: IntelligenceFailure = .providerMissing(effective.task.id)
+        let selectedProvider = selectedProvider(for: effective.task)
+        let deadline = Date().addingTimeInterval(effective.task.latencyBudget)
 
-        for (index, kind) in candidates.enumerated() {
+        for (index, route) in candidates.enumerated() {
+            let kind = route.provider
             guard let provider = providers[kind] else { continue }
             let fellBack = index > 0
-            // One retry in place, but only for failures a retry can fix.
-            for attempt in 0 ... 1 {
+            // Tutor feedback gets exactly one call per provider. Legacy call
+            // tasks retain their one same-provider retry.
+            let attempts = effective.task.isTutorFeedback ? 1 : 2
+            for attempt in 0 ..< attempts {
                 do {
-                    let started = Date()
-                    var response = try await withBudget(effective.task.latencyBudget) {
+                    let remaining = deadline.timeIntervalSinceNow
+                    guard remaining > 0 else { throw IntelligenceFailure.timedOut(effective.task.latencyBudget) }
+                    let budget = min(remaining, route.maximumAttemptDuration)
+                    var response = try await withBudget(budget) {
                         try await provider.respond(to: effective)
                     }
                     response = IntelligenceResponse(
@@ -144,9 +152,13 @@ public actor IntelligenceRouter {
                         attribution: Attribution(
                             provider: kind,
                             model: response.attribution.model,
-                            latency: Date().timeIntervalSince(started),
+                            latency: effective.task.latencyBudget - max(0, deadline.timeIntervalSinceNow),
                             fellBack: fellBack || response.attribution.fellBack,
-                            rollovers: response.attribution.rollovers
+                            rollovers: response.attribution.rollovers,
+                            selectedProvider: selectedProvider,
+                            transportFallback: response.attribution.transportFallback || response.attribution.fellBack,
+                            providerFallback: fellBack,
+                            fallbackReason: fellBack ? lastFailure.code : nil
                         ),
                         usage: response.usage
                     )
@@ -154,7 +166,15 @@ public actor IntelligenceRouter {
                 } catch let failure as IntelligenceFailure {
                     lastFailure = failure
                     if failure.disablesProvider { disabled.insert(kind) }
-                    if attempt == 0, failure.isRetryableInPlace, !failure.disablesProvider { continue }
+                    if attempt == 0, !effective.task.isTutorFeedback, failure.isRetryableInPlace, !failure.disablesProvider { continue }
+                    // Gateway selected is a one-way Tutor route. Local can only
+                    // fall through on the explicit eligible provider failures.
+                    if effective.task.isTutorFeedback,
+                       kind == .localAgy,
+                       !failure.isEligibleTutorProviderFallback
+                    {
+                        throw failure
+                    }
                     break
                 } catch {
                     lastFailure = .transport(String(describing: error))
@@ -177,25 +197,39 @@ public actor IntelligenceRouter {
             system: request.system,
             input: request.input,
             tier: tier,
-            exactModel: exact
+            exactModel: exact,
+            attachments: request.attachments
         )
     }
 
-    private func resolveCandidates(for task: IntelligenceTask) async -> [ProviderKind] {
-        var ordered = task.allowedProviders
+    private func selectedProvider(for task: IntelligenceTask) -> ProviderKind? {
+        policy.preferred[task.id] ?? task.effectiveRoutes.first?.provider
+    }
+
+    private func resolveCandidates(for task: IntelligenceTask, attachments: [IntelligenceAttachment]) async -> [ProviderRoute] {
+        var ordered = task.effectiveRoutes
         if let forced = policy.preferred[task.id] {
-            ordered = [forced] + ordered.filter { $0 != forced }
+            // Explicit Gateway Tutor preference is never allowed to reach local.
+            if task.isTutorFeedback, forced == .callaGateway {
+                ordered = ordered.filter { $0.provider == forced }
+            } else if let selected = ordered.first(where: { $0.provider == forced }) {
+                ordered = [selected] + ordered.filter { $0.provider != forced }
+            } else {
+                ordered = [ProviderRoute(provider: forced, maximumAttemptDuration: task.latencyBudget)] + ordered
+            }
         }
         if !policy.fallbackEnabled {
             ordered = Array(ordered.prefix(1))
         }
 
-        var usable: [ProviderKind] = []
-        for kind in ordered {
+        var usable: [ProviderRoute] = []
+        for route in ordered {
+            let kind = route.provider
             guard !disabled.contains(kind), let provider = providers[kind] else { continue }
             guard provider.supports(task) else { continue }
+            if !attachments.isEmpty, provider.attachmentCapability == .none { continue }
             guard await provider.availability().isReady else { continue }
-            usable.append(kind)
+            usable.append(route)
         }
         return usable
     }

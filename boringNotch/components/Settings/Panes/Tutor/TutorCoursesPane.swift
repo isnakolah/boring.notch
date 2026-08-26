@@ -13,6 +13,7 @@ struct TutorCoursesPane: View {
     @ObservedObject private var engine = CallaEngineClient.shared
     @Default(.callaHiddenCourseIDs) private var hiddenCourseIDs
     @State private var selectedCourseID = ""
+    @State private var publishCandidate: CallaCourseSnapshot?
 
     private var courses: [CallaCourseSnapshot] { engine.status.courses }
     private var selectedCourse: CallaCourseSnapshot? {
@@ -38,6 +39,17 @@ struct TutorCoursesPane: View {
             if !ids.contains(selectedCourseID) { selectedCourseID = ids.first ?? "" }
         }
         .onChange(of: hiddenCourseIDs) { _, _ in engine.applyCurrentPreferences() }
+        .alert("Publish course revision?", isPresented: Binding(
+            get: { publishCandidate != nil }, set: { if !$0 { publishCandidate = nil } }
+        ), presenting: publishCandidate) { course in
+            Button("Publish", role: .destructive) {
+                engine.courseControl(.init(action: "publish", courseID: course.id))
+                publishCandidate = nil
+            }
+            Button("Cancel", role: .cancel) { publishCandidate = nil }
+        } message: { course in
+            Text("Publish \(course.title)? New learners will receive this exact revision. Active runs stay pinned to their current revision.")
+        }
     }
 
     private var courseList: some View {
@@ -105,9 +117,19 @@ struct TutorCoursesPane: View {
                             .font(NotchType.rowDetail)
                             .foregroundStyle(NotchTint.attention)
                     }
+                    if course.lifecyclePhase == "ready_for_review" {
+                        Label(course.lifecycleNote ?? "Validation and Blender preflight completed. Review lesson order before publishing.",
+                              systemImage: "checkmark.seal.fill")
+                            .font(NotchType.rowDetail).foregroundStyle(NotchTint.healthy)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     HStack {
                         Button("Resume") { engine.resumeCourse() }.buttonStyle(.borderedProminent)
                         Button("Start again") { engine.startAgain(courseID: course.id) }
+                        if course.lifecyclePhase == "ready_for_review" {
+                            Button("Publish") { publishCandidate = course }
+                                .buttonStyle(.borderedProminent)
+                        }
                         if course.lifecyclePhase == "published" {
                             Button("Archive") { engine.courseControl(.init(action: "archive", courseID: course.id)) }
                         }

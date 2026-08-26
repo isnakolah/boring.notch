@@ -32,6 +32,7 @@ LEGACY_PLUGIN_PATHS = {
     "/srv/app/open-desktop-tutor/integrations/openclaw",
     "/srv/app/open-desktop-tutor/apps/tutor/integrations/openclaw",
     "/srv/app/.openclaw/apps/desktop-tutor",
+    "/srv/app/.openclaw/apps/tutor/integrations/openclaw",
 }
 
 
@@ -59,8 +60,8 @@ class ReleaseManifest:
         protocol = raw["protocolRange"]
         if not isinstance(protocol, dict) or not isinstance(protocol.get("min"), int) or not isinstance(protocol.get("max"), int):
             raise ReleaseError("release manifest protocolRange is invalid")
-        if protocol["min"] > protocol["max"] or protocol["min"] < 2 or protocol["max"] > 3:
-            raise ReleaseError("release manifest protocolRange must stay within 2...3")
+        if protocol["min"] > protocol["max"] or protocol["min"] < 2 or protocol["max"] > 4:
+            raise ReleaseError("release manifest protocolRange must stay within 2...4")
         if not isinstance(raw["configMigrationVersion"], int) or raw["configMigrationVersion"] < 1:
             raise ReleaseError("release manifest configMigrationVersion is invalid")
         for field in ("releaseVersion", "gatewayDigest", "nodeContractHash", "packDigest"):
@@ -134,6 +135,7 @@ def migrate_calla_config(config: dict[str, Any], *, current: Path, manifest: Rel
         return (item in LEGACY_PLUGIN_PATHS
                 or item == stable_plugin
                 or "calla-openclaw/apps/tutor/integrations/openclaw" in item
+                or item.endswith("/.openclaw/apps/tutor/integrations/openclaw")
                 or item.endswith("/Calla/openclaw"))
     load["paths"] = [item for item in paths if not is_calla_path(item)] + [stable_plugin]
     entries = plugins.setdefault("entries", {})
@@ -145,17 +147,11 @@ def migrate_calla_config(config: dict[str, Any], *, current: Path, manifest: Rel
     if not isinstance(tutor_config, dict):
         raise ReleaseError("plugins.entries.tutor.config must be an object")
     tutor_config.setdefault("stateDirectory", str(Path.home() / ".openclaw" / "tutor"))
-    # A changed command contract means the old paired node cannot be trusted to
-    # satisfy the new capability handshake. Let the restricted one-Mac
-    # enroller replace it; unrelated plugin configuration remains intact.
-    # Pre-migration Tutor config has no contract hash. Keep that already
-    # paired v2 node for first release; only a known changed contract triggers
-    # restricted automatic re-pairing.
-    if tutor_config.get("nodeContractHash") not in (None, manifest.nodeContractHash):
-        tutor_config.pop("nodeId", None)
-    tutor_config["nodeContractHash"] = manifest.nodeContractHash
-    tutor_config["engineBuild"] = manifest.releaseVersion
-    tutor_config["agentWorkspace"] = str(current / "agent-workspace")
+    # Release-derived facts live in current/manifest.json, read by the plugin
+    # after the atomic pointer flip. Persisting them here breaks OpenClaw builds
+    # that validate the cached old schema before loading current/plugin.
+    for key in ("nodeContractHash", "engineBuild", "agentWorkspace"):
+        tutor_config.pop(key, None)
     return result
 
 
@@ -264,6 +260,15 @@ class GatewayReleaseInstaller:
             str(release / "plugin") if path == str(self.current / "plugin") else path
             for path in validation_paths
         ]
+        # Some OpenClaw builds resolve an already-loaded plugin schema by id
+        # before reading the staged `load.paths` entry. That old schema cannot
+        # know Engine-only fields added by this release, so validate the
+        # unchanged base config first. The durable config still receives these
+        # fields after the atomic current-pointer flip, where new schema wins.
+        validation_tutor = validation_config.get("plugins", {}).get("entries", {}).get("tutor", {})
+        if isinstance(validation_tutor, dict) and isinstance(validation_tutor.get("config"), dict):
+            for key in ("nodeContractHash", "engineBuild", "agentWorkspace"):
+                validation_tutor["config"].pop(key, None)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", prefix="calla-config-check-", delete=False, encoding="utf-8") as handle:
             json.dump(validation_config, handle)
             handle.flush()
@@ -286,9 +291,9 @@ class GatewayReleaseInstaller:
         course = self.home / ".local" / "bin" / "calla-course"
         request = '{"version":1,"command":"list","payload":{}}\\n'
         self.runner(["/bin/sh", "-c", f"printf %s {shlex.quote(request)} | {shlex.quote(str(course))}"])
-        self._probe_paired_node(config_path)
+        self._probe_paired_node(config_path, release)
 
-    def _probe_paired_node(self, config_path: Path) -> None:
+    def _probe_paired_node(self, config_path: Path, release: Path) -> None:
         deadline = time.monotonic() + 30
         last_error = "no paired Calla Mac node"
         while time.monotonic() < deadline:
@@ -296,8 +301,9 @@ class GatewayReleaseInstaller:
                 config = json.loads(config_path.read_text(encoding="utf-8"))
                 tutor = config["plugins"]["entries"]["tutor"]["config"]
                 node_id = tutor.get("nodeId")
-                contract = tutor.get("nodeContractHash")
-                engine_build = tutor.get("engineBuild", "unknown")
+                manifest = ReleaseManifest.load(release / "manifest.json")
+                contract = manifest.nodeContractHash
+                engine_build = manifest.releaseVersion
                 if not isinstance(node_id, str) or not node_id:
                     last_error = "Calla Mac is still re-pairing"
                 elif not isinstance(contract, str) or len(contract) < 16:
@@ -381,6 +387,8 @@ class GatewayReleaseInstaller:
         unit_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         course = bin_directory / "calla-course"
         atomic_symlink(self.current / "bin" / "calla-course-gateway.sh", course)
+        feedback = bin_directory / "calla-feedback"
+        atomic_symlink(self.current / "bin" / "calla-feedback-gateway.sh", feedback)
         unit = unit_directory / "calla-node-enroller.service"
         content = "\n".join((
             "[Unit]",

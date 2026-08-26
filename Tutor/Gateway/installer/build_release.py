@@ -34,7 +34,7 @@ def build_release(tutor: Path, output: Path, version: str) -> Path:
     copytree(compiled_packs, output / "packs")
     copytree(tutor / "agent-workspace", output / "agent-workspace")
     (output / "bin").mkdir()
-    for name in ("calla-course-gateway.sh", "calla-course.sh"):
+    for name in ("calla-course-gateway.sh", "calla-course.sh", "calla-feedback-gateway.sh", "calla-feedback.sh"):
         source = tutor / "scripts" / name
         shutil.copy2(source, output / "bin" / name)
         (output / "bin" / name).chmod(0o700)
@@ -48,7 +48,7 @@ def build_release(tutor: Path, output: Path, version: str) -> Path:
     manifest = {
         "releaseVersion": version,
         "gatewayDigest": tree_digest(output),
-        "protocolRange": {"min": 2, "max": 3},
+        "protocolRange": {"min": 2, "max": 4},
         "nodeContractHash": tree_digest(output / "plugin"),
         "packDigest": tree_digest(output / "packs"),
         "configMigrationVersion": 1,

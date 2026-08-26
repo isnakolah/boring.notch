@@ -51,6 +51,9 @@ public struct IntelligenceRequest: Sendable {
     /// Exact provider model id, when the caller cares and the transport can
     /// honour it. Ignored by transports that only take tiers.
     public let exactModel: String?
+    /// Attachments are Engine-owned bytes. No provider may infer execution or
+    /// progression authority from them.
+    public let attachments: [IntelligenceAttachment]
 
     public init(
         task: IntelligenceTask,
@@ -58,7 +61,8 @@ public struct IntelligenceRequest: Sendable {
         system: PromptBlocks = .init(),
         input: String,
         tier: ModelTier? = nil,
-        exactModel: String? = nil
+        exactModel: String? = nil,
+        attachments: [IntelligenceAttachment] = []
     ) {
         self.task = task
         self.sessionKey = sessionKey
@@ -66,6 +70,7 @@ public struct IntelligenceRequest: Sendable {
         self.input = input
         self.tier = tier
         self.exactModel = exactModel
+        self.attachments = attachments
     }
 
     public var effectiveTier: ModelTier { tier ?? task.defaultTier }
@@ -81,19 +86,35 @@ public struct Attribution: Sendable, Hashable, Codable {
     /// How many times this session has rolled to a fresh conversation to keep
     /// context (and therefore latency) flat.
     public var rollovers: Int
+    /// Route selected before provider availability/fallback was known.
+    public var selectedProvider: ProviderKind?
+    /// Whether a provider's own transport changed (for example agent API -> CLI).
+    public var transportFallback: Bool
+    /// Whether Router changed providers.
+    public var providerFallback: Bool
+    /// Typed Router failure that caused provider fallback. Never user/model text.
+    public var fallbackReason: String?
 
     public init(
         provider: ProviderKind,
         model: String,
         latency: TimeInterval,
         fellBack: Bool = false,
-        rollovers: Int = 0
+        rollovers: Int = 0,
+        selectedProvider: ProviderKind? = nil,
+        transportFallback: Bool = false,
+        providerFallback: Bool = false,
+        fallbackReason: String? = nil
     ) {
         self.provider = provider
         self.model = model
         self.latency = latency
         self.fellBack = fellBack
         self.rollovers = rollovers
+        self.selectedProvider = selectedProvider
+        self.transportFallback = transportFallback
+        self.providerFallback = providerFallback
+        self.fallbackReason = fallbackReason
     }
 }
 

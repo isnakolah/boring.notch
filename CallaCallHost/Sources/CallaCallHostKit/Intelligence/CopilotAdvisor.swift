@@ -1002,6 +1002,8 @@ public actor CopilotAdvisor {
         case .unsupportedTask: "task unsupported locally"
         case .missingSessionKey: "internal: no session key"
         case .transport: "local transport error"
+        case .unsupportedAttachment: "attachment unsupported locally"
+        case .invalidRequest: "invalid intelligence request"
         }
     }
 }

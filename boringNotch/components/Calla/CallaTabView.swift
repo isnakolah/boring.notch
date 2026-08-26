@@ -274,7 +274,9 @@ struct CallaTabView: View {
                     .foregroundStyle(Color.effectiveAccent)
             }
             .buttonStyle(.plain)
-            .disabled(!CallaNotchPresentation.canAsk(question: question, running: engine.status.running))
+            .disabled(!CallaNotchPresentation.canAsk(question: question, running: engine.status.running,
+                                                      feedbackAvailable: engine.status.tutorIntelligence?.captureAvailable == true,
+                                                      feedbackPending: engine.status.tutorIntelligence?.pendingFeedbackID != nil))
         }
         .padding(.horizontal, 10)
         .frame(height: NotchGlassSpace.control)
@@ -284,7 +286,9 @@ struct CallaTabView: View {
     }
 
     private func submitQuestion() {
-        guard CallaNotchPresentation.canAsk(question: question, running: engine.status.running) else { return }
+        guard CallaNotchPresentation.canAsk(question: question, running: engine.status.running,
+                                             feedbackAvailable: engine.status.tutorIntelligence?.captureAvailable == true,
+                                             feedbackPending: engine.status.tutorIntelligence?.pendingFeedbackID != nil) else { return }
         engine.ask(question)
         question = ""
     }
