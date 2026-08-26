@@ -317,6 +317,13 @@ export function validateNodeEnvelope(value) {
   }
   requireString(value.request_id, "request_id", 8);
   requireString(value.session_id, "session_id", 8);
+  const hasEpoch = Object.hasOwn(value, "source_epoch");
+  const hasSequence = Object.hasOwn(value, "source_sequence");
+  if (hasEpoch !== hasSequence || (hasEpoch &&
+      (typeof value.source_epoch !== "string" || !/^[A-Za-z0-9._-]{1,160}$/.test(value.source_epoch) ||
+       !Number.isSafeInteger(value.source_sequence) || value.source_sequence < 0))) {
+    throw new TypeError("snapshot source identity is invalid");
+  }
   if (!Object.values(TOOL_TO_OPERATION).includes(value.operation) && !INTERNAL_OPERATIONS.has(value.operation)) {
     throw new TypeError(`unsupported operation: ${String(value.operation)}`);
   }
@@ -367,7 +374,7 @@ export function validateNodeEnvelope(value) {
       if (typeof course?.id !== "string" || typeof course?.phase !== "string" || typeof course?.title !== "string") {
         throw new TypeError("each course status requires id, phase, and title");
       }
-      if (!new Set(["queued", "compiling", "validating", "waiting_for_blender", "preflighting", "publishing", "published", "failed", "cancelled", "archived"]).has(course.phase)) {
+      if (!new Set(["queued", "compiling", "validating", "waiting_for_blender", "preflighting", "ready_for_review", "publishing", "published", "failed", "cancelled", "archived"]).has(course.phase)) {
         throw new TypeError("course status has an unsupported phase");
       }
       if (course.error !== null && course.error !== undefined && typeof course.error !== "string") throw new TypeError("course status error must be text");
@@ -444,6 +451,12 @@ export function buildSessionStartEnvelope({min = 2, max = 4, engineBuild, nodeCo
     },
   };
   return validateNodeEnvelope(envelope);
+}
+
+/// Adds Gateway's durable ordering pair after construction. Snapshot producers
+/// alone receive this capability; model-visible envelopes never do.
+export function withSnapshotIdentity(envelope, {sourceEpoch, sourceSequence}) {
+  return validateNodeEnvelope({...envelope, source_epoch: sourceEpoch, source_sequence: sourceSequence});
 }
 
 /// Hand the Mac the list of courses it may offer.

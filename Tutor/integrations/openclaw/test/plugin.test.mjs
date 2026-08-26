@@ -12,7 +12,8 @@ import {
 } from "../src/memory.mjs";
 import {handleTutorNodeHostCommand, invokeTutorEngine, invokeTutorHost} from "../src/node-host.mjs";
 import {createBeforeToolCallPolicy} from "../src/policy.mjs";
-import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, findForbiddenCoordinatePath, parsePluginConfig, TUTOR_TOOL_NAMES, validateNodeEnvelope, unwrapNodePayload} from "../src/protocol.mjs";
+import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, findForbiddenCoordinatePath, parsePluginConfig, TUTOR_TOOL_NAMES, validateNodeEnvelope, withSnapshotIdentity, unwrapNodePayload} from "../src/protocol.mjs";
+import {GatewaySnapshotSequencer} from "../src/snapshot-sequencer.mjs";
 
 test("internal session_start accepts v2 fallback and compatible v3 range", () => {
   const handshake = buildSessionStartEnvelope({engineBuild: "boring-1", nodeContractHash: "contract-1"});
@@ -21,6 +22,30 @@ test("internal session_start accepts v2 fallback and compatible v3 range", () =>
   assert.doesNotThrow(() => validateNodeEnvelope({...handshake, protocol_version: 3}));
   assert.doesNotThrow(() => validateNodeEnvelope({...handshake, protocol_version: 4}));
   assert.throws(() => validateNodeEnvelope({...handshake, protocol_version: 5}), /supported range/);
+});
+
+test("Gateway snapshots require paired persistent source identity", async () => {
+  const stateDirectory = path.join(TEST_STATE_DIRECTORY, "snapshot-sequence");
+  const first = new GatewaySnapshotSequencer(stateDirectory);
+  const one = await first.next();
+  const two = await first.next();
+  const restarted = new GatewaySnapshotSequencer(stateDirectory);
+  const three = await restarted.next();
+  assert.equal(one.sourceEpoch, two.sourceEpoch);
+  assert.equal(two.sourceEpoch, three.sourceEpoch);
+  assert.deepEqual([one.sourceSequence, two.sourceSequence, three.sourceSequence], [1, 2, 3]);
+  const mode = (await fs.stat(path.join(stateDirectory, "gateway-snapshot-sequence.json"))).mode & 0o777;
+  assert.equal(mode, 0o600);
+
+  const envelope = withSnapshotIdentity(buildSessionStartEnvelope({engineBuild: "boring-1", nodeContractHash: "contract-1"}), one);
+  assert.equal(envelope.source_epoch, one.sourceEpoch);
+  assert.throws(() => validateNodeEnvelope({...envelope, source_sequence: -1}), /snapshot source identity/);
+  assert.throws(() => validateNodeEnvelope({...envelope, source_epoch: undefined}), /snapshot source identity/);
+});
+
+test("review-ready lifecycle snapshot is valid but never learner publication", () => {
+  const envelope = buildCourseStatusEnvelope([{id: "course-12345678", title: "Draft", phase: "ready_for_review", error: null}]);
+  assert.equal(envelope.payload.courses[0].phase, "ready_for_review");
 });
 
 test("stable Gateway agent workspace is accepted as Calla-owned configuration", () => {

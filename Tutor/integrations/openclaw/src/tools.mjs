@@ -1,4 +1,5 @@
-import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildInternalLearningEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, unwrapNodePayload} from "./protocol.mjs";
+import {buildCatalogueEnvelope, buildCourseRuntimeEnvelope, buildCourseStatusEnvelope, buildInternalLearningEnvelope, buildSessionStartEnvelope, buildTutorEnvelope, unwrapNodePayload, withSnapshotIdentity} from "./protocol.mjs";
+import {GatewaySnapshotSequencer} from "./snapshot-sequencer.mjs";
 import {buildCourseRuntime} from "./course-runtime.mjs";
 import {buildCourseCatalogue, findCanonicalDescriptor, lessonCard, requireCanonicalDescriptor, requirePackAuthorizedAction, retrieveLessonPrimer, retrievePackPrimer} from "./local-retrieval.mjs";
 import {
@@ -7,6 +8,24 @@ import {
 import {CallaMemoryGraph} from "./calla-memory-graph.mjs";
 import {LessonStateStore} from "./lesson-state.mjs";
 import {PedagogyStore, pedagogyAudit} from "./pedagogy.mjs";
+
+const snapshotSequencers = new Map();
+function snapshotSequencer(config) {
+  const key = config.stateDirectory;
+  let sequencer = snapshotSequencers.get(key);
+  if (!sequencer) {
+    sequencer = new GatewaySnapshotSequencer(key);
+    snapshotSequencers.set(key, sequencer);
+  }
+  return sequencer;
+}
+
+async function orderedSnapshot(config, envelope) {
+  // Standalone retains v2/v3 rollback compatibility. Only Boring Engine mode
+  // consumes canonical Gateway snapshot ordering.
+  if (config.runtimeMode !== "engine") return envelope;
+  return withSnapshotIdentity(envelope, await snapshotSequencer(config).next());
+}
 
 /// A rectangle of the observed window, each side a fraction of it.
 ///
@@ -339,12 +358,12 @@ function recordLearning(api, config, sessionID, lessonID, bundleID, succeeded, d
 export async function pushSessionStart(api, config) {
   if (!config.nodeId || !config.nodeContractHash) return false;
   try {
-    const envelope = buildSessionStartEnvelope({
+    const envelope = await orderedSnapshot(config, buildSessionStartEnvelope({
       min: 2,
       max: 4,
       engineBuild: config.engineBuild,
       nodeContractHash: config.nodeContractHash,
-    });
+    }));
     const response = unwrapNodePayload(await api.runtime.nodes.invoke({
       nodeId: config.nodeId,
       command: "tutor.host",
@@ -367,7 +386,7 @@ export async function pushSessionStart(api, config) {
 export async function pushCourseCatalogue(api, config) {
   if (!config.nodeId) return;
   try {
-    const envelope = buildCatalogueEnvelope(await buildCourseCatalogue(config));
+    const envelope = await orderedSnapshot(config, buildCatalogueEnvelope(await buildCourseCatalogue(config)));
     void api.runtime.nodes.invoke({nodeId: config.nodeId, command: "tutor.host", params: envelope, timeoutMs: 2_000})
       .catch(() => {});
   } catch {
@@ -381,7 +400,7 @@ export async function pushCourseCatalogue(api, config) {
 export async function pushCourseRuntime(api, config) {
   if (!config.nodeId) return;
   try {
-    const envelope = buildCourseRuntimeEnvelope(await buildCourseRuntime(config));
+    const envelope = await orderedSnapshot(config, buildCourseRuntimeEnvelope(await buildCourseRuntime(config)));
     void api.runtime.nodes.invoke({nodeId: config.nodeId, command: "tutor.host", params: envelope, timeoutMs: 2_000})
       .catch(() => {});
   } catch { /* Keep last atomic host cache. */ }
@@ -392,7 +411,7 @@ export async function pushCourseRuntime(api, config) {
 export async function pushCourseStatus(api, config, courses) {
   if (!config.nodeId) return;
   try {
-    const envelope = buildCourseStatusEnvelope(courses);
+    const envelope = await orderedSnapshot(config, buildCourseStatusEnvelope(courses));
     void api.runtime.nodes.invoke({nodeId: config.nodeId, command: "tutor.host", params: envelope, timeoutMs: 2_000})
       .catch(() => {});
   } catch { /* Mac rehydrates its cached DTOs on next Settings open. */ }

@@ -2925,7 +2925,13 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             return Self.ingressReply(ok: false, code: "OPERATION_NOT_AVAILABLE_IN_ENGINE_MODE", message: "Operation unavailable in Boring Engine mode")
         }
         // v2/v3 transition snapshots had no source ordering. They may seed an
-        // empty local cache once; current senders must carry epoch/sequence.
+        // empty local cache once; v4 Gateway snapshots carry durable epoch and
+        // monotonically increasing sequence so restart/replay cannot mutate
+        // canonical runtime state.
+        let hasSourceIdentity = object["source_epoch"] is String && object["source_sequence"] is Int
+        guard version < 4 || hasSourceIdentity else {
+            return Self.ingressReply(ok: false, code: "missing_snapshot_identity", message: "Protocol v4 snapshot requires source identity")
+        }
         let epoch = object["source_epoch"] as? String ?? "transition"
         let sequence = object["source_sequence"] as? Int ?? 0
         guard Self.validTutorID(epoch), sequence >= 0 else {
