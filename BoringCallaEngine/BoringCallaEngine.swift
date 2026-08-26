@@ -137,6 +137,18 @@ private struct CopilotStatus: Codable {
     /// this path exists to stop giving.
     var hostPermissionsKnown = false
     var modelDownload: ModelDownloadFile? = nil
+    /// Where the host is in its own lifecycle: `capturing`, `stopping`,
+    /// `processingRecap`, `finished`. The host has published this since v2 and
+    /// nothing forwarded it, so the app could see a call start and could see it
+    /// vanish, and knew nothing about the seconds in between — which is exactly
+    /// the window where End call looked like it had done nothing.
+    var lifecycleState: String? = nil
+    /// 0…1 while the recap is being written; nil otherwise.
+    var recapProgress: Double? = nil
+    /// The call has stopped capturing and is writing itself up. Exclusive with
+    /// `running` and `starting`, on the same principle those two follow: three
+    /// different things are happening and one Bool cannot say which.
+    var finishing = false
 }
 
 /// Mirrors `permissions.json`, written by CallaCallHost about itself.
@@ -267,13 +279,16 @@ private struct CopilotLifecycleFile: Codable {
     var contractVersion: Int
     var generation: Int
     var state: String
+    /// 0…1 while the host is writing the recap. Optional for the same reason
+    /// every other field here is: a host older than it must still decode.
+    var recapProgress: Double?
     /// Absent once the call is up, and absent entirely from a host older than
     /// the startup checklist.
     var startup: CopilotStartupFile?
 
     enum CodingKeys: String, CodingKey {
         case contractVersion = "contractVersion"
-        case generation, state, startup
+        case generation, state, startup, recapProgress
     }
 }
 
@@ -1044,7 +1059,28 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     }
 
     private func startCopilot(_ command: CopilotCommand, prewarm: Bool = false) {
-        guard copilotProcess?.isRunning != true else { copilotResult = "Call already running"; return }
+        if copilotProcess?.isRunning == true {
+            // A warm host is already most of a call, so a start that lands on
+            // one promotes it rather than being refused.
+            //
+            // Boring's own `startCall` tries this first, but it can only ask the
+            // question of the status snapshot it last polled — and the snapshot
+            // is up to four seconds old, so a start pressed shortly after a
+            // pre-roll armed reached here with `prewarming` still false and got
+            // "Call already running" for a host that was sitting there waiting
+            // to be released. The engine owns the process and can answer for it
+            // now, which is the only place the answer is never stale.
+            //
+            // A start that is itself a pre-roll is not promoted: two warm-ups
+            // arriving together should leave the first one warm, not begin
+            // recording nobody asked for.
+            if !prewarm, currentCopilotStatus().prewarming == true {
+                releasePrewarm()
+                return
+            }
+            copilotResult = "Call already running"
+            return
+        }
         guard let executable = copilotExecutable else {
             copilotResult = "Call host is not installed"; return
         }
@@ -1994,8 +2030,19 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             // but it is emphatically not nothing either — that gap is what made
             // pressing Start look like it had failed.
             let booting = host.lifecycle?.state == CallLifecycleState.starting.rawValue
+            status.lifecycleState = host.lifecycle?.state
+            status.recapProgress = host.lifecycle?.recapProgress
+            // Winding down is not capturing. A host writing its recap has both
+            // microphones closed, so drawing it as a live call is the same lie
+            // in the other direction — and it is what made the panel sit there
+            // unchanged after End call until the process finally exited.
+            let winding = host.lifecycle.map {
+                $0.state == CallLifecycleState.stopping.rawValue
+                    || $0.state == CallLifecycleState.processingRecap.rawValue
+            } ?? false
             status.starting = alive && booting
-            status.running = alive && !booting
+            status.running = alive && !booting && !winding
+            status.finishing = alive && winding
             if let startup = host.lifecycle?.startup {
                 status.startupStage = startup.stage
                 status.modelLoaded = startup.modelLoaded ?? false

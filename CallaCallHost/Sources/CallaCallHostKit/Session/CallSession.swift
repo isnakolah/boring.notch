@@ -836,6 +836,14 @@ public actor CallSession {
         lifecycleState = .processingRecap
         recapProgress = 0.2
         await writeStatus()
+        // Bring the account up to the end of the call before anything reads it.
+        // `summarise()` sees the tail on its own, but `durableSummary()` — which
+        // is what the recap's itemised points are built from — reads only closed
+        // chunks, so the last stretch of the call was reaching the paragraph and
+        // never the list.
+        await advisor.closeOpenChunk()
+        recapProgress = 0.4
+        await writeStatus()
         if let summary = await advisor.summarise() {
             await handle(suggestion: summary)
         }

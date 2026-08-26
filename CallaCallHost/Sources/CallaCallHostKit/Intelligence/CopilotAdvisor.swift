@@ -393,6 +393,41 @@ public actor CopilotAdvisor {
     /// The whole ledger, for diagnostics.
     public var ledgerState: CallLedger { ledger }
 
+    /// Statements said but not yet folded into the account.
+    ///
+    /// Exposed because "is the summary keeping up" is otherwise invisible: a
+    /// panel showing an account has no way to say whether that account is
+    /// current or a minute stale, and the two look identical.
+    public var pendingStatements: Int { ledger.tail.count }
+    /// How much account there is. Pairs with `pendingStatements` to say both
+    /// what has been captured and what has not.
+    public var accountPoints: Int { ledger.pointCount }
+
+    /// Closes whatever is still in the tail, and waits for it.
+    ///
+    /// The end of a call used to run the deep closing pass and stop. That pass
+    /// reads the tail, so its *overview* covered everything — but the recap's
+    /// points come from `durableSummary()`, which reads only the chunks. So
+    /// anything said after the last chunk closed reached the paragraph and never
+    /// reached the list, and a call that ended mid-topic lost its last minute of
+    /// decisions and commitments from the itemised recap entirely.
+    ///
+    /// Called before `summarise()`, so both halves of the recap see the same
+    /// call.
+    public func closeOpenChunk() async {
+        guard config.preferred == .local, !localGaveUp else { return }
+        // Anything still inside the segmenter is a real turn too — a call that
+        // ends while somebody is finishing a sentence should keep the sentence.
+        let trailing = segmenter.drain(now: audioNow())
+        if !trailing.isEmpty {
+            statementsEmitted += trailing.count
+            ledger.append(trailing)
+        }
+        guard !chunkInFlight, !ledger.tail.isEmpty else { return }
+        chunkInFlight = true
+        await closeChunk(ledger.takeTail())
+    }
+
     /// The account in the shape the store keeps it, for the end of the call.
     ///
     /// This is what survives the process. Everything else the advisor holds is
@@ -405,6 +440,16 @@ public actor CopilotAdvisor {
             points: ledger.chunks.flatMap(\.points),
             openQuestions: ledger.openQuestions)
     }
+
+    /// Chunks that recorded nothing, and how many of those are consecutive.
+    ///
+    /// Exposed because "the summary is not picking anything up" was previously
+    /// unanswerable from outside: an empty panel is what a quiet call and a
+    /// broken account both look like.
+    public private(set) var emptyChunks = 0
+    public private(set) var consecutiveEmptyChunks = 0
+    /// Chunks that recorded something. With `emptyChunks`, the hit rate.
+    public private(set) var closedChunks = 0
 
     private var ledger = CallLedger()
     private var chunkInFlight = false
@@ -478,6 +523,23 @@ public actor CopilotAdvisor {
             input = "Already on the record — do not repeat these, in any wording:\n"
                 + recorded.joined(separator: "\n")
                 + "\n\nNew turns:\n" + input
+        } else if ledger.pointCount == 0 {
+            // The lane is told an empty answer is a normal answer, and it is —
+            // once there is an account to leave alone. While there is none, the
+            // same instruction produces calls whose account never starts at all:
+            // more than half the chunks on this machine have recorded nothing,
+            // and whole calls have gone by with an empty panel while the model
+            // answered in two seconds every time. Nothing is on the record yet,
+            // so there is nothing to be redundant with, and that is worth
+            // saying rather than leaving to be inferred.
+            input = """
+            Nothing has been recorded for this call yet, so no line can repeat \
+            anything. If these turns established anything concrete at all — a name, \
+            a number, a system, a plan, a constraint, what someone is doing — record \
+            it. Reserve the empty answer for turns that truly established nothing.
+
+            New turns:
+            """ + "\n" + input
         }
 
         let request = IntelligenceRequest(
@@ -493,22 +555,43 @@ public actor CopilotAdvisor {
             guard let payload = response.payload,
                   let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any]
             else { return }
-            let points = (object["points"] as? [String])
+            let points = Self.points(from: object["points"])
                 // Tolerated in case a model answers with the older single-string shape.
                 ?? (object["summary"] as? String).map { [$0] }
                 ?? []
+            closedChunks += 1
             ledger.applyChunk(
                 points: points,
-                openQuestions: object["open_questions"] as? [String],
+                openQuestions: Self.points(from: object["open_questions"]),
                 throughSeq: material.last?.toSeq ?? -1
             )
             summaryTrigger.didSummarize()
             pendingCommitmentOrDecision = false
-            trace("""
-            chunk closed in \(Int(response.attribution.latency * 1000))ms from \
-            \(material.count) statements -> \(points.count) points \
-            (\(ledger.pointCount) in the account)
-            """)
+            if points.isEmpty {
+                emptyChunks += 1
+                consecutiveEmptyChunks += 1
+                // A chunk that records nothing is a normal answer once — the
+                // lane is told to prefer an empty answer over a filler line —
+                // and a symptom once it keeps happening. It used to be neither,
+                // because the only trace said "0 points" in the same words for
+                // both, and a call whose account never started looked exactly
+                // like a quiet one. The keys are logged so the other cause, a
+                // reply in a shape this does not parse, is distinguishable from
+                // a reply that genuinely held nothing.
+                trace("""
+                chunk closed in \(Int(response.attribution.latency * 1000))ms from \
+                \(material.count) statements -> NO POINTS \
+                (\(consecutiveEmptyChunks) in a row, \(ledger.pointCount) in the account); \
+                reply keys: \(object.keys.sorted().joined(separator: ","))
+                """)
+            } else {
+                consecutiveEmptyChunks = 0
+                trace("""
+                chunk closed in \(Int(response.attribution.latency * 1000))ms from \
+                \(material.count) statements -> \(points.count) points \
+                (\(ledger.pointCount) in the account)
+                """)
+            }
             publishLedgerToPanel()
             foldIfDue()
         } catch {
@@ -516,6 +599,38 @@ public actor CopilotAdvisor {
             // to the tail, so the next chunk carries them.
             trace("chunk failed: \(String(describing: error))")
             ledger.restore(material)
+        }
+    }
+
+    /// A list of lines out of whatever the model actually sent.
+    ///
+    /// `as? [String]` alone is a silent failure: a model that answers with a
+    /// single newline-separated string, or with objects instead of strings,
+    /// produced exactly the same "0 points" as one that deliberately recorded
+    /// nothing — same log line, no error, no way to tell them apart. Each shape
+    /// here has been seen from some model at some point.
+    static func points(from value: Any?) -> [String]? {
+        switch value {
+        case let list as [String]:
+            return list.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let text as String:
+            return text.split(whereSeparator: \.isNewline)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        case let objects as [[String: Any]]:
+            // `[{"point": "..."}]` and `[{"text": "..."}]` both turn up.
+            return objects.compactMap { object in
+                for key in ["point", "text", "line", "summary"] {
+                    if let value = object[key] as? String,
+                       !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+                return nil
+            }
+        default:
+            return nil
         }
     }
 
