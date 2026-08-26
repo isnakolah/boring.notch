@@ -749,6 +749,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
     private var tutorCaptureVault: TutorCaptureVault?
     private var tutorCaptureFailure: String?
     private var lastTutorVerification: String?
+    private var tutorImportFailureCode: String?
 
     private var root: URL {
         fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -2787,6 +2788,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let learning = (try? fileManager.contentsOfDirectory(at: learningRoot, includingPropertiesForKeys: [.isRegularFileKey]))?
             .filter { $0.pathExtension == "json" }.map { "learning/\($0.lastPathComponent)" } ?? []
         for relative in candidates + learning {
+            tutorImportFailureCode = nil
             let source = sourceRoot.appendingPathComponent(relative)
             guard let values = try? source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
                   values.isRegularFile == true, let size = values.fileSize, size >= 0, size <= 5 * 1024 * 1024,
@@ -2805,7 +2807,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
                     try? await store.recordTutorImport(sourceFile: relative, digest: digest,
                                                         status: outcome == nil ? "malformed" : "imported",
                                                         importedCount: outcome ?? 0,
-                                                        errorCode: outcome == nil ? "invalid_shape" : nil)
+                                                        errorCode: outcome == nil ? (self.tutorImportFailureCode ?? "invalid_shape") : nil)
                     return true
                 }
             } catch {
@@ -2830,9 +2832,29 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
             payload = object as? [String: Any] ?? ["courses": object]
             operation = "course_status"
         case "course-runtime.json":
-            guard let object = try? JSONSerialization.jsonObject(with: data) else { return nil }
-            payload = ["runtime": object]
-            operation = "course_runtime"
+            guard let object = try? JSONSerialization.jsonObject(with: data),
+                  JSONSerialization.isValidJSONObject(object),
+                  let runtimeData = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]),
+                  runtimeData.count <= 5 * 1024 * 1024,
+                  let manifest = try? JSONDecoder().decode(RuntimeManifest.self, from: runtimeData),
+                  manifest.format == "calla-course-runtime", manifest.formatVersion == 1,
+                  !manifest.courses.isEmpty else {
+                tutorImportFailureCode = "invalid_runtime_shape"
+                return nil
+            }
+            do {
+                // Import runs inside this Engine process. It is not a Gateway
+                // snapshot and must not consume or collide with node epoch /
+                // sequence ordering. Persist canonical state, then regenerate
+                // the Host compatibility projection atomically.
+                try persistRuntimeManifest(manifest, rawData: runtimeData, epoch: "legacy-import-v1", sequence: 0)
+                try writeEngineProjection("course-runtime.json", object)
+                return 1
+            } catch {
+                tutorImportFailureCode = "runtime_commit_failed"
+                appendDiagnostic("Tutor runtime import failed: \(error.localizedDescription)")
+                return nil
+            }
         case "course-runs.json":
             guard let records = try? JSONDecoder().decode([String: CourseRunFile].self, from: data),
                   records.count <= 200, let store else { return nil }

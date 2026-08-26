@@ -162,6 +162,26 @@ final class TutorStoreTests: XCTestCase {
         XCTAssertEqual(try database.scalarInt("SELECT COUNT(*) FROM tutor_run WHERE run_id = 'legacy-run-1'"), 1)
         XCTAssertEqual(try database.scalarInt("SELECT COUNT(*) FROM tutor_run_event WHERE run_id = 'legacy-run-1' AND kind = 'legacy_import'"), 1)
     }
+
+    func testRuntimeCommitAcceptsReadyForReviewRevision() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("calla-tutor-runtime-commit-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = try CallaStore(path: root.appendingPathComponent("calla.sqlite"))
+        let digest = String(repeating: "c", count: 64)
+        let revision = TutorCourseRevisionRecord(courseKey: "blender.lamp", revision: "rev-1", lifecycle: .readyForReview,
+                                                 title: "Lamp basics", targetBundleID: "org.blenderfoundation.blender",
+                                                 targetVersion: ">=5.2 <5.3", artifactDigest: digest, packContractVersion: 1)
+        try await store.upsertTutorCourseRevision(revision, lessons: [
+            TutorLessonRecord(lessonID: "lesson-1", ordinal: 0, title: "First lesson", stepCount: 2)
+        ])
+        let runtime = TutorRuntimeManifestRecord(courseKey: "blender.lamp", revision: "rev-1",
+                                                 manifestJSON: #"{"format":"calla-course-runtime"}"#,
+                                                 digest: digest, sourceEpoch: "legacy-import-v1", sourceSequence: 0)
+        try await store.upsertTutorRuntimeManifest(runtime)
+        let saved = try await store.tutorRuntimeManifest(courseKey: "blender.lamp", revision: "rev-1")
+        XCTAssertEqual(saved, runtime)
+    }
 }
 
 private extension Array {
