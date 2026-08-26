@@ -1,15 +1,17 @@
 # Tutor intelligence delivery record
 
-Recorded 2026-08-26 after signed Boring installation and Gateway promotion.
+Updated 2026-08-26. This is an evidence ledger, not a completion claim.
 
-- Boring implementation commit: `254d94b`
-- Portable `Tutor/` subtree split: `12a736f140a48d765ac1367334a4c65d60d627b7`
+- Current Boring implementation commit: `13da5feeda4027818506d28deeb2946b386efb83`
+- Latest review-lifecycle implementation commit: `22654ee081a76d97ce7b17809a3cd408d7d31e8b`
+- Portable `Tutor/` subtree split: `5d308ad59f8dc64be3b1ab1a3911ffdcf58e2078`
 - Calla branch: `feat/boring-owned-tutor-intelligence`
-- Calla branch commit: `12a736f140a48d765ac1367334a4c65d60d627b7`
+- Calla branch commit: `5d308ad59f8dc64be3b1ab1a3911ffdcf58e2078`
 - Protocol: v4, accepted range v2-v4
-- Active Gateway release: `boring-62ee8414578d1e525cde`
-- Gateway release digest: `5e0e2fca1744917f2160f7d8eb37734c9886812176ae9fe84d13aa28a489e2bb`
-- Node contract digest: `ced1122ba62c67761e5ac9ca5cf5d1a8c9d92ccf128280dcf801fb861b01608e`
+- Installed Gateway release: `boring-b595bae4fb7d2fe1f3b6`
+- Installed Gateway release digest: `d371d433e19b286cc01c8f663395ea0e4c11ba618be762cc228bd18460c105a0`
+- Installed Gateway archive digest: `6e3b7372aa963dbc683d43a1e4390040223de6710bc0c3a52836421b08cf43b1`
+- Installed node contract digest: `05f2954d82da515d17049dac00da2294ca60f7d68e03fb868e0cf3e1a7aaa0b9`
 
 Published branches:
 
@@ -33,3 +35,57 @@ strict JSON. Local `agy` screenshot staging has synthetic JPEG tests proving
 `file://`/base64/tool permission argument, startup/defer cleanup, and no
 resident-host attachment route. Real target-window, local visual-model, and
 Blender course acceptance remain separate evidence gates.
+
+## Remaining work and evidence gates
+
+### Deploy latest source
+
+The signed installed app and Gateway above include review lifecycle commit
+`22654ee`, but predate source commit `13da5fe`. Rebuild/redeploy Release from
+`13da5fe`, promote its exact embedded Gateway archive, then record resulting
+release, archive, and node-contract digests. Invoke installed
+`calla-course.sh refresh-runtime` with no stdin and prove it sends
+`{"version":1,"command":"refresh-runtime","payload":{}}`, then confirm
+Engine ingress accepts fresh lifecycle/runtime snapshots.
+
+### Course review and publication
+
+`ready_for_review` presentation is implemented: it is owner-only, never shown
+in learner surfaces, displays bounded digest/compiler/contract/validation/
+preflight/lesson facts, and disables learner start/resume actions. Manual UI
+review of this installed screen remains unproven.
+
+Gateway default preflight currently verifies staged artifact only and labels
+its receipt accordingly. It is **not** a target-backed Blender 5.2 preflight.
+Implement/wire an attested real Blender preflight adapter before claiming this
+plan's preflight requirement complete. A ready course exists but has not been
+published: publication requires explicit owner review and Publish confirmation;
+do not publish it automatically. After authorized publish, prove atomic runtime
+replacement while an existing run stays pinned.
+
+### Installed acceptance still required
+
+- Real Blender 5.2 deterministic clean-pass, fail, unknown, restart, and
+  pinned-revision behavior.
+- Exact target-window-only Screen Recording capture; encrypted history file;
+  on-demand History reveal; no plaintext or base64 in app/Gateway logs.
+- Real local `agy` visual feedback using staged JPEG attachment, attribution,
+  and no model filesystem/tool authority.
+- Intentional local-provider failure proving one visible Gateway fallback;
+  Gateway-selected outage proving no local fallback.
+- Missing capture permission, wrong focus, protected/blank capture, missing or
+  corrupt exact runtime, pending-request stop/restart, and late-reply races.
+- Migration/restart proof from existing Boring JSON state, including backup,
+  canonical store/projections, and idempotent recovery.
+- Manual Tutor UI sweep: Settings destinations, history pagination/search,
+  review Publish confirmation, keyboard/VoiceOver/focus, contrast, reduced
+  motion, long content, narrow notch, and Settings resizing.
+- Final release evidence: deep signatures for app/Engine/Host/overlay/node/
+  Gateway resources, app/node/Gateway restart recovery, screenshots and
+  sanitized logs, final SHAs/digests, and retained exact command output.
+
+Automated source matrix is current: `swift test --package-path Intelligence`
+passed 156 tests with two opt-in live `agy` tests skipped; `swift test
+--package-path CallaContracts` passed 5; root `swift test` passed 75;
+`PYTHON=.venv/bin/python make -C Tutor test`, Release build, and `git diff
+--check` passed. This is source proof only, not installed end-to-end proof.
