@@ -2,7 +2,7 @@
 
 Recorded 2026-08-26 after signed Boring installation and Gateway promotion.
 
-- Boring implementation commit: `34990d1f0f3c21b70b0e6dffa8b4595466b2338a`
+- Boring implementation commit: `254d94b`
 - Portable `Tutor/` subtree split: `12a736f140a48d765ac1367334a4c65d60d627b7`
 - Calla branch: `feat/boring-owned-tutor-intelligence`
 - Calla branch commit: `12a736f140a48d765ac1367334a4c65d60d627b7`
@@ -28,8 +28,8 @@ copies remain under `legacy-import/v1`. Gateway plugin loaded from matching
 release; real `refresh-runtime` advanced the canonical manifest from legacy
 import to Gateway epoch `gateway-f6775429-1ae4-4fac-be9b-d03ef5ae1a03`, sequence
 `18`. Gateway feedback socket completed a real tool-free image request with
-strict JSON. Local `agy` screenshot staging has a synthetic JPEG test proving
+strict JSON. Local `agy` screenshot staging has synthetic JPEG tests proving
 0700/0600 staging, `agy --print` `@filename` attachment reference, no
-`file://`/base64/tool permission argument, and cleanup. Real target-window,
-local visual-model, and Blender course acceptance remain separate evidence
-gates.
+`file://`/base64/tool permission argument, startup/defer cleanup, and no
+resident-host attachment route. Real target-window, local visual-model, and
+Blender course acceptance remain separate evidence gates.

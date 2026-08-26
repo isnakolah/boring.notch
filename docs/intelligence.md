@@ -22,10 +22,13 @@ actual provider, model, total latency, transport/provider fallback and bounded r
 Tutor attachments are never text or base64 prompt material. Engine validates one JPEG
 from exact focused allowlisted target window, AES-GCM encrypts and atomically stores it,
 then commits capture metadata and pending feedback row before provider request. Storage,
-capture, protocol and safety failures send nothing. Current `agy` transport explicitly
-rejects image attachments until Engine-private random-file staging is implemented end to
-end; it must never silently omit an image. Gateway feedback uses a tool-free image request.
-Both routes may send screenshots to remote model services.
+capture, protocol and safety failures send nothing. `AgyProvider` stages its one
+validated JPEG in a private 0700 print workspace as random 0600 `capture-<uuid>.jpg`,
+then calls `agy --print` with only `@capture-<uuid>.jpg` in the prompt. The attachment
+path is relative to that workspace; there is no `file://` URL, base64 prompt material,
+model filesystem grant or tool permission. The staged plaintext is removed in `defer`,
+and startup removes abandoned random capture names. Gateway feedback uses a tool-free
+image request. Both routes may send screenshots to remote model services.
 
 Before this, "intelligence" meant one hard-coded websocket to a Gateway on a
 Tailscale host (`wss://nomonhomelab.tailec0dca.ts.net/call-copilot/stream`), with no

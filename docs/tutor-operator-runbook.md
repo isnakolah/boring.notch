@@ -34,8 +34,10 @@ owner click. Do not copy raw request/image/model output into logs or tickets.
 - Capture/key/storage error: keep deterministic lesson active, repair Screen
   Recording or disk/Keychain state, then submit again. Do not reset DB or create
   replacement history key.
-- Local attachment unsupported/unavailable: local selection can fall back once
-  to Gateway. Gateway selection never falls back local.
+- Local `agy` unavailable, timed out, quota/auth failed, or rejected its strict
+  reply: local selection can fall back once to Gateway. Gateway selection never
+  falls back local. Do not replace private `@capture-<uuid>.jpg` staging with a
+  file URL, base64 prompt, or expanded model filesystem permission.
 - Stop/restart during reply: request becomes cancelled/stale. It must never be
   resent automatically or render against new run generation.
 - Gateway release failure: installer restores previous current pointer/config.
