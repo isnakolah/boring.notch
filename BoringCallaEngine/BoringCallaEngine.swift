@@ -3216,7 +3216,16 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         // flap: the Gateway accepts one `Calla Mac`, evicts the duplicate, and
         // the survivor's KeepAlive brings it straight back. This holds even if
         // somebody re-enables the retired LaunchAgent.
-        if let pid = foreignNodeProcess() {
+        // Deployment restarts terminate the previous Engine's node first, but
+        // ps can observe that dying descendant for a few scheduler turns. Give
+        // it a short bounded drain before treating a node as genuinely foreign.
+        let foreignDeadline = Date().addingTimeInterval(2)
+        var competingNode = foreignNodeProcess()
+        while competingNode != nil && Date() < foreignDeadline {
+            Thread.sleep(forTimeInterval: 0.1)
+            competingNode = foreignNodeProcess()
+        }
+        if let pid = competingNode {
             appendDiagnostic("Not starting a node: another Calla Mac node is running (pid \(pid))")
             return
         }
