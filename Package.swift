@@ -9,7 +9,7 @@ let package = Package(
             name: "CallaEngineValidation",
             path: "BoringCallaEngine",
             exclude: ["BoringCallaEngine.swift", "BoringCallaEngineProtocol.swift", "BoringCallaEngine.entitlements", "Info.plist", "main.swift", "TutorHistoryKey.swift", "TutorEngineIngress.swift"],
-            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift", "CallaCopilotCommandValidation.swift", "CallaAgyLoginParsing.swift", "TutorEngineGate.swift"]
+            sources: ["CallaCourseCommandValidation.swift", "CallaCoursePresentation.swift", "CallaCopilotCommandValidation.swift", "CallaAgyLoginParsing.swift", "TutorEngineGate.swift", "TutorAgyAttachmentStager.swift"]
         ),
         .target(
             name: "CallaNotchPresentation",
