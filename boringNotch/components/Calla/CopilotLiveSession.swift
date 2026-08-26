@@ -54,6 +54,15 @@ final class CopilotLiveSession: ObservableObject {
     /// later, with the host's own startup drawn inside it.
     @Published private(set) var starting = false
 
+    /// The call has stopped capturing and is being written up.
+    ///
+    /// Holds the notch the way `starting` does, and for the same reason: this is
+    /// a stretch of seconds where the user has just pressed something and is
+    /// owed an answer about what it did. Previously the panel simply went on
+    /// showing the live call — `running` stayed true until the host exited — and
+    /// then disappeared without ever acknowledging the press.
+    @Published private(set) var ending = false
+
     /// A start was asked for and ended without a call.
     ///
     /// Its own state because the alternative was silence. `starting` going false
@@ -99,7 +108,7 @@ final class CopilotLiveSession: ObservableObject {
     /// The single question `BoringViewModel.close()` and the panel's sharing
     /// type both ask.
     var pinsNotchOpen: Bool {
-        (isLive || starting || startupFailed || signInActive || prerollActive) && pinned
+        (isLive || starting || ending || startupFailed || signInActive || prerollActive) && pinned
     }
 
     /// The size the notch should open to right now.
@@ -120,10 +129,15 @@ final class CopilotLiveSession: ObservableObject {
         if signInActive || prerollActive { return openNotchSize }
         // A starting call uses the full live size it is about to become, so the
         // notch does not resize under the reader the moment capture begins.
-        // A failed start is drawn in the same panel as a starting one, so it
-        // takes the same size — the notch must not shrink at the moment it has
-        // something to explain.
-        if (starting || startupFailed), !isLive { return CallaPanelSize.full }
+        // Compact, not the live slab.
+        //
+        // Startup has four short lines to show and a failure has three; the live
+        // panel has a transcript beside an answer. Opening at the full size for
+        // all of them meant the notch went straight to a mostly empty rectangle
+        // and stayed there whether or not a call ever arrived. It grows into the
+        // full size in `apply(running:)` — at the moment recording begins, which
+        // is the moment the room starts carrying something.
+        if (starting || startupFailed || ending), !isLive { return CallaPanelSize.compact }
         guard isLive else { return openNotchSize }
         // Compact is genuinely smaller. Keeping the full slab for both layouts
         // meant collapsing bought nothing but empty card — the state and the
@@ -185,6 +199,15 @@ final class CopilotLiveSession: ObservableObject {
             }
             .store(in: &cancellables)
 
+        CallaEngineClient.shared.$endingCall
+            .combineLatest(CallaEngineClient.shared.$status.map(\.copilot.isFinishing))
+            .map { $0 || $1 }
+            .removeDuplicates()
+            .sink { [weak self] ending in
+                self?.apply(ending: ending)
+            }
+            .store(in: &cancellables)
+
         CallaEngineClient.shared.$status
             .map(\.copilot.isSigningIn)
             .removeDuplicates()
@@ -241,7 +264,7 @@ final class CopilotLiveSession: ObservableObject {
                 if Defaults[.callaCopilotEnabled] {
                     startupFailed = true
                     startupFailure = CallaEngineClient.shared.status.copilot.lastResult
-                    layout = .full
+                    layout = .compact
                     pinned = true
                 } else {
                     pinned = false
@@ -251,7 +274,7 @@ final class CopilotLiveSession: ObservableObject {
             return
         }
         clearStartupFailure()
-        layout = .full
+        layout = .compact
         pinned = true
         reveal()
     }
@@ -271,6 +294,26 @@ final class CopilotLiveSession: ObservableObject {
         lastStartupStage = nil
         pinned = false
         NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
+    }
+
+    private func apply(ending: Bool) {
+        guard ending != self.ending else { return }
+        self.ending = ending
+        guard ending, Defaults[.callaCopilotEnabled] else {
+            // The write-up is done. Nothing to hold the notch for any more, and
+            // nothing to say — History has the recap.
+            if !isLive { pinned = false }
+            NotificationCenter.default.post(name: .copilotLiveDidChange, object: nil)
+            return
+        }
+        // Recording has stopped, so the live panel's claim has stopped being
+        // true. `apply(running:)` will clear `isLive` on the same status, but
+        // the order of the two is not guaranteed and the panel must not be a
+        // live call for even one frame after capture closed.
+        isLive = false
+        layout = .compact
+        pinned = true
+        reveal()
     }
 
     private func apply(signingIn: Bool) {
@@ -300,6 +343,7 @@ final class CopilotLiveSession: ObservableObject {
             // Recording has started, so the card's central claim — that nothing is
             // being captured — has stopped being true. The live panel takes over.
             starting = false
+            ending = false
             clearStartupFailure()
             lastStartupStage = nil
             prerollActive = false

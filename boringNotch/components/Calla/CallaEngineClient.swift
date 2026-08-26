@@ -161,6 +161,14 @@ struct CallaCopilotStatus: Codable, Equatable {
     /// ask this instead, or the notch will claim to be listening while both
     /// microphones are stopped.
     var isRecording: Bool { running && !prewarming }
+
+    /// The end-of-call work, as the host reports it — or as this app claimed it
+    /// the moment the button was pressed, whichever came first.
+    var isFinishing: Bool {
+        finishing
+            || lifecycleState == CallLifecycleStateName.stopping
+            || lifecycleState == CallLifecycleStateName.processingRecap
+    }
     /// Which brain answered this call: "local" or "gateway". Shown in the notch,
     /// because a failover the user cannot see looks exactly like a broken copilot.
     var activeProvider: String? = nil
@@ -194,6 +202,16 @@ struct CallaCopilotStatus: Codable, Equatable {
     /// after a fresh install nothing has asked yet.
     var hostPermissionsKnown = false
     var modelDownload: CallaModelDownload? = nil
+    /// Where the host is in its own lifecycle: `capturing`, `stopping`,
+    /// `processingRecap`, `finished`.
+    var lifecycleState: String? = nil
+    /// 0…1 while the recap is being written.
+    var recapProgress: Double? = nil
+    /// Capture has stopped and the call is being written up. The seconds this
+    /// covers used to be invisible: `running` stayed true until the process
+    /// exited, so End call changed nothing on screen and then the panel
+    /// disappeared without explanation.
+    var finishing = false
 
     var hasSuggestion: Bool {
         guard let headline else { return false }
@@ -222,6 +240,16 @@ struct CallaCopilotStatus: Codable, Equatable {
     var canAcceptCode: Bool {
         agyLoginURL != nil || agyAwaitingCode || agyLoginStage == "exchanging"
     }
+}
+
+/// The lifecycle values the host writes. Named rather than spelled inline: the
+/// host, the engine and this app each hold their own copy of the vocabulary, and
+/// a typo in a string literal fails silently in exactly the place nobody looks.
+enum CallLifecycleStateName {
+    static let capturing = "capturing"
+    static let stopping = "stopping"
+    static let processingRecap = "processingRecap"
+    static let finished = "finished"
 }
 
 /// Progress of a transcription model fetch.
@@ -722,7 +750,7 @@ final class CallaEngineClient: ObservableObject {
                 // host answers a question in ~2s and writes it to a file; at the idle
                 // cadence it then sat there for up to 4s more, which is longer than
                 // the answer took and long enough for the moment to pass.
-                let onACall = self.status.copilot.running
+                let onACall = self.status.copilot.running || self.callIsFinishing
                 // A call on the way up is the other case where the poll *is* the
                 // latency, and a tighter one: every startup step the host
                 // publishes is a line the panel wants to draw, and at the idle
@@ -868,7 +896,31 @@ final class CallaEngineClient: ObservableObject {
             // It is a call now, not a warm host on spec.
             armedSpeculativePrewarm = false
         }
+        // The host has finished, or there is no host left to finish. Also
+        // released on the timeout, so a host that died mid-recap cannot leave
+        // the notch writing a recap forever.
+        if endingCall {
+            let done = !result.copilot.running && !result.copilot.isFinishing
+                && !result.copilot.starting
+            if done || result.copilot.lifecycleState == CallLifecycleStateName.finished {
+                endEnding()
+            } else if let deadline = endDeadline, Date() >= deadline {
+                endEnding()
+            }
+        }
+
         if result.copilot.starting || result.copilot.running {
+            endLaunch()
+        } else if launchingCall,
+                  result.copilot.lastResult != previousCopilot.lastResult,
+                  CopilotStartFailure.classify(reason: result.copilot.lastResult,
+                                               copilot: result.copilot).isTerminalRefusal {
+            // The engine has refused outright — a host already alive, a runtime
+            // that is not installed, settings that failed validation. Waiting for
+            // the thirty-second deadline here meant half a minute of a progress
+            // bar for a call that was never going to exist. Keyed on the result
+            // having *changed*, so a stale message from an earlier command
+            // cannot cancel a launch that is genuinely still coming up.
             endLaunch()
         } else if let deadline = launchDeadline, Date() >= deadline {
             endLaunch()
@@ -1060,8 +1112,38 @@ final class CallaEngineClient: ObservableObject {
     }
 
     func endCall() {
+        // Claimed locally, for the same reason `startCall` claims its launch:
+        // the host cannot report a stop it has not been told about yet, and the
+        // poll that would notice is up to four seconds away. Pressing End used
+        // to change nothing on screen for those four seconds and then, once the
+        // recap pass began, still nothing — because `running` stayed true until
+        // the process exited. The button now responds to the press and the
+        // host's own progress replaces this the moment it lands.
+        beginEnding()
         send(CallaCopilotCommand(action: "stop"))
     }
+
+    /// A stop this app has asked for and not yet seen finish.
+    @Published private(set) var endingCall = false
+    private var endDeadline: Date?
+    /// Long enough for the drain, the final chunk and the deep closing pass —
+    /// which is ~8.5s on its own — and short enough that a host that died
+    /// mid-recap does not leave the notch finishing forever.
+    private static let endTimeout: TimeInterval = 60
+
+    private func beginEnding() {
+        endingCall = true
+        endDeadline = Date().addingTimeInterval(Self.endTimeout)
+    }
+
+    private func endEnding() {
+        endingCall = false
+        endDeadline = nil
+    }
+
+    /// True while the user should be looking at a call being written up — ours
+    /// by claim, or the host's by report.
+    var callIsFinishing: Bool { endingCall || status.copilot.isFinishing }
 
     func answerSelectedText(_ text: String) {
         send(CallaCopilotCommand(action: "answer", question: text))

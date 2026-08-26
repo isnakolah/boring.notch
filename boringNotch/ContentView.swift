@@ -170,8 +170,35 @@ struct ContentView: View {
                     // horizontal one may vary by state.
                     .padding(.horizontal, vm.notchState == .open ? (isCopilotGlass ? 4 : 12) : 0)
                     .padding(.bottom, vm.notchState == .open ? 12 : 0)
-                    .background(notchBackground)
-                    .clipShape(currentNotchShape)
+                    // The black slab is pinned to the real notch when closed,
+                    // and only then.
+                    //
+                    // It was `.background(notchBackground)` on the layout itself
+                    // with no width pinned in the closed state, so the shape grew
+                    // to whatever the closed content happened to be. Anything
+                    // drawn *beside* the notch therefore inflated the notch:
+                    // `UsageNotchBadges` is a badge, a spacer the width of the
+                    // notch, and another badge, so on a 1710pt screen the slab
+                    // came out ~300pt wide against a 209pt physical cutout —
+                    // ~45pt of black either side, carrying the notch's own
+                    // rounded corners, sitting in the menu bar beside the real
+                    // one. The live-call and Pomodoro badges do the same, which
+                    // is why the chin's hit area already carried a matching +150.
+                    //
+                    // Pinning the background rather than the content is what
+                    // keeps the badges where the setting's name says they go —
+                    // beside the notch — instead of clipping them away.
+                    .background(alignment: .top) {
+                        notchBackground
+                            .frame(width: vm.notchState == .open
+                                   ? nil : vm.closedNotchSize.width)
+                            .clipShape(currentNotchShape)
+                    }
+                    // Only the open panel is clipped to the shape. Closed, that
+                    // clip is what would cut off anything outside the slab — and
+                    // the slab is now deliberately narrower than the content.
+                    .clipShape(vm.notchState == .open
+                               ? AnyShape(currentNotchShape) : AnyShape(Rectangle()))
                     .overlay {
                         // Only the glass panel needs an edge; the opaque slab
                         // reads as one piece with the display bezel already.
@@ -186,7 +213,8 @@ struct ContentView: View {
                         // translucent version of it reads as a seam.
                         Rectangle()
                             .fill(.black)
-                            .frame(height: 1)
+                            .frame(width: vm.notchState == .open ? nil : vm.closedNotchSize.width,
+                                   height: 1)
                             .padding(.horizontal, topCornerRadius)
                     }
                     .shadow(
@@ -554,6 +582,12 @@ struct ContentView: View {
                             // produces nothing, so the field to fix that is the
                             // only useful thing to show.
                             CallaCopilotSignInView()
+                        } else if copilotSession.ending {
+                            // Between End call and the recap being saved. Outranks
+                            // the live panel: capture has stopped, so drawing a
+                            // live call here is the same lie the startup panel
+                            // exists to stop telling in the other direction.
+                            CallaCopilotEndingView()
                         } else if copilotSession.isLive {
                             CallaCopilotLiveView()
                         } else if copilotSession.starting || copilotSession.startupFailed {
@@ -628,12 +662,45 @@ struct ContentView: View {
             applyLivePanelSize()
         }
         .onChange(of: vm.notchState) { _, state in
-            // Only an open notch may host a caret. Closing hands the keyboard
-            // back to whatever the user was actually working in.
-            BoringNotchSkyLightWindow.acceptsKeyFocus = state == .open
+            syncNotchKeyFocus(state)
             if state == .closed {
                 NSApp.deactivate()
             }
+        }
+        // Key focus follows what is on screen, not just whether it is open, so
+        // it has to be re-decided when the tab changes under an open notch too.
+        .onChange(of: coordinator.currentView) { _, _ in syncNotchKeyFocus(vm.notchState) }
+        .onChange(of: copilotSession.signInActive) { _, _ in syncNotchKeyFocus(vm.notchState) }
+    }
+
+    /// Whether the notch panel may take key focus from the rest of the app.
+    ///
+    /// This used to be "the notch is open", which is a fair proxy for a tab you
+    /// glance at and dismiss and a bad one for a live call: the panel is pinned
+    /// open for the whole call, sits at `.mainMenu + 3`, and `canBecomeKey` is
+    /// consulted by `NSApp.activate` — so opening Settings during a call handed
+    /// key to the notch instead of to the window that had just been asked for.
+    /// Clicks then went to making Settings key rather than to its controls, and
+    /// the only way out was to switch apps and come back, which restores key to
+    /// the main window. The notch cannot be main, so that always worked, which
+    /// is exactly why the bug read as "it fixes itself".
+    ///
+    /// The real requirement was never "open". It is "there is somewhere to
+    /// type": the Pomodoro session title, the copilot's authorization code, the
+    /// note attached to a dropped file. Everything else — a live call, media,
+    /// the shelf — wants to be looked at, not typed into, and has no business
+    /// taking the keyboard off another window.
+    private func syncNotchKeyFocus(_ state: NotchState) {
+        guard state == .open else {
+            BoringNotchSkyLightWindow.acceptsKeyFocus = false
+            return
+        }
+        BoringNotchSkyLightWindow.acceptsKeyFocus = switch coordinator.currentView {
+        case .pomodoro, .knowledgeDrop, .tutor: true
+        // Only the sign-in surface, which is a field for a code. The live call
+        // panel is the long-lived case and the one that caused this.
+        case .copilot: copilotSession.signInActive
+        case .home, .shelf, .dropChooser, .usage: false
         }
     }
 

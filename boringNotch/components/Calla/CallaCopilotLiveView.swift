@@ -111,10 +111,18 @@ struct CallaCopilotLiveView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
+                // Padded *inside* the geometry, never outside it. This was
+                // `.frame(height: geometry.size.height)` followed by
+                // `.padding(.top, 2)`, which makes the view two points taller
+                // than the space it was given — so the bottom two points were
+                // always drawn past the floor and cut by the clip. Small, and
+                // exactly the kind of small that slices a caption in half.
+                .frame(width: geometry.size.width - 4,
+                       height: geometry.size.height - 2,
+                       alignment: .leading)
+                .padding(.top, 2)
+                .padding(.horizontal, 2)
             }
-            .padding(.top, 2)
-            .padding(.horizontal, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Content that outgrows its share is cut, never allowed to push.
             // Without this the card's intrinsic height wins the layout and the
@@ -204,14 +212,14 @@ struct CallaCopilotLiveView: View {
     /// there is one, and what was just said until then.
     private var answerColumn: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Collapsed stacks upward from the caption strip. Anchored to the
-            // top, a two-line recap left the bottom two thirds of the panel as
-            // black nobody could use, with the strip stranded in the middle;
-            // read from the bottom, the newest point sits directly above the
-            // words being said, which is the order they happened in.
-            if session.layout == .compact {
-                Spacer(minLength: 0)
-            }
+            // No `Spacer` here any more. Collapsed still stacks upward from the
+            // caption strip — `recapBody` and `answerBody` bottom-align inside
+            // their own frames, which is what actually produces that — but a
+            // spacer *plus* a child asking for infinite height is two greedy
+            // children in one stack, and between them they took the space the
+            // caption strip needed. The strip has priority, so it was never
+            // supposed to lose; what it lost to was the stack being handed less
+            // room than it asked for and resolving the shortfall by overflowing.
             // No heading here. It is drawn in the notch's header band, beside
             // the clock — a two-word label was costing a line of a panel whose
             // whole complaint was that the answer would not fit.
@@ -243,6 +251,9 @@ struct CallaCopilotLiveView: View {
                 // collapsed panel is on screen at all.
                 captionStream
                     .layoutPriority(1)
+                    // Its height is 1pt of rule, 5 of spacing and one 15pt line:
+                    // a fixed 21, and nothing above it may borrow from it.
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         // Collapsed sits closer to the edge: with one column and no heading
@@ -250,11 +261,12 @@ struct CallaCopilotLiveView: View {
         // width it costs is width the recap lines want.
         .padding(.leading, session.layout == .compact ? 5 : 10)
         .padding(.trailing, 10)
-        // Nothing draws outside the panel. Without this the column's intrinsic
-        // height wins when the account is long, and the overflow is drawn past
-        // the notch's bottom edge — where it is cut by the window rather than
-        // by the mask that was designed to cut the *oldest* line.
-        .clipped()
+        // NOTE: the clip is applied *after* the frame below, not here. Clipping
+        // first cuts to the column's own intrinsic bounds — which, when the
+        // content overflows, are larger than the space available, so the clip
+        // does nothing and the overflow is cut by the window instead: through
+        // the middle of the caption line rather than through the oldest recap
+        // line the mask was designed to take.
         // Top, level with the transcript's heading beside it.
         //
         // This was centred for a while, to stop a short answer floating above a
@@ -279,6 +291,9 @@ struct CallaCopilotLiveView: View {
         // Top-aligned, a short account left the lower two thirds of the column
         // empty and a long one pushed its newest line off the floor.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        // Now that the bounds are the real ones, the clip cuts what it was meant
+        // to cut and nothing reaches the window's edge.
+        .clipped()
     }
 
     /// The collapsed panel's transcript: subtitles, not a log.
@@ -450,10 +465,17 @@ struct CallaCopilotLiveView: View {
         }
         // Collapsed: fill the column and sit on its floor, so the list grows
         // upward and the oldest line leaves through the top. Aligned any other
-        // way, an account longer than the space overflows downward and takes
-        // the caption strip with it — the clip would cut the newest line rather
-        // than the stalest one.
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        // way vertically, an account longer than the space overflows downward
+        // and takes the caption strip with it — the clip would cut the newest
+        // line rather than the stalest one.
+        //
+        // `.bottomLeading`, not `.bottom`: `Alignment.bottom` is centre
+        // horizontally, so the whole column was being centred on the panel. The
+        // stack inside is `.leading`, but it hugs its widest line — so with one
+        // short point on screen the block was narrow and sat in the middle,
+        // and the account appeared to drift left and right as lines of
+        // different lengths arrived.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
         .clipped()
         .mask(alignment: .bottom) {
             if session.layout == .compact {
