@@ -6,6 +6,10 @@ set -euo pipefail
 COMMAND="${1:-}"
 [[ -n "$COMMAND" ]] || { echo "usage: calla-course.sh <command> < JSON payload" >&2; exit 2; }
 PAYLOAD="$(cat)"
+# Commands such as `refresh-runtime` carry no parameters. Keep transport
+# versioned JSON in that case rather than feeding an empty stream to Python's
+# decoder. Whitespace-only input has same meaning.
+if [[ -z "${PAYLOAD//[[:space:]]/}" ]]; then PAYLOAD='{}'; fi
 
 GATEWAY_SSH="${CALLA_GATEWAY_SSH:-isnakolah@nomonhomelab}"
 CONTROL="/tmp/calla-course.sock"
