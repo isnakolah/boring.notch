@@ -2,14 +2,14 @@
 
 Recorded 2026-08-26 after signed Boring installation and Gateway promotion.
 
-- Boring implementation commit: `ac4f4c698b68f8d909bb1bd4460454c19363a428`
-- Portable `Tutor/` subtree split: `ff707fa9c719a36cb22d1e4b41f1321eba3727cc`
+- Boring implementation commit: `a475a3ee537ceb0c68bdb94ac15d2bb74bd50aca`
+- Portable `Tutor/` subtree split: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
 - Calla branch: `feat/boring-owned-tutor-intelligence`
-- Calla branch commit: `ff707fa9c719a36cb22d1e4b41f1321eba3727cc`
+- Calla branch commit: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
 - Protocol: v4, accepted range v2-v4
-- Active Gateway release: `boring-571feb8077e9f63e49fd`
-- Gateway release digest: `e99396ebb4ca90c2a6d6c5b822d8f16f54c175cb7182158f2d6f92249c5a0d5e`
-- Node contract digest: `4ddeded5c83353704ac9397dfc3d2062b1a72d8e8c9982fbb86959f6fe6e7c1b`
+- Active Gateway release: `boring-6b8266dafbb41d743ba9`
+- Gateway release digest: `b9c25536afef943f91cd583df0e37c4f91e9b2741face78265a042a4877b350d`
+- Node contract digest: `7828725ba7ef9d931e912308ede2dbf842cfaf0aa10800afeb8791507e6a9be8`
 
 Published branches:
 
@@ -22,5 +22,6 @@ Verification retained for this record: Swift/Node/Python suites passed;
 installer suite passed; signed `/Applications/boringNotch.app` and embedded
 Engine passed deep signature verification; installed Engine/Host/Overlay ran;
 owner-only Host and Engine ingress sockets existed; Gateway plugin loaded from
-matching release and Gateway feedback socket existed. Live visual provider and
-real Blender acceptance remain separate evidence gates.
+matching release; Gateway feedback socket completed a real tool-free image
+request with strict JSON. Real target-window and Blender acceptance remain
+separate evidence gates.
