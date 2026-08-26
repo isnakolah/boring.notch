@@ -51,4 +51,9 @@ struct TutorAgyAttachmentStager {
     /// Only suitable for diagnostics.  Never include prompt, path, filename,
     /// base64, or JPEG bytes in logs.
     static let safeInvocationDescription = "agy --print [Tutor JPEG attachment]"
+
+    static func printArguments(prompt: String) -> [String] {
+        ["--print", prompt, "--model", "gemini-3.7-flash-low", "--output-format", "json",
+         "--print-timeout", "5s", "--mode", "plan", "--sandbox", "--disable-slash-commands"]
+    }
 }

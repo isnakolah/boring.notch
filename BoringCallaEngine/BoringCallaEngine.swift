@@ -3820,8 +3820,7 @@ final class BoringCallaEngine: NSObject, BoringCallaEngineProtocol {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.currentDirectoryURL = tutorAgyWorkspaceURL
-        process.arguments = ["--print", prompt, "--model", "gemini-3.7-flash-low", "--output-format", "json",
-                             "--print-timeout", "5s", "--mode", "plan", "--sandbox", "--disable-slash-commands"]
+        process.arguments = TutorAgyAttachmentStager.printArguments(prompt: prompt)
         let stdout = Pipe()
         process.standardOutput = stdout; process.standardError = FileHandle.nullDevice; process.standardInput = FileHandle.nullDevice
         let started = Date()
