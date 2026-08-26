@@ -2,7 +2,7 @@
 
 Recorded 2026-08-26 after signed Boring installation and Gateway promotion.
 
-- Boring implementation commit: `a475a3ee537ceb0c68bdb94ac15d2bb74bd50aca`
+- Boring implementation commit: `fd1403239b6372c937dcd9a0b9bc8ccc8017c1d7`
 - Portable `Tutor/` subtree split: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
 - Calla branch: `feat/boring-owned-tutor-intelligence`
 - Calla branch commit: `819590991d576afe9ce04f22e90ece7ead6ff6ef`
@@ -21,7 +21,10 @@ No pull request created. `origin` for Boring was not pushed.
 Verification retained for this record: Swift/Node/Python suites passed;
 installer suite passed; signed `/Applications/boringNotch.app` and embedded
 Engine passed deep signature verification; installed Engine/Host/Overlay ran;
-owner-only Host and Engine ingress sockets existed; Gateway plugin loaded from
-matching release; Gateway feedback socket completed a real tool-free image
-request with strict JSON. Real target-window and Blender acceptance remain
-separate evidence gates.
+owner-only Host and Engine ingress sockets existed. Installed migration created
+v5 canonical Store rows for exact runtime revision
+`org.calla.tutor.blender@0.3.0` and four Boring learning records; legacy source
+copies remain under `legacy-import/v1`. Gateway plugin loaded from matching
+release; Gateway feedback socket completed a real tool-free image request with
+strict JSON. Real target-window and Blender acceptance remain separate evidence
+gates.
